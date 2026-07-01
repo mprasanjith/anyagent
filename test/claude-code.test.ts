@@ -80,7 +80,9 @@ test("buildInvocation maps prompt, stream-json, and edit permission by default",
   const inv = claudeCode().buildInvocation("hi", { permission: "edit" });
   expect(inv.command).toBe("claude");
   expect(inv.args).toContain("-p");
-  expect(inv.args).toContain("hi");
+  // Prompt goes to stdin, never argv, so it can't hit the OS argv size limit.
+  expect(inv.input).toBe("hi");
+  expect(inv.args).not.toContain("hi");
   expect(inv.args).toContain("--output-format");
   expect(inv.args).toContain("stream-json");
   expect(inv.args).toContain("acceptEdits");

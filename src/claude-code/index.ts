@@ -148,9 +148,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
       `claude-code cannot honor permission "${level}"`
     );
   }
+  // The prompt travels via stdin (documented headless pattern) rather than as
+  // a positional arg, so a large prompt never hits the OS argv size limit.
   const args = [
     "-p",
-    prompt,
     "--output-format",
     "stream-json",
     "--verbose",
@@ -169,7 +170,13 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   if (opts.mcp) {
     args.push("--mcp-config", JSON.stringify({ mcpServers: opts.mcp }));
   }
-  return { args, command: "claude", cwd: opts.cwd, env: opts.env };
+  return {
+    args,
+    command: "claude",
+    cwd: opts.cwd,
+    env: opts.env,
+    input: prompt,
+  };
 };
 
 export const claudeCode = (): Adapter => ({
