@@ -3,5 +3,11 @@ import core from "ultracite/oxlint/core";
 
 export default defineConfig({
   extends: [core],
-  ignorePatterns: ["dist", "test/fixtures"],
+  ignorePatterns: [
+    "**/dist",
+    "**/test/fixtures",
+    "**/.next",
+    "**/.source",
+    "**/.turbo",
+  ],
 });
