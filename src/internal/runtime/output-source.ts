@@ -107,6 +107,9 @@ export const outputSourceFromChild = (
   };
 
   return {
+    close: () => {
+      child.kill();
+    },
     exitCode,
     lines,
     stderr: () => Promise.resolve(stderrBuf),

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { AgentImpl } from "../src/internal/agent.js";
+import type { OutputSource } from "../src/internal/types.js";
 import {
   fakeBinaryPerms,
   fakeStreaming,
@@ -51,6 +52,29 @@ test("requesting read-only on a binary-perms adapter throws UnsupportedCapabilit
   ).rejects.toMatchObject({
     code: "UnsupportedCapability",
   });
+});
+
+test("breaking out of runStream early terminates the underlying process", async () => {
+  let closed = false;
+  const runner = (): OutputSource => ({
+    close: () => {
+      closed = true;
+    },
+    exitCode: Promise.resolve(0),
+    async *lines() {
+      yield '{"t":"text","v":"Hi"}';
+      yield '{"t":"end"}';
+    },
+    stderr: () => Promise.resolve(""),
+    text: () => Promise.resolve(""),
+  });
+  const agent = new AgentImpl(fakeStreaming, runner);
+  for await (const ev of agent.runStream("go")) {
+    if (ev.type === "text-delta") {
+      break;
+    }
+  }
+  expect(closed).toBe(true);
 });
 
 test("raw.buildInvocation exposes native argv", () => {

@@ -45,7 +45,13 @@ export class AgentImpl implements Agent {
   ): AsyncGenerator<AgentEvent, RunResult> {
     validateOptions(this.adapter, opts);
     const source = this.run_(this.build(prompt, opts), opts.signal);
-    return yield* this.adapter.parse(source, { strict: false });
+    try {
+      return yield* this.adapter.parse(source, { strict: false });
+    } finally {
+      // Runs on normal completion (child already exited: no-op) and when a
+      // consumer breaks early, terminating a stream nobody is reading.
+      source.close?.();
+    }
   }
 
   async run(prompt: string, opts: RunOptions = {}): Promise<RunResult> {

@@ -86,6 +86,12 @@ export interface OutputSource {
   text: () => Promise<string>;
   stderr: () => Promise<string>;
   exitCode: Promise<number>;
+  /**
+   * Terminate the underlying process. The core calls this when a consumer
+   * abandons a stream early, so a half-read agent isn't left running. A no-op
+   * once the process has already exited.
+   */
+  close?: () => void;
 }
 
 export interface VersionProbe {
