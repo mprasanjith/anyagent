@@ -5,6 +5,9 @@ import type { Invocation, OutputSource } from "../types.js";
 
 const STDERR_SNIPPET_LEN = 200;
 
+const isAbort = (err: Error & { code?: string }): boolean =>
+  err.name === "AbortError" || err.code === "ABORT_ERR";
+
 export const outputSourceFromChild = (
   child: ChildProcess,
   invocation: Invocation
@@ -29,12 +32,15 @@ export const outputSourceFromChild = (
   const exitCode = new Promise<number>((resolve, reject) => {
     child.on("error", (err) =>
       reject(
-        invocationError(
-          `failed to spawn ${invocation.command}: ${err.message}`,
-          {
-            raw: err,
-          }
-        )
+        isAbort(err)
+          ? new AnyAgentError("Aborted", `${invocation.command} run aborted`, {
+              argv,
+              raw: err,
+            })
+          : invocationError(
+              `failed to spawn ${invocation.command}: ${err.message}`,
+              { raw: err }
+            )
       )
     );
     child.on("close", (code) => {

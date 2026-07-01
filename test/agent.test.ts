@@ -167,5 +167,5 @@ test("aborting the signal terminates the run and rejects", async () => {
   const controller = new AbortController();
   const pending = agent.run("go", { signal: controller.signal });
   controller.abort();
-  await expect(pending).rejects.toMatchObject({ code: "Invocation" });
+  await expect(pending).rejects.toMatchObject({ code: "Aborted" });
 });

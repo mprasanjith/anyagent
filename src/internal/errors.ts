@@ -1,7 +1,8 @@
 export type AnyAgentErrorCode =
   | "UnsupportedCapability"
   | "Invocation"
-  | "Parse";
+  | "Parse"
+  | "Aborted";
 
 export class AnyAgentError extends Error {
   readonly code: AnyAgentErrorCode;

@@ -47,6 +47,19 @@ test("nonzero exit reports code and stderr snippet", async () => {
   });
 });
 
+test("aborting the signal rejects exitCode with an Aborted error", async () => {
+  const controller = new AbortController();
+  const src = spawnAndStream(
+    { args: ["-c", "sleep 5"], command: "sh" },
+    controller.signal
+  );
+  controller.abort();
+  await expect(src.exitCode).rejects.toMatchObject({
+    argv: ["sh", "-c", "sleep 5"],
+    code: "Aborted",
+  });
+});
+
 test("realProbe.which resolves an existing binary and null for a missing one", async () => {
   expect(await realProbe.which("sh")).toBeTruthy();
   expect(await realProbe.which("definitely-not-a-real-binary-xyz")).toBeNull();
