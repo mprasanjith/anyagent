@@ -43,6 +43,8 @@ export const resolveOnPath = async (bin: string): Promise<string | null> => {
   return results.find((r): r is string => r !== null) ?? null;
 };
 
+const PROBE_TIMEOUT_MS = 10_000;
+
 export const realProbe: VersionProbe = {
   exec: (bin, args) =>
     // oxlint-disable-next-line promise/avoid-new -- child_process events need callback interop.
@@ -50,16 +52,27 @@ export const realProbe: VersionProbe = {
       const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
       let stdout = "";
       let stderr = "";
+      // A hung binary must not stall detect(), which awaits every probe together.
+      const timer = setTimeout(() => child.kill(), PROBE_TIMEOUT_MS);
+      timer.unref?.();
+      let settled = false;
+      const done = (code: number) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        // oxlint-disable-next-line promise/no-multiple-resolved -- the settled guard makes the second call a no-op; error/close/timeout race to settle once.
+        resolve({ code, stderr, stdout });
+      };
       child.stdout?.on("data", (c) => {
         stdout += c.toString();
       });
       child.stderr?.on("data", (c) => {
         stderr += c.toString();
       });
-      child.on("error", () => resolve({ code: -1, stderr, stdout }));
-      child.on("close", (code) =>
-        resolve({ code: code ?? -1, stderr, stdout })
-      );
+      child.on("error", () => done(-1));
+      child.on("close", (code) => done(code ?? -1));
     }),
   which: resolveOnPath,
 };
