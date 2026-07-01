@@ -1,9 +1,8 @@
-import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 
 import { resolvePermission, validateOptions } from "./capabilities.js";
 import { AnyAgentError } from "./errors.js";
-import { spawnAndStream } from "./runtime/spawn.js";
+import { spawnAndStream, spawnChild } from "./runtime/spawn.js";
 import type {
   Adapter,
   Agent,
@@ -67,17 +66,8 @@ export class AgentImpl implements Agent {
     return {
       buildInvocation: (prompt: string, opts: RunOptions = {}) =>
         this.build(prompt, opts),
-      spawn: (prompt: string, opts: RunOptions = {}): ChildProcess => {
-        const inv = this.build(prompt, opts);
-        const child = spawn(inv.command, inv.args, {
-          cwd: inv.cwd,
-          env: inv.env ? { ...process.env, ...inv.env } : process.env,
-          signal: opts.signal,
-        });
-        // Close stdin so an agent that reads it isn't left waiting on EOF.
-        child.stdin?.end(inv.input);
-        return child;
-      },
+      spawn: (prompt: string, opts: RunOptions = {}): ChildProcess =>
+        spawnChild(this.build(prompt, opts), opts.signal),
     };
   }
 }

@@ -1,27 +1,35 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import path from "node:path";
 
 import type { Invocation, OutputSource, VersionProbe } from "../types.js";
 import { outputSourceFromChild } from "./output-source.js";
 
-export const spawnAndStream = (
+/**
+ * Launch an invocation's process: merge its env over the parent's, and close
+ * stdin (carrying the prompt payload, if any) so an agent reading it isn't
+ * left waiting on EOF.
+ */
+export const spawnChild = (
   invocation: Invocation,
   signal?: AbortSignal
-): OutputSource => {
+): ChildProcess => {
   const child = spawn(invocation.command, invocation.args, {
     cwd: invocation.cwd,
     env: invocation.env ? { ...process.env, ...invocation.env } : process.env,
     signal,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  if (invocation.input === undefined) {
-    child.stdin?.end();
-  } else {
-    child.stdin?.end(invocation.input);
-  }
-  return outputSourceFromChild(child, invocation);
+  child.stdin?.end(invocation.input);
+  return child;
 };
+
+export const spawnAndStream = (
+  invocation: Invocation,
+  signal?: AbortSignal
+): OutputSource =>
+  outputSourceFromChild(spawnChild(invocation, signal), invocation);
 
 const isExecutable = async (candidate: string): Promise<string | null> => {
   try {
