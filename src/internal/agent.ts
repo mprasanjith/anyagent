@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 
 import { resolvePermission, validateOptions } from "./capabilities.js";
+import { AnyAgentError } from "./errors.js";
 import { spawnAndStream } from "./runtime/spawn.js";
 import type {
   Adapter,
@@ -48,14 +49,12 @@ export class AgentImpl implements Agent {
   }
 
   async run(prompt: string, opts: RunOptions = {}): Promise<RunResult> {
-    let result: RunResult | undefined;
     for await (const ev of this.runStream(prompt, opts)) {
       if (ev.type === "done") {
-        ({ result } = ev);
+        return ev.result;
       }
     }
-    // The parser contract guarantees a terminal "done" event carrying the result.
-    return result as RunResult;
+    throw new AnyAgentError("Parse", "adapter produced no terminal done event");
   }
 
   get raw(): RawHandle {
