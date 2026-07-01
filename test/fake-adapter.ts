@@ -35,9 +35,8 @@ export const runnerFromFixture =
 type Toy = any;
 
 const streamParse = ndjsonParser<{ text: string[] }>({
-  finalize: (ctx, exitCode) => ({
+  finalize: (ctx) => ({
     events: [],
-    exitCode,
     raw: null,
     text: ctx.text.join(""),
   }),
@@ -87,9 +86,9 @@ export const fakeText: Adapter = {
   async *parse(source) {
     const buffered = await source.text();
     const text = buffered.trim();
-    const exitCode = await source.exitCode;
+    await source.exitCode;
     const delta = { text, type: "text-delta" } as const;
-    const result = { events: [delta], exitCode, raw: text, text };
+    const result = { events: [delta], raw: text, text };
     yield delta;
     yield { result, type: "done" };
     return result;

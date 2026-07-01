@@ -16,7 +16,6 @@ test("live: claude answers a trivial prompt", async () => {
   const agent = create(claudeCode());
   const res = await agent.run(PROMPT, { permission: "read-only" });
   expect(res.text.toLowerCase()).toContain("pong");
-  expect(res.exitCode).toBe(0);
   // Real-output check: the parser extracted usage from the result event.
   expect(typeof res.usage?.outputTokens).toBe("number");
 }, 60_000);

@@ -26,7 +26,7 @@ const noopParse = async function* noopParse(): AsyncGenerator<
   RunResult
 > {
   await Promise.resolve();
-  return { events: [], exitCode: 0, raw: null, text: "" };
+  return { events: [], raw: null, text: "" };
 };
 
 const adapter: Adapter = {

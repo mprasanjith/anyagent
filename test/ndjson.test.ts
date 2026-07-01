@@ -19,9 +19,8 @@ const sourceFromLines = (lines: string[], exitCode = 0): OutputSource => ({
 type Toy = any;
 
 const parse = ndjsonParser<{ text: string[] }>({
-  finalize: (ctx, exitCode) => ({
+  finalize: (ctx) => ({
     events: [],
-    exitCode,
     raw: null,
     text: ctx.text.join(""),
   }),

@@ -13,7 +13,7 @@ export interface NdjsonSpec<Ctx> {
     ctx: Ctx,
     strict: boolean
   ) => AgentEvent | AgentEvent[] | null;
-  finalize: (ctx: Ctx, exitCode: number) => RunResult;
+  finalize: (ctx: Ctx) => RunResult;
 }
 
 export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>) =>
@@ -49,8 +49,9 @@ export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>) =>
         yield ev;
       }
     }
-    const exitCode = await source.exitCode;
-    const result = spec.finalize(ctx, exitCode);
+    // A nonzero exit rejects here, surfacing the descriptive Invocation error.
+    await source.exitCode;
+    const result = spec.finalize(ctx);
     result.events = events;
     yield { result, type: "done" };
     return result;

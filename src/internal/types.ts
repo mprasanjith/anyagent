@@ -64,7 +64,6 @@ export interface RunResult {
   text: string;
   events: AgentEvent[];
   usage?: Usage;
-  exitCode: number;
   raw: unknown;
 }
 

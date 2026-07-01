@@ -67,9 +67,7 @@ const collect = async (
   }
   const done = events.find((e) => e.type === "done");
   const result =
-    done?.type === "done"
-      ? done.result
-      : { events: [], exitCode: 0, raw: null, text: "" };
+    done?.type === "done" ? done.result : { events: [], raw: null, text: "" };
   return { events, result };
 };
 

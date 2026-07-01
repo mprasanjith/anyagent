@@ -93,9 +93,8 @@ const mapUser = (obj: Json, ctx: Ctx, strict: boolean): AgentEvent[] => {
 };
 
 const parse = ndjsonParser<Ctx>({
-  finalize: (ctx, exitCode) => ({
+  finalize: (ctx) => ({
     events: [],
-    exitCode,
     raw: ctx.raw,
     text: ctx.text.join(""),
     usage: ctx.usage,
