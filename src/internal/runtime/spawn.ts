@@ -32,7 +32,6 @@ const isExecutable = async (candidate: string): Promise<string | null> => {
   }
 };
 
-// Cross-platform PATH resolution (adds Windows extensions when applicable).
 export const resolveOnPath = async (bin: string): Promise<string | null> => {
   const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   const exts =

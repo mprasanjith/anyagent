@@ -55,10 +55,8 @@ export const outputSourceFromChild = (
     });
   });
   // Fire-and-forget guard so an unawaited exitCode never becomes an unhandled rejection.
-  // oxlint-disable-next-line promise/prefer-await-to-then -- deliberate detached guard.
-  exitCode.catch(() => {
-    // intentionally ignored
-  });
+  // oxlint-disable-next-line promise/prefer-await-to-then, no-empty-function -- deliberate detached guard.
+  exitCode.catch(() => {});
 
   // A stdout read error is almost always a downstream symptom of the process
   // failing to spawn or exiting nonzero. Prefer that descriptive error (it
