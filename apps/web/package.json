@@ -12,6 +12,7 @@
     "types": "tsc --noEmit"
   },
   "dependencies": {
+    "@paper-design/shaders-react": "^0.0.76",
     "anyagent": "workspace:*",
     "cnfast": "^0.0.8",
     "fumadocs-core": "^16.9.3",

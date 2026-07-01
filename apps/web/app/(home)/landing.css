@@ -1,0 +1,712 @@
+/* Hallmark · genre: atmospheric · macrostructure: Marquee Hero · theme: custom (ember grain:
+ * paper oklch(13% 0.014 265) · accent oklch(76% 0.17 50) brass ·
+ * Teachers 400 display + Manrope body + JetBrains Mono, sentence case) ·
+ * shape: left-biased hero over a GrainGradient shader canvas · logo wall for coverage ·
+ * enrichment: paper-shaders GrainGradient hero + harness logo wall · nav: N1 · footer: Ft5 ·
+ * motion: load reveal (once) · section reveal (once, IO, JS-gated) · shader drift ·
+ * card/CTA hover lift · contrast: pass (40–41) · honest: pass (46) · chrome: pass (47) ·
+ * tokens: pass (48) · responsive: pass (34, 49–52) ·
+ * pre-emit critique: P5 H4 E5 S5 R4 V5
+ */
+
+@import "./tokens.css";
+
+html,
+body {
+  overflow-x: clip;
+}
+
+.home {
+  background: var(--color-paper);
+  color: var(--color-ink-2);
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  min-height: 100dvh;
+}
+
+.home *:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.home ::selection {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.hm-shell {
+  margin-inline: auto;
+  max-width: 72rem;
+  padding-inline: var(--page-gutter);
+  width: 100%;
+}
+
+/* ---- labels — the only uppercase register ---- */
+
+.hm-label {
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-micro);
+  opacity: 0.55;
+  text-transform: uppercase;
+}
+
+/* ---- nav · N1 wordmark + 2 links ---- */
+
+.hm-nav {
+  padding-block: var(--space-lg);
+}
+
+.hm-nav-row {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.hm-wordmark {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.hm-nav-links {
+  display: flex;
+  gap: var(--space-lg);
+}
+
+.hm-nav-link {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition: color var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
+}
+
+.hm-nav-link:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+/* ---- hero · statement over shader canvas ---- */
+
+.hm-hero {
+  background: var(--color-paper);
+  overflow: clip;
+  position: relative;
+}
+
+/* The GrainGradient canvas fills the hero; scrims keep the text column
+ * readable and fade the shader into the page below. */
+.hm-hero-canvas {
+  inset: 0;
+  position: absolute;
+}
+
+.hm-hero::before {
+  background: linear-gradient(90deg, var(--color-scrim) 0%, transparent 60%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.hm-hero::after {
+  background: linear-gradient(180deg, transparent 72%, var(--color-paper) 100%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.hm-hero-inner {
+  padding-block: var(--space-3xl) calc(var(--space-3xl) + var(--space-xl));
+  position: relative;
+  z-index: var(--z-raised);
+}
+
+.hm-hero h1 {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.04;
+  margin: 0;
+  max-width: 16ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hm-lede {
+  font-size: var(--text-md);
+  line-height: 1.6;
+  margin-block: var(--space-lg) 0;
+  max-width: 52ch;
+}
+
+.hm-lede code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.hm-hero-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  margin-block-start: var(--space-xl);
+}
+
+/* ---- buttons and links ---- */
+
+.hm-btn {
+  background: var(--color-accent);
+  border-radius: var(--radius-pill);
+  color: var(--color-accent-ink);
+  display: inline-block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: var(--space-sm) var(--space-lg);
+  text-decoration: none;
+  transition:
+    background-color var(--dur-short) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hm-btn:hover {
+    transform: translateY(-1.5px);
+  }
+}
+
+.hm-btn:active {
+  transform: translateY(0);
+}
+
+.hm-link {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule-2);
+  text-underline-offset: 0.3em;
+  transition: color var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
+}
+
+.hm-link:hover {
+  color: var(--color-ink);
+  text-decoration-color: var(--color-accent);
+}
+
+/* ---- page-load reveal (hero only, pure CSS) ---- */
+
+.hm-reveal {
+  animation: hm-reveal var(--dur-long) var(--ease-out) forwards;
+  animation-delay: calc(var(--i, 0) * 120ms);
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@keyframes hm-reveal {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- sections ---- */
+
+.hm-section {
+  padding-block: var(--space-3xl) var(--space-2xl);
+}
+
+.hm-section h2 {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0;
+  max-width: 26ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hm-body {
+  line-height: 1.62;
+  margin-block: var(--space-lg) 0;
+  max-width: 62ch;
+}
+
+.hm-body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.hm-foot-note {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  margin-block-start: var(--space-lg);
+  max-width: 62ch;
+}
+
+/* Scroll reveal — one-shot, gated on JS so a no-script page never blanks. */
+.hm-js [data-reveal] {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 600ms var(--ease-soft),
+    transform 600ms var(--ease-soft);
+  transition-delay: calc(var(--i, 0) * 60ms);
+}
+
+.hm-js [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---- use-case cards — lit from within, unequal tracks ---- */
+
+.hm-cases {
+  display: grid;
+  gap: var(--space-lg);
+  grid-template-columns: 0.9fr 0.95fr 1.15fr;
+  margin-block-start: var(--space-xl);
+}
+
+.hm-case {
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-card);
+  overflow: clip;
+  padding: var(--space-lg);
+  position: relative;
+  transition: transform var(--dur-short) var(--ease-soft);
+}
+
+.hm-case::before {
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    var(--color-card-emit) 0%,
+    transparent 70%
+  );
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.hm-case::after {
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    var(--color-card-emit-hover) 0%,
+    transparent 70%
+  );
+  content: "";
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transition: opacity var(--dur-short) var(--ease-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hm-case:hover {
+    transform: translateY(-4px);
+  }
+
+  .hm-case:hover::after {
+    opacity: 1;
+  }
+}
+
+.hm-case h3 {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.hm-case p {
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  margin-block: var(--space-sm) 0;
+}
+
+.hm-case p code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* ---- code — typographic frame, no window chrome ---- */
+
+.hm-codeframe {
+  border-block: 1px solid var(--color-rule);
+  margin-block-start: var(--space-xl);
+  max-width: 46rem;
+  padding-block: var(--space-md) var(--space-lg);
+}
+
+.hm-codeframe figcaption {
+  margin-block-end: var(--space-md);
+}
+
+.hm-codeframe pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.75;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.tok-kw {
+  color: var(--color-muted);
+}
+
+.tok-str {
+  color: var(--color-accent);
+}
+
+/* ---- stat band — three cells, always ---- */
+
+.hm-stats {
+  border-block: 1px solid var(--color-rule);
+}
+
+.hm-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.hm-stat {
+  padding: var(--space-xl) var(--space-lg);
+}
+
+.hm-stat:first-child {
+  padding-inline-start: 0;
+}
+
+.hm-stat + .hm-stat {
+  border-inline-start: 1px solid var(--color-rule);
+}
+
+.hm-stat b {
+  color: var(--color-ink);
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-stat);
+  font-weight: 400;
+  line-height: 1;
+}
+
+.hm-stat .hm-label {
+  display: block;
+  margin-block-start: var(--space-sm);
+}
+
+/* ---- permissions strip ---- */
+
+.hm-safety {
+  margin-block-start: var(--space-xl);
+}
+
+.hm-perm {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.hm-perm > button {
+  background: none;
+  border: 1px solid var(--color-rule);
+  color: var(--color-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-micro);
+  padding: var(--space-sm) var(--space-md);
+  text-transform: uppercase;
+  transition: color var(--dur-micro) var(--ease-out);
+  white-space: nowrap;
+}
+
+.hm-perm > button + button {
+  margin-inline-start: -1px;
+}
+
+.hm-perm > button:hover {
+  color: var(--color-ink);
+}
+
+.hm-perm > .is-active {
+  border-color: var(--color-accent);
+  color: var(--color-ink);
+  position: relative;
+  z-index: var(--z-raised);
+}
+
+.hm-perm-panel {
+  animation: hm-panel-in 150ms var(--ease-out);
+  min-height: 6.5rem;
+  padding-block-start: var(--space-lg);
+}
+
+.hm-perm-panel p {
+  margin: 0;
+  max-width: 62ch;
+}
+
+.hm-perm-panel pre {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.75;
+  margin: var(--space-sm) 0 0;
+  overflow-x: auto;
+}
+
+@keyframes hm-panel-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---- coverage · logo wall (hairline lattice, no card boxes) ---- */
+
+.hm-wall {
+  background: var(--color-rule);
+  border: 1px solid var(--color-rule);
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  list-style: none;
+  margin: var(--space-xl) 0 0;
+  padding: 0;
+}
+
+.hm-wall li {
+  align-items: center;
+  background: var(--color-paper);
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.hm-wall img {
+  border-radius: 8px;
+  display: block;
+  flex-shrink: 0;
+  height: 40px;
+  width: 40px;
+}
+
+.hm-wall-info {
+  display: grid;
+  min-width: 0;
+}
+
+.hm-wall-name {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+}
+
+.hm-status {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hm-status.is-shipped {
+  color: var(--color-accent);
+}
+
+.hm-status.is-soon {
+  color: var(--color-muted);
+}
+
+/* ---- install one-liner (footer) ---- */
+
+.hm-install {
+  align-items: center;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) var(--space-2xs) var(--space-2xs) var(--space-md);
+}
+
+.hm-install code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.hm-copy {
+  background: none;
+  border: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-micro);
+  padding: var(--space-2xs) var(--space-xs);
+  text-transform: uppercase;
+  transition: color var(--dur-micro) var(--ease-out);
+}
+
+.hm-copy:hover {
+  color: var(--color-ink);
+}
+
+.hm-copy:active {
+  transform: translateY(1px);
+}
+
+.hm-copy:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.hm-copy[data-state="copied"] {
+  color: var(--color-accent);
+}
+
+/* ---- footer · Ft5 statement ---- */
+
+.hm-footer {
+  border-top: 1px solid var(--color-rule);
+  padding-block: var(--space-3xl) var(--space-xl);
+}
+
+.hm-footer-inner {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.hm-footer-line {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 5vw, 3.25rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0;
+  max-width: 28ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hm-footer-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+}
+
+.hm-footer-meta {
+  align-items: baseline;
+  border-top: 1px solid var(--color-rule);
+  color: var(--color-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-md) var(--space-lg);
+  justify-content: space-between;
+  padding-block-start: var(--space-md);
+}
+
+.hm-footer-meta .hm-wordmark {
+  font-size: var(--text-base);
+}
+
+.hm-footer-meta a {
+  color: var(--color-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.hm-footer-meta a:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+/* ---- responsive ---- */
+
+@media (max-width: 60rem) {
+  .hm-hero-inner {
+    padding-block: var(--space-2xl) var(--space-3xl);
+  }
+}
+
+@media (max-width: 48rem) {
+  .hm-cases {
+    grid-template-columns: 1fr;
+  }
+
+  .hm-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .hm-section {
+    padding-block: var(--space-2xl);
+  }
+}
+
+@media (max-width: 40rem) {
+  .hm-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hm-stat + .hm-stat {
+    border-inline-start: none;
+    border-top: 1px solid var(--color-rule);
+  }
+}
+
+@media (pointer: coarse) {
+  .hm-btn,
+  .hm-copy {
+    min-height: 44px;
+  }
+}
+
+/* ---- reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .home *,
+  .home *::before,
+  .home *::after {
+    animation-duration: 150ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 150ms !important;
+  }
+
+  .hm-reveal {
+    animation: hm-reveal-reduced 150ms linear forwards;
+  }
+
+  @keyframes hm-reveal-reduced {
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
