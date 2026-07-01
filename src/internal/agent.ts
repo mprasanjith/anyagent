@@ -73,7 +73,9 @@ export class AgentImpl implements Agent {
 }
 
 /**
- * Build an {@link Agent} from an adapter (`claudeCode()`) or a `detect()` result.
+ * Build a runnable {@link Agent}. Accepts either an adapter directly —
+ * `create(claudeCode())` when you know which CLI you want — or one of
+ * `detect()`'s results when you want whatever is installed.
  */
 export const create = (source: Adapter | DetectResult): Agent =>
   new AgentImpl("adapter" in source ? source.adapter : source);

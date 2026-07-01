@@ -1,6 +1,14 @@
 import { AnyAgentError } from "./errors.js";
 import type { AgentEvent, OutputSource, RunResult } from "./types.js";
 
+/**
+ * The three pieces an NDJSON adapter supplies to {@link ndjsonParser}:
+ * `init` creates the per-run accumulator state, `map` turns one raw JSON
+ * object from the CLI into normalized event(s), and `finalize` builds the
+ * terminal {@link RunResult} from that state once the stream ends. `Ctx` is
+ * whatever shape your adapter needs to carry between lines — accumulated
+ * text, tool-call ids, the final raw payload.
+ */
 export interface NdjsonSpec<Ctx> {
   init: () => Ctx;
   /**
@@ -16,6 +24,15 @@ export interface NdjsonSpec<Ctx> {
   finalize: (ctx: Ctx) => RunResult;
 }
 
+/**
+ * Build an `Adapter.parse` from an {@link NdjsonSpec}, so an NDJSON adapter
+ * only has to write its event mapping. The parser owns everything the NDJSON
+ * adapters share: decoding one JSON object per line (a malformed line throws
+ * `AnyAgentError` with `code: "Parse"` and the offending text), buffering
+ * events into the result, awaiting the process exit (a nonzero exit throws
+ * the descriptive `Invocation` error), and emitting the single terminal
+ * `done` event.
+ */
 export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>) =>
   async function* parse(
     source: OutputSource,

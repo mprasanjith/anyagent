@@ -1,29 +1,81 @@
 import type { ChildProcess } from "node:child_process";
 
+/**
+ * How much autonomy the agent gets over your working directory:
+ *
+ * - `"read-only"` — the agent can inspect files and answer, but not change
+ *   anything.
+ * - `"edit"` (the default) — the agent can create and modify files, while its
+ *   CLI's own guardrails still apply to riskier actions like shell commands.
+ * - `"full-auto"` — every permission prompt is auto-approved and the agent
+ *   runs unattended. Use with care.
+ *
+ * These three levels are the whole surface; the enum never widens. Each
+ * adapter maps your chosen level onto its CLI's native flags (Claude Code's
+ * `--permission-mode`, for example). If a CLI cannot honor the level you ask
+ * for, the run throws `AnyAgentError` with `code: "UnsupportedCapability"`
+ * rather than silently downgrading — check
+ * `agent.capabilities.permissionLevels` to see what an agent offers. CLIs
+ * with finer-grained native levels expose them only through
+ * {@link RunOptions.extraArgs} or {@link RawHandle}.
+ */
 export type PermissionLevel = "read-only" | "edit" | "full-auto";
 
+/**
+ * What one agent CLI can do. Read it from {@link Agent.capabilities} (or a
+ * {@link DetectResult}) to find out what you can ask for before you ask:
+ *
+ * ```ts
+ * const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
+ * const result = await agent.run(prompt, opts);
+ * ```
+ *
+ * Most fields guard the matching {@link RunOptions} field — requesting an
+ * option the table does not declare throws `AnyAgentError`
+ * (`code: "UnsupportedCapability"`) before anything spawns. The two
+ * exceptions, `streaming` and `structuredOutput`, are purely informational;
+ * see their docs.
+ */
 export interface CapabilityTable {
   /**
-   * Informational (feature detection), never validated against a request:
-   * `true` means `runStream` relays the harness's native event stream;
-   * `false` means the CLI emits plain text or a single final object, and
-   * `parse` synthesizes one `text-delta` followed by `done`.
+   * Whether `runStream` events are the harness's own live stream (`true`) or
+   * synthesized (`false`). When `false`, the underlying CLI prints plain text
+   * or a single final object, so you receive one `text-delta` carrying the
+   * whole answer, then `done`. Informational only — `runStream` works either
+   * way.
    */
   streaming: boolean;
+  /**
+   * The {@link PermissionLevel}s this CLI can honor. Requesting one that is
+   * missing throws `UnsupportedCapability` instead of silently mapping to
+   * something stronger or weaker.
+   */
   permissionLevels: PermissionLevel[];
   /**
-   * Informational (feature detection), never validated against a request:
-   * the harness can emit schema-constrained output, but the unified surface
-   * does not model it — reach it via `extraArgs` or `agent.raw`.
+   * Whether the underlying CLI can produce schema-constrained output. The
+   * unified surface does not model this yet, so the flag is informational
+   * only: to use it, pass the CLI's native flag via
+   * {@link RunOptions.extraArgs} or drive the process through `agent.raw`.
    */
   structuredOutput: boolean;
+  /** Whether {@link RunOptions.model} is honored. */
   modelSelection: boolean;
+  /** Whether {@link RunOptions.resume} can continue a prior session. */
   sessionResume: boolean;
+  /** Whether {@link RunOptions.mcp} servers can be attached to a run. */
   mcp: boolean;
+  /** Whether {@link RunOptions.systemPrompt} is honored. */
   systemPrompt: boolean;
+  /** Whether {@link RunOptions.cwd} is honored. */
   cwd: boolean;
 }
 
+/**
+ * Token and cost accounting for a run, normalized across harnesses. Every
+ * field is optional because each CLI reports a different subset — check for
+ * `undefined` rather than assuming a field is present. The harness's exact
+ * native accounting is always available on the event's or result's `raw`.
+ */
 export interface Usage {
   /**
    * Uncached input tokens, matching the underlying provider's accounting (e.g.
@@ -35,22 +87,54 @@ export interface Usage {
   costUsd?: number;
 }
 
+/**
+ * One MCP (Model Context Protocol) server to make available to the agent
+ * during a run. Set `command`, `args`, and optionally `env` for a local stdio
+ * server, or `url` for a remote one. The adapter translates this into
+ * whatever config format its CLI expects.
+ */
 export interface McpServer {
   command?: string;
   args?: string[];
   url?: string;
   env?: Record<string, string>;
 }
+
+/**
+ * The MCP servers for a run, keyed by the name the agent will see them under:
+ *
+ * ```ts
+ * await agent.run(prompt, {
+ *   mcp: { db: { args: ["my-mcp-server"], command: "npx" } },
+ * });
+ * ```
+ */
 export type McpConfig = Record<string, McpServer>;
 
+/**
+ * Everything you can tune about a single run; all fields are optional. Each
+ * option is validated against the adapter's {@link CapabilityTable} up front,
+ * so asking for something this agent's CLI cannot do (say, `resume` on a
+ * harness without sessions) throws `AnyAgentError`
+ * (`code: "UnsupportedCapability"`) before any process spawns — a wrong
+ * assumption fails fast instead of mid-run.
+ */
 export interface RunOptions {
+  /** Directory the agent works in. Defaults to the current process's cwd. */
   cwd?: string;
+  /** Model name in the CLI's own vocabulary (e.g. `"opus"` for claude-code). */
   model?: string;
+  /** How much autonomy the agent gets. Defaults to `"edit"`. */
   permission?: PermissionLevel;
+  /** Appended to (not replacing) the CLI's own system prompt. */
   systemPrompt?: string;
+  /** A session id from a previous run, to continue that conversation. */
   resume?: string;
+  /** MCP servers to attach for this run. */
   mcp?: McpConfig;
+  /** Aborting terminates the process; the run throws `code: "Aborted"`. */
   signal?: AbortSignal;
+  /** Extra environment variables, merged over the parent's environment. */
   env?: Record<string, string>;
   /**
    * Escape hatch: extra native CLI flags appended verbatim to the argv, so you
@@ -65,10 +149,19 @@ export interface RunOptions {
 }
 
 /**
- * A normalized run event. `text-delta` granularity is adapter-dependent — one
- * delta may be a token, a chunk, or a whole assistant message (claude-code
- * emits whole messages). The guaranteed invariant, enforced by the conformance
- * suite: concatenating every delta's `text` equals the final `RunResult.text`.
+ * One normalized event from a running agent, as yielded by
+ * {@link Agent.runStream}:
+ *
+ * - `text-delta` — a piece of the agent's answer text.
+ * - `tool-call` / `tool-result` — the agent invoked a tool and got its result.
+ * - `usage` — token/cost accounting became available.
+ * - `done` — the run finished; carries the final {@link RunResult}.
+ *
+ * How much text one `text-delta` carries depends on the harness: a token, a
+ * chunk, or a whole assistant message (claude-code emits whole messages).
+ * What you can rely on — enforced by the conformance suite — is that
+ * concatenating every delta's `text` reproduces `RunResult.text` exactly.
+ * `raw` on each event is the harness's untouched native payload for it.
  */
 export type AgentEvent =
   | { type: "text-delta"; text: string; raw?: unknown }
@@ -77,18 +170,35 @@ export type AgentEvent =
   | { type: "usage"; usage: Usage; raw?: unknown }
   | { type: "done"; result: RunResult };
 
+/**
+ * What a finished run gives you back. Holding a `RunResult` means the run
+ * succeeded — the CLI exited cleanly and reported no agent-level error; every
+ * failure path throws `AnyAgentError` instead, so you never inspect a result
+ * to learn whether it worked.
+ *
+ * `text` is the agent's final answer with all text output concatenated. `raw`
+ * is the harness's own final payload, untouched, for anything the normalized
+ * fields leave out (exact cache accounting, session ids, …).
+ */
 export interface RunResult {
   text: string;
   /**
-   * Every normalized event the run produced (the terminal `done` excluded),
-   * buffered in full — unbounded for very long agentic runs; stream via
-   * `runStream` when that matters.
+   * Every normalized event the run produced, in order (the terminal `done` is
+   * excluded). The whole list is held in memory, so for very long agentic
+   * runs prefer consuming {@link Agent.runStream} as events arrive.
    */
   events: AgentEvent[];
   usage?: Usage;
   raw: unknown;
 }
 
+/**
+ * A fully-resolved command line: what an adapter's `buildInvocation` returns
+ * and what the core (or you, via {@link RawHandle}) spawns. `env` is merged
+ * over the parent process's environment rather than replacing it. `input`,
+ * when present, is written to the child's stdin, which is then closed — this
+ * is how prompts reach CLIs that read them from a pipe.
+ */
 export interface Invocation {
   command: string;
   args: string[];
@@ -119,6 +229,13 @@ export interface OutputSource {
   close?: () => void;
 }
 
+/**
+ * The two I/O operations detection needs: `which` resolves a binary name to
+ * its path on `PATH` (or `null` when absent), and `exec` runs a binary and
+ * captures its output. `detect()` uses a real implementation by default;
+ * tests pass a fake via `detect({ probe })` to simulate any machine without
+ * spawning processes.
+ */
 export interface VersionProbe {
   which: (bin: string) => Promise<string | null>;
   exec: (
@@ -127,17 +244,36 @@ export interface VersionProbe {
   ) => Promise<{ stdout: string; stderr: string; code: number }>;
 }
 
+/**
+ * How detection reads a CLI's version once its binary is found: run
+ * `versionCommand` (default `["--version"]`) and take the first match of
+ * `versionRegex` (default: the first `x.y.z` triple) from whatever it prints.
+ * An adapter only sets these when its CLI deviates from those defaults.
+ */
 export interface DetectionSpec {
   versionCommand?: string[];
   versionRegex?: RegExp;
 }
 
+/**
+ * How an adapter identifies itself: `id` is the stable machine name
+ * (`"claude-code"`), `name` the human-readable one (`"Claude Code"`), and
+ * `bin` the executable names to look for on `PATH` in priority order — the
+ * first one found wins, even if a later one also exists.
+ */
 export interface AdapterMeta {
   id: string;
   name: string;
   bin: string[];
 }
 
+/**
+ * One agent CLI as found (or not) on this machine — hand it straight to
+ * `create()` to get a runnable {@link Agent}. `path` is where the binary
+ * resolved. `version` is whatever the CLI reported, kept for display only:
+ * anyagent never gates behavior on it, and a version probe that fails leaves
+ * it `null` without blocking use.
+ */
 export interface DetectResult {
   adapter: Adapter;
   id: string;
@@ -148,23 +284,75 @@ export interface DetectResult {
   capabilities: CapabilityTable;
 }
 
+/**
+ * The contract for supporting one agent CLI. An adapter is data plus pure
+ * functions: it describes how to invoke its CLI and how to read its output,
+ * while the core does all actual I/O (spawning, stream handling, validation,
+ * lifecycle). That split keeps adapters testable offline against recorded
+ * fixtures, with zero subprocesses.
+ *
+ * To add one, implement this interface in `src/<id>/index.ts` (use
+ * `ndjsonParser` when the CLI emits NDJSON), record real fixtures, and run
+ * `runConformance` over them. `src/claude-code/index.ts` is the reference
+ * implementation.
+ */
 export interface Adapter {
   meta: AdapterMeta;
   detection: DetectionSpec;
   capabilities: CapabilityTable;
+  /** Replace default detection entirely; most adapters omit this. */
   detect?: (probe: VersionProbe) => Promise<DetectResult>;
+  /**
+   * Map a prompt plus validated options to the exact process to spawn. Pure:
+   * build the {@link Invocation}, never launch it.
+   */
   buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
+  /**
+   * Map the process output to normalized events, ending with exactly one
+   * `done`. Under `strict`, throw `AnyAgentError` (`code: "Parse"`) on any
+   * unrecognized shape — the live drift check relies on strict mode to catch
+   * upstream format changes.
+   */
   parse: (
     source: OutputSource,
     opts: { strict: boolean }
   ) => AsyncGenerator<AgentEvent, RunResult>;
 }
 
+/**
+ * Direct access to the native CLI, for capabilities the unified surface does
+ * not model (bidirectional sessions, harness-specific output modes, …).
+ *
+ * `buildInvocation` returns the exact command anyagent would run — useful for
+ * logging, or for running it yourself somewhere else. `spawn` launches it and
+ * hands you the Node `ChildProcess` to drive: you read stdout, you handle
+ * exit, and you get no normalized events and no lifecycle management. The
+ * prompt is already wired to stdin.
+ */
 export interface RawHandle {
   buildInvocation: (prompt: string, opts?: RunOptions) => Invocation;
   spawn: (prompt: string, opts?: RunOptions) => ChildProcess;
 }
 
+/**
+ * A ready-to-run handle on one installed coding agent; get one from
+ * `create()`.
+ *
+ * `run` is the one-shot call — it resolves with the final {@link RunResult}
+ * when the agent finishes. `runStream` yields {@link AgentEvent}s as the
+ * agent works and ends with a `done` event carrying that same result. If you
+ * `break` out of the stream early, the underlying process is killed for you,
+ * so abandoning a stream never leaks a running agent.
+ *
+ * ```ts
+ * const agent = create(claudeCode());
+ * for await (const ev of agent.runStream("explain this repo")) {
+ *   if (ev.type === "text-delta") {
+ *     process.stdout.write(ev.text);
+ *   }
+ * }
+ * ```
+ */
 export interface Agent {
   readonly adapter: Adapter;
   readonly capabilities: CapabilityTable;

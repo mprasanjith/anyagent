@@ -14,7 +14,7 @@ export const defaultDetect = async (
     name: adapter.meta.name,
   };
 
-  // First bin that resolves wins; probe all in parallel, keep declared order.
+  // The first *declared* bin wins, even if a later one resolves faster.
   const resolved = await Promise.all(
     adapter.meta.bin.map((b) => probe.which(b))
   );

@@ -1,9 +1,42 @@
+/**
+ * Which way a run failed. Every error anyagent throws carries exactly one of
+ * these on its `code`:
+ *
+ * - `"UnsupportedCapability"` — you asked for something this agent's CLI
+ *   cannot do: an option its capability table does not declare, or a
+ *   permission level it does not offer. Thrown before anything spawns.
+ * - `"Invocation"` — the CLI itself went wrong: it failed to spawn, exited
+ *   nonzero, or reported an agent-level error. `argv` and `stderr` on the
+ *   error tell you what ran and what it said.
+ * - `"Parse"` — the CLI ran, but its output did not match the shape the
+ *   adapter expects, or the stream ended without a terminal `done` event.
+ * - `"Aborted"` — your `AbortSignal` fired and the run was terminated.
+ */
 export type AnyAgentErrorCode =
   | "UnsupportedCapability"
   | "Invocation"
   | "Parse"
   | "Aborted";
 
+/**
+ * The single error type everything in anyagent throws — there is no subclass
+ * tree to match against. Branch on `code`:
+ *
+ * ```ts
+ * try {
+ *   await agent.run(prompt, { signal });
+ * } catch (err) {
+ *   if (err instanceof AnyAgentError && err.code === "Aborted") {
+ *     return; // the user cancelled; not a failure
+ *   }
+ *   throw err;
+ * }
+ * ```
+ *
+ * `raw` preserves the underlying cause (a native error, or the harness's own
+ * error payload); `argv` and `stderr` are attached when a process was
+ * involved.
+ */
 export class AnyAgentError extends Error {
   readonly code: AnyAgentErrorCode;
   readonly raw?: unknown;

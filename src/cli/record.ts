@@ -5,7 +5,6 @@ import path from "node:path";
 import { BUILTINS } from "../internal/registry.js";
 import { spawnAndStream } from "../internal/runtime/spawn.js";
 
-// Usage: anyagent-record <adapterId> <scenarioName> <prompt...>
 const main = async (): Promise<void> => {
   const [id, scenario, ...promptParts] = process.argv.slice(2);
   if (!(id && scenario) || promptParts.length === 0) {

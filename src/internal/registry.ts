@@ -6,15 +6,28 @@ import type { Adapter, DetectResult, VersionProbe } from "./types.js";
 /** Built-in adapters. A new adapter appends its factory result here. */
 export const BUILTINS: Adapter[] = [claudeCode()];
 
+/**
+ * Overrides for {@link detect}. `adapters` swaps the built-in list for your
+ * own — scan a subset, or include a custom adapter. `probe` swaps the real
+ * PATH-and-exec probe for a fake, letting tests simulate any machine without
+ * spawning processes.
+ */
 export interface DetectOptions {
   adapters?: Adapter[];
   probe?: VersionProbe;
 }
 
 /**
- * Every supported coding agent installed on this machine, as an unordered list.
- * There is no "best" agent and no ranking; the caller picks one. Empty when none
- * are installed.
+ * Find every supported coding agent installed on this machine. Each result
+ * carries the resolved binary path, the reported version, and the adapter's
+ * capability table; pass the one you pick to `create()`. The list is
+ * unordered — there is no "best" agent and no ranking — and empty when
+ * nothing is installed.
+ *
+ * ```ts
+ * const installed = await detect();
+ * const agent = create(installed[0] ?? claudeCode());
+ * ```
  */
 export const detect = async (
   opts: DetectOptions = {}

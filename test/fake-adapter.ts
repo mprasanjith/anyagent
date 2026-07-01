@@ -82,7 +82,8 @@ export const fakeText: Adapter = {
   },
   detection: {},
   meta: { bin: ["fake-text"], id: "fake-text", name: "Fake Text" },
-  // Non-streaming: synthesize one delta + done from full stdout.
+  // Models the plain-text harnesses (Copilot/Kiro-style) from the audit:
+  // no native event stream, so parse synthesizes the whole run from stdout.
   async *parse(source) {
     const buffered = await source.text();
     const text = buffered.trim();

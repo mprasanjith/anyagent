@@ -179,6 +179,22 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   };
 };
 
+/**
+ * The adapter for Anthropic's Claude Code CLI. Drives `claude -p` in
+ * streaming-JSON mode with the prompt piped over stdin, and declares the full
+ * capability table: all three permission levels, model selection, session
+ * resume, MCP servers, system prompts, and `cwd`.
+ *
+ * ```ts
+ * import { create } from "anyagent";
+ * import { claudeCode } from "anyagent/claude-code";
+ *
+ * const result = await create(claudeCode()).run("summarize this repo");
+ * ```
+ *
+ * Also the reference implementation — mirror its shape when writing a new
+ * adapter.
+ */
 export const claudeCode = (): Adapter => ({
   buildInvocation,
   capabilities: CAPS,

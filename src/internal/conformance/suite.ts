@@ -65,6 +65,15 @@ const throwsUnsupported = async (
   }
 };
 
+/**
+ * The executable half of the adapter contract. Feed it your adapter and its
+ * recorded stdout fixtures, and it asserts the invariants every adapter must
+ * uphold: exactly one terminal `done` event per stream, `result.text` equal
+ * to the concatenated text-deltas, a valid invocation for every declared
+ * permission level, and an `UnsupportedCapability` throw for every capability
+ * left undeclared. Add a `runConformance` test before shipping a new adapter;
+ * it is what keeps the adapters uniform.
+ */
 export const runConformance = async (
   adapter: Adapter,
   opts: ConformanceOptions
