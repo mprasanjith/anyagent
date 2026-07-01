@@ -14,6 +14,11 @@ export interface CapabilityTable {
 }
 
 export interface Usage {
+  /**
+   * Uncached input tokens, matching the underlying provider's accounting (e.g.
+   * Anthropic reports cache reads/writes as separate line items, not folded in
+   * here). For exact cost, read the native payload on the event/result `raw`.
+   */
   inputTokens?: number;
   outputTokens?: number;
   costUsd?: number;
@@ -40,6 +45,10 @@ export interface RunOptions {
    * Escape hatch: extra native CLI flags appended verbatim to the argv, so you
    * can reach a harness capability the unified surface does not model while
    * keeping normalized events. Adapter-specific — the caller owns correctness.
+   *
+   * These bypass capability validation and the permission mapping: a flag here
+   * can override what `permission` set. Prefer the typed options; reach for this
+   * only when nothing else exposes the flag you need.
    */
   extraArgs?: string[];
 }
