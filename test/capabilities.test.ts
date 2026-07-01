@@ -63,3 +63,35 @@ test("throws when requesting a permission level not offered", () => {
     expect.objectContaining({ code: "UnsupportedCapability" })
   );
 });
+
+const bare = adapterWith(
+  {
+    cwd: false,
+    mcp: false,
+    modelSelection: false,
+    permissionLevels: ["edit"],
+    sessionResume: false,
+    streaming: true,
+    structuredOutput: false,
+    systemPrompt: false,
+  },
+  "bare"
+);
+
+const rejects = [
+  ["a system prompt", { systemPrompt: "s" }],
+  ["session resume", { resume: "s" }],
+  ["MCP config", { mcp: {} }],
+  ["a working directory", { cwd: "/tmp" }],
+] as const;
+
+for (const [name, opts] of rejects) {
+  test(`throws UnsupportedCapability for ${name}`, () => {
+    expect(() => validateOptions(bare, opts)).toThrow(
+      expect.objectContaining({
+        code: "UnsupportedCapability",
+        message: expect.stringContaining(name),
+      })
+    );
+  });
+}

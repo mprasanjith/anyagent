@@ -111,6 +111,14 @@ export const runConformance = async (
       () =>
         new AgentImpl(adapter, fixedRunner("")).run("x", { systemPrompt: "s" }),
     ],
+    [
+      caps.mcp,
+      () => new AgentImpl(adapter, fixedRunner("")).run("x", { mcp: {} }),
+    ],
+    [
+      caps.cwd,
+      () => new AgentImpl(adapter, fixedRunner("")).run("x", { cwd: "/tmp" }),
+    ],
   ];
   await Promise.all(
     probes.map(async ([supported, call]) => {
