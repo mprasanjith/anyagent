@@ -3,8 +3,19 @@ import type { ChildProcess } from "node:child_process";
 export type PermissionLevel = "read-only" | "edit" | "full-auto";
 
 export interface CapabilityTable {
+  /**
+   * Informational (feature detection), never validated against a request:
+   * `true` means `runStream` relays the harness's native event stream;
+   * `false` means the CLI emits plain text or a single final object, and
+   * `parse` synthesizes one `text-delta` followed by `done`.
+   */
   streaming: boolean;
   permissionLevels: PermissionLevel[];
+  /**
+   * Informational (feature detection), never validated against a request:
+   * the harness can emit schema-constrained output, but the unified surface
+   * does not model it — reach it via `extraArgs` or `agent.raw`.
+   */
   structuredOutput: boolean;
   modelSelection: boolean;
   sessionResume: boolean;
@@ -53,6 +64,12 @@ export interface RunOptions {
   extraArgs?: string[];
 }
 
+/**
+ * A normalized run event. `text-delta` granularity is adapter-dependent — one
+ * delta may be a token, a chunk, or a whole assistant message (claude-code
+ * emits whole messages). The guaranteed invariant, enforced by the conformance
+ * suite: concatenating every delta's `text` equals the final `RunResult.text`.
+ */
 export type AgentEvent =
   | { type: "text-delta"; text: string; raw?: unknown }
   | { type: "tool-call"; name: string; input: unknown; raw?: unknown }
@@ -62,6 +79,11 @@ export type AgentEvent =
 
 export interface RunResult {
   text: string;
+  /**
+   * Every normalized event the run produced (the terminal `done` excluded),
+   * buffered in full — unbounded for very long agentic runs; stream via
+   * `runStream` when that matters.
+   */
   events: AgentEvent[];
   usage?: Usage;
   raw: unknown;
@@ -83,6 +105,10 @@ export interface Invocation {
 export interface OutputSource {
   lines: () => AsyncIterable<string>;
   text: () => Promise<string>;
+  /**
+   * Resolves with the stderr captured so far — complete only once `exitCode`
+   * has settled.
+   */
   stderr: () => Promise<string>;
   exitCode: Promise<number>;
   /**
