@@ -10,7 +10,7 @@ test("live: claude answers a trivial prompt", async () => {
     console.warn("skipping live test (set ANYAGENT_LIVE=1)");
     return;
   }
-  const agent = await create({ adapter: claudeCode() });
+  const agent = create(claudeCode());
   const res = await agent.run("Reply with exactly the word: pong", {
     permission: "read-only",
   });

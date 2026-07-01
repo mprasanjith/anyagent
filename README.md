@@ -7,7 +7,7 @@ import { create, detect } from "anyagent";
 import { claudeCode } from "anyagent/claude-code";
 
 const installed = await detect(); // every supported agent present, unordered
-const agent = await create({ adapter: installed[0]?.adapter ?? claudeCode() });
+const agent = create(installed[0] ?? claudeCode());
 
 const result = await agent.run("summarize the README", { permission: "edit" });
 console.log(result.text);

@@ -8,6 +8,7 @@ import type {
   Adapter,
   Agent,
   AgentEvent,
+  DetectResult,
   Invocation,
   OutputSource,
   RawHandle,
@@ -76,10 +77,8 @@ export class AgentImpl implements Agent {
   }
 }
 
-export interface CreateOptions {
-  adapter: Adapter;
-}
-
-/** Build an {@link Agent} for an adapter, e.g. one from `detect()` or `claudeCode()`. */
-export const create = (opts: CreateOptions): Promise<Agent> =>
-  Promise.resolve(new AgentImpl(opts.adapter));
+/**
+ * Build an {@link Agent} from an adapter (`claudeCode()`) or a `detect()` result.
+ */
+export const create = (source: Adapter | DetectResult): Agent =>
+  new AgentImpl("adapter" in source ? source.adapter : source);

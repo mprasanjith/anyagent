@@ -1,6 +1,6 @@
 export { AnyAgentError, type AnyAgentErrorCode } from "./internal/errors.js";
-export { create, type CreateOptions } from "./internal/agent.js";
-export { BUILTINS, detect, type DetectOptions } from "./internal/registry.js";
+export { create } from "./internal/agent.js";
+export { detect, type DetectOptions } from "./internal/registry.js";
 export type {
   Adapter,
   AdapterMeta,
