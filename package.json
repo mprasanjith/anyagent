@@ -22,6 +22,10 @@
     "./claude-code": {
       "types": "./dist/claude-code/index.d.ts",
       "import": "./dist/claude-code/index.js"
+    },
+    "./codex": {
+      "types": "./dist/codex/index.d.ts",
+      "import": "./dist/codex/index.js"
     }
   },
   "scripts": {

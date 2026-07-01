@@ -1,10 +1,11 @@
 import { claudeCode } from "../claude-code/index.js";
+import { codex } from "../codex/index.js";
 import { runDetect } from "./detect.js";
 import { realProbe } from "./runtime/spawn.js";
 import type { Adapter, DetectResult, VersionProbe } from "./types.js";
 
 /** Built-in adapters. A new adapter appends its factory result here. */
-export const BUILTINS: Adapter[] = [claudeCode()];
+export const BUILTINS: Adapter[] = [claudeCode(), codex()];
 
 /**
  * Overrides for {@link detect}. `adapters` swaps the built-in list for your

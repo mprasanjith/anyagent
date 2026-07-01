@@ -19,6 +19,8 @@ for await (const ev of agent.runStream("refactor foo.ts")) {
 }
 ```
 
+Built-in adapters: `anyagent/claude-code`, `anyagent/codex`.
+
 Capabilities differ per agent — check `agent.capabilities`; unsupported requests
 throw `AnyAgentError` (`code: "UnsupportedCapability"`, message names the agent).
 

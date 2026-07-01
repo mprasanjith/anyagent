@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"019f1f78-752d-7c80-abda-bbe480a7ea38"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’m checking the repository README directly and will report the first line exactly as printed."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'head -n 1 README.md'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'head -n 1 README.md'","aggregated_output":"# anyagent\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"The first line of `README.md` says:\n\n`# anyagent`"}}
+{"type":"turn.completed","usage":{"input_tokens":19484,"cached_input_tokens":14592,"output_tokens":163,"reasoning_output_tokens":52}}
