@@ -1,0 +1,71 @@
+---
+title: Core concepts
+description: How the unified surface works, what it guarantees, and where the native payloads live.
+---
+
+anyagent is a thin core plus pure adapters. Once you understand that split and the small set of guarantees around it, the rest of the API follows naturally.
+
+## One surface for every harness
+
+The API models what coding-agent CLIs have in common: a prompt goes in, a permission level bounds what the agent can touch, events stream out, and a final answer comes back. That shared subset is the whole unified surface, and it never grows to accommodate a single harness.
+
+This has a useful consequence. When a CLI offers something the surface doesn't model, such as structured output schemas or bidirectional sessions, you reach it through the [escape hatches](/docs/escape-hatches) instead of a new option that other adapters would have to fake. Your code that sticks to the surface keeps working on every adapter.
+
+The trade is that anyagent refuses early. Every option is checked against the adapter's capability table before a process spawns, and an unsupported request throws `AnyAgentError` with `code: "UnsupportedCapability"`. You find out at the call site, in a form you can catch, rather than halfway through a run.
+
+## The core runs things, adapters describe them
+
+The core owns every side effect: spawning the CLI, buffering its output line by line, killing abandoned processes, validating options, and probing `PATH` during detection. An adapter never touches a child process. It's data plus two pure functions:
+
+- `buildInvocation(prompt, opts)` returns the exact command, args, env, and stdin input to run
+- `parse(source, { strict })` turns the process output into normalized events
+
+Because adapters are pure, they're tested offline against recorded fixtures of real CLI output, with no subprocesses involved. It's also why [adding an adapter](/docs/adding-an-adapter) is a single file.
+
+## Check capabilities before you ask
+
+Every adapter declares a `CapabilityTable`. You can read it from `agent.capabilities` or from any `detect()` result, which is handy when the same code needs to work across agents with different feature sets:
+
+```ts
+const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
+const result = await agent.run(prompt, opts);
+```
+
+Most fields guard the matching `RunOptions` field: `modelSelection`, `sessionResume`, `mcp`, `systemPrompt`, `cwd`, and `permissionLevels`. Two are informational only:
+
+- `streaming` tells you whether `runStream` events come from the harness's own live stream. When it's `false`, the CLI prints a single final payload, so you get one `text-delta` with the whole answer and then `done`. `runStream` works either way.
+- `structuredOutput` tells you whether the CLI can produce schema-constrained output. The surface doesn't model it yet, so reach for `extraArgs` or `agent.raw` if you need it.
+
+## Events and results
+
+`runStream` yields five event types:
+
+| Event         | Carries                                            |
+| ------------- | -------------------------------------------------- |
+| `text-delta`  | A piece of the agent's answer text                 |
+| `tool-call`   | The tool name and input the agent invoked          |
+| `tool-result` | The tool's output                                  |
+| `usage`       | Token and cost accounting, when the CLI reports it |
+| `done`        | The final `RunResult`                              |
+
+How much text one `text-delta` carries depends on the harness. It might be a token, a chunk, or a whole message. What you can rely on is that concatenating every delta's `text` reproduces `RunResult.text` exactly, and the conformance suite holds every adapter to that.
+
+Results follow one rule: holding a `RunResult` means the run succeeded. Every failure throws [`AnyAgentError`](/docs/errors) instead, so you never inspect a result to find out whether it worked.
+
+## `raw` keeps everything
+
+Normalization drops harness-specific detail on purpose, and all of it stays reachable. Each event carries the harness's untouched payload on its `raw` field, and `RunResult.raw` holds the final payload with everything the normalized fields leave out: exact cache accounting, session ids, and so on.
+
+Session resume is the everyday example. Codex reports its thread id only in the raw payload:
+
+```ts
+const first = await agent.run("Start reviewing this repo.");
+const { threadId } = first.raw as { threadId?: string };
+
+const followUp = await agent.run("Continue with src/.", { resume: threadId });
+```
+
+## Next steps
+
+- [Permissions](/docs/permissions) explains the three-level autonomy model
+- [Adapters](/docs/adapters/claude-code) documents what each supported CLI maps to

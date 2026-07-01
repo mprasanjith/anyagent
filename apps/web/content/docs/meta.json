@@ -1,0 +1,11 @@
+{
+  "pages": [
+    "index",
+    "concepts",
+    "permissions",
+    "adapters",
+    "escape-hatches",
+    "errors",
+    "adding-an-adapter"
+  ]
+}

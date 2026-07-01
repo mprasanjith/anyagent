@@ -1,0 +1,53 @@
+---
+title: Escape hatches
+description: Reach native CLI capabilities the unified surface doesn't model.
+---
+
+The unified surface covers what most harnesses have in common, which means every CLI can do things it doesn't model. When you need one of those, anyagent gives you two ways down, in increasing order of control.
+
+## `extraArgs`: add native flags, keep normalized events
+
+`extraArgs` appends native CLI flags to the run while everything else stays the same. You still get the normalized event stream and lifecycle management. Reach for it when the surface almost fits and one flag closes the gap:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const result = await agent.run("List every TODO in this repo.", {
+  extraArgs: ["--disallowed-tools", "Bash"],
+});
+```
+
+Two things to keep in mind. The flags are adapter-specific, so you own their correctness for the CLI you're targeting. And they skip capability validation and the permission mapping, so a flag here can override what `permission` set. Prefer the typed options whenever one exists.
+
+## `agent.raw`: take the process yourself
+
+When you need to own the process, `agent.raw` has two members.
+
+`buildInvocation` returns the exact command anyagent would run, without running it. That's useful for logging, dry runs, or executing the command somewhere else:
+
+```ts
+const inv = agent.raw.buildInvocation("Fix the build.", { permission: "edit" });
+console.log(inv.command, inv.args.join(" "));
+// claude -p --output-format stream-json --verbose --permission-mode acceptEdits
+```
+
+`spawn` launches the invocation and hands you the Node `ChildProcess` to drive. The prompt is already wired to stdin. From there you read stdout and handle exit yourself, with no normalized events and no lifecycle management:
+
+```ts
+const child = agent.raw.spawn("Explain the auth flow.", {
+  permission: "read-only",
+});
+child.stdout?.pipe(process.stdout);
+```
+
+## Which one to reach for
+
+| You need                                             | Reach for             |
+| ---------------------------------------------------- | --------------------- |
+| One native flag the surface doesn't model            | `extraArgs`           |
+| The exact argv, for logging or remote execution      | `raw.buildInvocation` |
+| To own the process: custom parsing, bidirectional IO | `raw.spawn`           |
+
+Before rebuilding event parsing on top of `raw.spawn` for a supported CLI, check whether the normalized stream plus `extraArgs` already gets you there. Every event's `raw` field carries the untouched native payload.

@@ -1,0 +1,99 @@
+---
+title: Quickstart
+description: Install anyagent, detect an installed coding agent, and run your first prompt.
+---
+
+anyagent gives you one API for driving whatever coding agent your user has installed. This page takes you from install to a working script.
+
+<Callout type="warn">
+  anyagent is pre-release and isn't published to npm yet. Everything below
+  matches the current `main` branch.
+</Callout>
+
+## Before you start
+
+You'll need:
+
+- Node.js 18 or later, or Bun (the examples use Bun)
+- At least one supported CLI installed and signed in: [Claude Code](https://code.claude.com/docs/en/headless) (`claude`) or [Codex](https://developers.openai.com/codex/noninteractive) (`codex`)
+
+## Install
+
+```bash
+bun add anyagent
+```
+
+The library ships as Node-compatible ESM with zero runtime dependencies, so it behaves the same under Node and Bun.
+
+## Detect and run
+
+Create a file called `run-agent.ts`:
+
+```ts
+import { create, detect } from "anyagent";
+
+const installed = await detect();
+if (installed.length === 0) {
+  throw new Error("No supported coding agent found on PATH.");
+}
+
+const agent = create(installed[0]);
+const result = await agent.run("Summarize this repository in one sentence.", {
+  permission: "read-only",
+});
+
+console.log(result.text);
+```
+
+`detect()` scans `PATH` for every CLI anyagent supports and returns the ones it finds. `create()` wraps the first result in a runnable agent, and `run()` sends it a prompt with read-only access to the working directory.
+
+Run it from any project:
+
+```bash
+bun run-agent.ts
+```
+
+```
+A TypeScript library that detects installed coding-agent CLIs and drives
+them through one unified interface.
+```
+
+Your output will differ, since the answer comes from whichever agent is installed on the machine.
+
+## Choose a specific agent
+
+`detect()` is the right default when you don't care which harness answers. When you do care, import the adapter directly:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+```
+
+Adapters are subpath exports (`anyagent/claude-code`, `anyagent/codex`), so your bundle only includes the ones you import.
+
+## Stream the run
+
+For anything longer than a one-liner, you'll want to show progress. `runStream` yields events as the agent works:
+
+```ts
+for await (const ev of agent.runStream(
+  "Refactor utils.ts to arrow functions."
+)) {
+  if (ev.type === "text-delta") {
+    process.stdout.write(ev.text);
+  }
+  if (ev.type === "tool-call") {
+    console.log(`\n[tool] ${ev.name}`);
+  }
+}
+```
+
+`text-delta` events carry the answer as it arrives, and `tool-call` events tell you what the agent is doing along the way. If you break out of the loop early, anyagent kills the underlying process for you.
+
+## Next steps
+
+- [Core concepts](/docs/concepts) explains the unified surface and what it guarantees
+- [Permissions](/docs/permissions) covers the three autonomy levels
+- [Errors](/docs/errors) shows how to handle the one error type

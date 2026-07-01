@@ -1,0 +1,44 @@
+---
+title: Errors
+description: The single AnyAgentError type, its code union, and when each code fires.
+---
+
+Everything anyagent throws is one class, `AnyAgentError`. There's no subclass tree to match against. You branch on the `code` property, which carries one of four values.
+
+## The four codes
+
+| Code                    | When it fires                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `UnsupportedCapability` | You asked for something this CLI can't do. Thrown before anything spawns.                                     |
+| `Invocation`            | The CLI went wrong: it failed to spawn, exited nonzero, or reported an agent-level error.                     |
+| `Parse`                 | The CLI ran, but its output didn't match the shape the adapter expects, or the stream ended without a `done`. |
+| `Aborted`               | Your `AbortSignal` fired and the run was terminated.                                                          |
+
+## Branch on `code`
+
+```ts
+import { AnyAgentError } from "anyagent";
+
+try {
+  await agent.run(prompt, { signal });
+} catch (err) {
+  if (err instanceof AnyAgentError && err.code === "Aborted") {
+    return; // the user cancelled; not a failure
+  }
+  throw err;
+}
+```
+
+## What the error carries
+
+Beyond `message` and `code`, three fields help you diagnose what went wrong:
+
+- **`raw`**: the underlying cause, either a native error or the harness's own error payload
+- **`argv`**: the exact command line that ran, attached when a process was involved
+- **`stderr`**: what the CLI printed to stderr, attached when a process was involved
+
+For an `Invocation` error, `argv` and `stderr` together usually tell the story: a missing binary, an expired login, or a flag the installed version doesn't know.
+
+## Results never hide failures
+
+Holding a `RunResult` means the run succeeded. anyagent never resolves with an error tucked inside the result, so wrap the call in `try/catch` and treat the resolved value as the answer.

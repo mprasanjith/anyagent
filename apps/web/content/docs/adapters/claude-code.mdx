@@ -1,0 +1,66 @@
+---
+title: Claude Code
+description: How the claude-code adapter detects, invokes, and parses Anthropic's Claude Code CLI.
+---
+
+The `claude-code` adapter drives Anthropic's Claude Code CLI in headless mode. It declares the full capability table, and it doubles as the reference implementation to mirror when you're [writing a new adapter](/docs/adding-an-adapter).
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const result = await agent.run("Summarize this repo.");
+```
+
+## Detection
+
+Detection looks for a `claude` binary on `PATH` and reads its version from `claude --version`. The version lands on `DetectResult.version` for display. anyagent never changes behavior based on it.
+
+## Capabilities
+
+| Capability         | Value                                            |
+| ------------------ | ------------------------------------------------ |
+| `streaming`        | `true` (live NDJSON stream)                      |
+| `permissionLevels` | `read-only`, `edit`, `full-auto`                 |
+| `modelSelection`   | `true`                                           |
+| `sessionResume`    | `true`                                           |
+| `mcp`              | `true`                                           |
+| `systemPrompt`     | `true`                                           |
+| `cwd`              | `true`                                           |
+| `structuredOutput` | `true` (informational, reach it via `extraArgs`) |
+
+## How options map to flags
+
+Every run executes `claude -p --output-format stream-json --verbose`, with the prompt piped over stdin so a large prompt never hits the OS argv size limit. Your options append flags:
+
+| Option                    | Flag                                                       |
+| ------------------------- | ---------------------------------------------------------- |
+| `permission: "read-only"` | `--permission-mode default`                                |
+| `permission: "edit"`      | `--permission-mode acceptEdits`                            |
+| `permission: "full-auto"` | `--permission-mode bypassPermissions`                      |
+| `model`                   | `--model <name>` (Claude Code's vocabulary, e.g. `"opus"`) |
+| `systemPrompt`            | `--append-system-prompt <text>` (appends, never replaces)  |
+| `resume`                  | `--resume <sessionId>`                                     |
+| `mcp`                     | `--mcp-config <json>`                                      |
+
+## What to expect from the stream
+
+Claude Code emits whole assistant messages, so one `text-delta` usually carries a full message rather than a token. Thinking blocks produce no normalized event, though the reasoning stays reachable on the surrounding raw payloads.
+
+Usage lands on `RunResult.usage` with `inputTokens`, `outputTokens`, and `costUsd`. Note that `inputTokens` counts uncached input only. Cache reads and writes stay as separate line items on `result.raw`.
+
+If the CLI reports an agent-level error, the run throws `AnyAgentError` with `code: "Invocation"` and the CLI's own error detail.
+
+## Resume a session
+
+Claude Code reports a session id in its final payload. Read it from `result.raw` and pass it back as `resume`:
+
+```ts
+const first = await agent.run("Review the auth module.");
+const { session_id } = first.raw as { session_id?: string };
+
+const followUp = await agent.run("Now fix what you found.", {
+  resume: session_id,
+});
+```

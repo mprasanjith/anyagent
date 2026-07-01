@@ -1,0 +1,44 @@
+---
+title: Permissions
+description: The three autonomy levels and how each one maps to the CLI's native flags.
+---
+
+Every run carries one of three permission levels that bound how much the agent can do to the working directory. The enum is fixed at `read-only | edit | full-auto`, and each adapter maps your choice onto its CLI's native flags.
+
+## The three levels
+
+- **`read-only`**: the agent can inspect files and answer, but not change anything
+- **`edit`** (the default): the agent can create and modify files, while the CLI's own guardrails still apply to riskier actions like shell commands
+- **`full-auto`**: every permission prompt is auto-approved and the agent runs unattended
+
+```ts
+await agent.run("Fix the failing test in test/parser.test.ts", {
+  permission: "edit",
+});
+```
+
+<Callout type="warn">
+  `full-auto` disables the CLI's own confirmation prompts. Reserve it for
+  sandboxed or disposable environments.
+</Callout>
+
+## What each level maps to
+
+| Level       | Claude Code (`--permission-mode`) | Codex (`--sandbox`)  |
+| ----------- | --------------------------------- | -------------------- |
+| `read-only` | `default`                         | `read-only`          |
+| `edit`      | `acceptEdits`                     | `workspace-write`    |
+| `full-auto` | `bypassPermissions`               | `danger-full-access` |
+
+anyagent always passes the level explicitly rather than leaving it to the CLI's defaults. Codex's `exec` mode, for example, defaults to a read-only sandbox, which would quietly weaken anyagent's `edit` default if the flag were omitted.
+
+## When a level isn't supported
+
+`agent.capabilities.permissionLevels` lists what the CLI can honor. Ask for a level that's missing and anyagent throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns. It never maps your request to something stronger or weaker. Both built-in adapters currently honor all three levels.
+
+Some CLIs have finer-grained permission systems underneath, like allow-listing individual tools. Those stay reachable through [`extraArgs` or `agent.raw`](/docs/escape-hatches), and the three-level enum stays the whole unified surface.
+
+## Next steps
+
+- [Adapters](/docs/adapters/claude-code) has the full flag mapping per CLI
+- [Errors](/docs/errors) shows how to handle `UnsupportedCapability`
