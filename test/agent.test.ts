@@ -1,0 +1,59 @@
+import { expect, test } from "bun:test";
+
+import { AgentImpl } from "../src/internal/agent.js";
+import {
+  fakeBinaryPerms,
+  fakeStreaming,
+  fakeText,
+  runnerFromFixture,
+} from "./fake-adapter.js";
+
+test("run() returns final result with concatenated text (streaming adapter)", async () => {
+  const agent = new AgentImpl(
+    fakeStreaming,
+    runnerFromFixture(
+      '{"t":"text","v":"Hel"}\n{"t":"text","v":"lo"}\n{"t":"end"}'
+    )
+  );
+  const res = await agent.run("hi");
+  expect(res.text).toBe("Hello");
+  // done is yielded, not stored in the events list
+  expect(res.events.some((e) => e.type === "done")).toBe(false);
+});
+
+test("runStream() yields events then a terminal done", async () => {
+  const agent = new AgentImpl(
+    fakeStreaming,
+    runnerFromFixture(
+      '{"t":"text","v":"Hi"}\n{"t":"tool","name":"Read","input":{}}\n{"t":"end"}'
+    )
+  );
+  const types: string[] = [];
+  for await (const ev of agent.runStream("go")) {
+    types.push(ev.type);
+  }
+  expect(types).toEqual(["text-delta", "tool-call", "done"]);
+});
+
+test("non-streaming adapter synthesizes a single delta", async () => {
+  const agent = new AgentImpl(fakeText, runnerFromFixture("the answer"));
+  const res = await agent.run("q");
+  expect(res.text).toBe("the answer");
+});
+
+test("requesting read-only on a binary-perms adapter throws UnsupportedCapability", async () => {
+  const agent = new AgentImpl(
+    fakeBinaryPerms,
+    runnerFromFixture('{"t":"end"}')
+  );
+  await expect(
+    agent.run("q", { permission: "read-only" })
+  ).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
+});
+
+test("raw.buildInvocation exposes native argv", () => {
+  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(""));
+  expect(agent.raw.buildInvocation("hi").args).toEqual(["-p", "hi"]);
+});
