@@ -167,9 +167,6 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   if (opts.resume) {
     args.push("--resume", opts.resume);
   }
-  if (opts.cwd) {
-    args.push("--add-dir", opts.cwd);
-  }
   if (opts.mcp) {
     args.push("--mcp-config", JSON.stringify({ mcpServers: opts.mcp }));
   }
