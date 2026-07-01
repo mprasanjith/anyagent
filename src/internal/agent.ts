@@ -66,10 +66,10 @@ export class AgentImpl implements Agent {
         const child = spawn(inv.command, inv.args, {
           cwd: inv.cwd,
           env: inv.env ? { ...process.env, ...inv.env } : process.env,
+          signal: opts.signal,
         });
-        if (inv.input !== undefined) {
-          child.stdin?.end(inv.input);
-        }
+        // Close stdin so an agent that reads it isn't left waiting on EOF.
+        child.stdin?.end(inv.input);
         return child;
       },
     };

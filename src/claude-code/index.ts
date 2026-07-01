@@ -119,6 +119,15 @@ const parse = ndjsonParser<Ctx>({
       case "result": {
         ctx.usage = usageFrom(obj);
         ctx.raw = obj;
+        if (obj.is_error) {
+          const detail =
+            typeof obj.result === "string" && obj.result
+              ? obj.result
+              : (obj.subtype ?? "unknown error");
+          throw new AnyAgentError("Invocation", `claude-code: ${detail}`, {
+            raw: obj,
+          });
+        }
         return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : null;
       }
       default: {

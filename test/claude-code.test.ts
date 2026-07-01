@@ -94,6 +94,43 @@ const drainStrict = async (name: string): Promise<void> => {
   }
 };
 
+test("agent-level error (is_error) throws instead of returning success", async () => {
+  const body = [
+    JSON.stringify({
+      message: {
+        content: [{ text: "partial", type: "text" }],
+        role: "assistant",
+      },
+      type: "assistant",
+    }),
+    JSON.stringify({
+      is_error: true,
+      result: "Reached max turns.",
+      subtype: "error_max_turns",
+      type: "result",
+    }),
+  ].join("\n");
+  const source: OutputSource = {
+    exitCode: Promise.resolve(0),
+    async *lines() {
+      for (const l of body.split("\n")) {
+        yield l;
+      }
+    },
+    stderr: () => Promise.resolve(""),
+    text: () => Promise.resolve(body),
+  };
+  const consume = async () => {
+    for await (const _ of claudeCode().parse(source, { strict: false })) {
+      // drain until the result event throws
+    }
+  };
+  await expect(consume()).rejects.toMatchObject({
+    code: "Invocation",
+    message: expect.stringContaining("Reached max turns"),
+  });
+});
+
 test("strict mode tolerates real system/thinking/rate_limit shapes", async () => {
   await expect(
     Promise.all(["simple.jsonl", "tools.jsonl"].map(drainStrict))

@@ -1,7 +1,5 @@
 import type { ChildProcess } from "node:child_process";
 
-import type { AnyAgentError } from "./errors.js";
-
 export type PermissionLevel = "read-only" | "edit" | "full-auto";
 
 export interface CapabilityTable {
@@ -18,7 +16,6 @@ export interface CapabilityTable {
 export interface Usage {
   inputTokens?: number;
   outputTokens?: number;
-  totalTokens?: number;
   costUsd?: number;
 }
 
@@ -52,7 +49,6 @@ export type AgentEvent =
   | { type: "tool-call"; name: string; input: unknown; raw?: unknown }
   | { type: "tool-result"; name: string; output: unknown; raw?: unknown }
   | { type: "usage"; usage: Usage; raw?: unknown }
-  | { type: "error"; error: AnyAgentError; raw?: unknown }
   | { type: "done"; result: RunResult };
 
 export interface RunResult {
