@@ -17,7 +17,7 @@ test("text() buffers whole stdout", async () => {
   expect(await src.text()).toBe("hello");
 });
 
-test("spawn failure surfaces as Invocation error", async () => {
+test("spawn failure surfaces a descriptive Invocation error with argv", async () => {
   const src = spawnAndStream({
     args: [],
     command: "definitely-not-a-real-binary-xyz",
@@ -28,7 +28,23 @@ test("spawn failure surfaces as Invocation error", async () => {
         // drain
       }
     })()
-  ).rejects.toMatchObject({ code: "Invocation" });
+  ).rejects.toMatchObject({
+    argv: ["definitely-not-a-real-binary-xyz"],
+    code: "Invocation",
+    message: expect.stringContaining("failed to spawn"),
+  });
+});
+
+test("nonzero exit reports code and stderr snippet", async () => {
+  const src = spawnAndStream({
+    args: ["-c", "echo boom 1>&2; exit 3"],
+    command: "sh",
+  });
+  await expect(src.exitCode).rejects.toMatchObject({
+    code: "Invocation",
+    message: expect.stringContaining("boom"),
+    stderr: expect.stringContaining("boom"),
+  });
 });
 
 test("realProbe.which resolves an existing binary and null for a missing one", async () => {

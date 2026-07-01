@@ -39,6 +39,12 @@ export interface RunOptions {
   mcp?: McpConfig;
   signal?: AbortSignal;
   env?: Record<string, string>;
+  /**
+   * Escape hatch: extra native CLI flags appended verbatim to the argv, so you
+   * can reach a harness capability the unified surface does not model while
+   * keeping normalized events. Adapter-specific — the caller owns correctness.
+   */
+  extraArgs?: string[];
 }
 
 export type AgentEvent =

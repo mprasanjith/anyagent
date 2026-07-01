@@ -18,11 +18,6 @@ import type {
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
-const withPermission = (opts: RunOptions): RunOptions => ({
-  ...opts,
-  permission: resolvePermission(opts),
-});
-
 export class AgentImpl implements Agent {
   readonly adapter: Adapter;
   private readonly run_: Runner;
@@ -36,16 +31,20 @@ export class AgentImpl implements Agent {
     return this.adapter.capabilities;
   }
 
+  private build(prompt: string, opts: RunOptions): Invocation {
+    const resolved = { ...opts, permission: resolvePermission(opts) };
+    const inv = this.adapter.buildInvocation(prompt, resolved);
+    return resolved.extraArgs?.length
+      ? { ...inv, args: [...inv.args, ...resolved.extraArgs] }
+      : inv;
+  }
+
   async *runStream(
     prompt: string,
     opts: RunOptions = {}
   ): AsyncGenerator<AgentEvent, RunResult> {
-    validateOptions(this.adapter.capabilities, opts);
-    const invocation = this.adapter.buildInvocation(
-      prompt,
-      withPermission(opts)
-    );
-    const source = this.run_(invocation, opts.signal);
+    validateOptions(this.adapter, opts);
+    const source = this.run_(this.build(prompt, opts), opts.signal);
     return yield* this.adapter.parse(source, { strict: false });
   }
 
@@ -61,9 +60,9 @@ export class AgentImpl implements Agent {
   get raw(): RawHandle {
     return {
       buildInvocation: (prompt: string, opts: RunOptions = {}) =>
-        this.adapter.buildInvocation(prompt, withPermission(opts)),
+        this.build(prompt, opts),
       spawn: (prompt: string, opts: RunOptions = {}): ChildProcess => {
-        const inv = this.adapter.buildInvocation(prompt, withPermission(opts));
+        const inv = this.build(prompt, opts);
         const child = spawn(inv.command, inv.args, {
           cwd: inv.cwd,
           env: inv.env ? { ...process.env, ...inv.env } : process.env,

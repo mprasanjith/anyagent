@@ -57,3 +57,9 @@ test("raw.buildInvocation exposes native argv", () => {
   const agent = new AgentImpl(fakeStreaming, runnerFromFixture(""));
   expect(agent.raw.buildInvocation("hi").args).toEqual(["-p", "hi"]);
 });
+
+test("extraArgs escape hatch appends native flags to the argv", () => {
+  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(""));
+  const inv = agent.raw.buildInvocation("hi", { extraArgs: ["--native", "x"] });
+  expect(inv.args).toEqual(["-p", "hi", "--native", "x"]);
+});

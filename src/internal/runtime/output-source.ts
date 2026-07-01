@@ -3,6 +3,8 @@ import type { ChildProcess } from "node:child_process";
 import { AnyAgentError } from "../errors.js";
 import type { Invocation, OutputSource } from "../types.js";
 
+const STDERR_SNIPPET_LEN = 200;
+
 export const outputSourceFromChild = (
   child: ChildProcess,
   invocation: Invocation
@@ -18,15 +20,18 @@ export const outputSourceFromChild = (
   });
 
   const argv = [invocation.command, ...invocation.args];
+  const invocationError = (
+    message: string,
+    extra?: { raw?: unknown; stderr?: string }
+  ) => new AnyAgentError("Invocation", message, { argv, ...extra });
+
   // oxlint-disable-next-line promise/avoid-new -- child_process lifecycle events need callback interop.
   const exitCode = new Promise<number>((resolve, reject) => {
     child.on("error", (err) =>
       reject(
-        new AnyAgentError(
-          "Invocation",
+        invocationError(
           `failed to spawn ${invocation.command}: ${err.message}`,
           {
-            argv,
             raw: err,
           }
         )
@@ -34,20 +39,16 @@ export const outputSourceFromChild = (
     );
     child.on("close", (code) => {
       if (spawnError) {
-        // The 'error' handler already rejected.
         return;
       }
       if (code === 0) {
         resolve(0);
       } else {
+        const tail = stderrBuf.trim().slice(0, STDERR_SNIPPET_LEN);
         reject(
-          new AnyAgentError(
-            "Invocation",
-            `${invocation.command} exited ${code}`,
-            {
-              argv,
-              stderr: stderrBuf,
-            }
+          invocationError(
+            `${invocation.command} exited ${code}${tail ? `: ${tail}` : ""}`,
+            { stderr: stderrBuf }
           )
         );
       }
@@ -59,17 +60,12 @@ export const outputSourceFromChild = (
     // intentionally ignored
   });
 
-  const failIfSpawnError = (): void => {
-    if (spawnError) {
-      throw new AnyAgentError(
-        "Invocation",
-        `failed to spawn ${invocation.command}`,
-        {
-          argv,
-          raw: spawnError,
-        }
-      );
-    }
+  // A stdout read error is almost always a downstream symptom of the process
+  // failing to spawn or exiting nonzero. Prefer that descriptive error (it
+  // carries argv/stderr) over the raw "Premature close" stream error.
+  const readError = async (error: unknown): Promise<never> => {
+    await exitCode;
+    throw AnyAgentError.wrap(error, "Invocation");
   };
 
   const lines = async function* lines(): AsyncIterable<string> {
@@ -89,9 +85,8 @@ export const outputSourceFromChild = (
         }
       }
     } catch (error) {
-      throw AnyAgentError.wrap(error, "Invocation");
+      await readError(error);
     }
-    failIfSpawnError();
     if (buf.length) {
       yield buf;
     }
@@ -108,9 +103,8 @@ export const outputSourceFromChild = (
         out += chunk.toString("utf-8");
       }
     } catch (error) {
-      throw AnyAgentError.wrap(error, "Invocation");
+      await readError(error);
     }
-    failIfSpawnError();
     return out;
   };
 

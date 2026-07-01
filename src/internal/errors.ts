@@ -1,5 +1,4 @@
 export type AnyAgentErrorCode =
-  | "AgentNotFound"
   | "UnsupportedCapability"
   | "Invocation"
   | "Parse";

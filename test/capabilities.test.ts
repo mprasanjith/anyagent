@@ -4,7 +4,7 @@ import {
   resolvePermission,
   validateOptions,
 } from "../src/internal/capabilities.js";
-import type { CapabilityTable } from "../src/internal/types.js";
+import type { Adapter, CapabilityTable } from "../src/internal/types.js";
 
 const full: CapabilityTable = {
   cwd: true,
@@ -16,12 +16,23 @@ const full: CapabilityTable = {
   structuredOutput: true,
   systemPrompt: true,
 };
-const limited: CapabilityTable = {
-  ...full,
-  modelSelection: false,
-  permissionLevels: ["edit", "full-auto"],
-  sessionResume: false,
-};
+
+const adapterWith = (caps: CapabilityTable, id = "demo"): Adapter =>
+  ({
+    capabilities: caps,
+    meta: { bin: [id], id, name: id },
+  }) as Adapter;
+
+const fullAgent = adapterWith(full);
+const limited = adapterWith(
+  {
+    ...full,
+    modelSelection: false,
+    permissionLevels: ["edit", "full-auto"],
+    sessionResume: false,
+  },
+  "opencode"
+);
 
 test("default permission is edit", () => {
   expect(resolvePermission({})).toBe("edit");
@@ -30,13 +41,20 @@ test("default permission is edit", () => {
 
 test("passes when all requested caps supported", () => {
   expect(() =>
-    validateOptions(full, { model: "x", permission: "read-only", resume: "s" })
+    validateOptions(fullAgent, {
+      model: "x",
+      permission: "read-only",
+      resume: "s",
+    })
   ).not.toThrow();
 });
 
-test("throws UnsupportedCapability for unsupported model", () => {
+test("throws UnsupportedCapability naming the adapter", () => {
   expect(() => validateOptions(limited, { model: "x" })).toThrow(
-    expect.objectContaining({ code: "UnsupportedCapability" })
+    expect.objectContaining({
+      code: "UnsupportedCapability",
+      message: expect.stringContaining("opencode"),
+    })
   );
 });
 
