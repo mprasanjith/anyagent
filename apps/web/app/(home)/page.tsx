@@ -163,32 +163,20 @@ const Page = () => (
       </div>
     </section>
 
-    <div className="hm-stats" data-reveal>
-      <div className="hm-shell hm-stats-grid">
-        <div className="hm-stat">
-          <b>14</b>
-          <span className="hm-label">HARNESSES AUDITED</span>
-        </div>
-        <div className="hm-stat">
-          <b>0</b>
-          <span className="hm-label">RUNTIME DEPENDENCIES</span>
-        </div>
-        <div className="hm-stat">
-          <b>3</b>
-          <span className="hm-label">PERMISSION LEVELS</span>
-        </div>
-      </div>
-    </div>
-
     <section className="hm-section">
       <div className="hm-shell" data-reveal>
         <h2>Safe by default</h2>
         <p className="hm-body">
-          Your tool is driving someone else’s install, so the permission ceiling
-          is explicit: three presets, mapped to each CLI’s native flags.
-          AnyAgent itself adds zero runtime dependencies to your tool.
+          Your tool is driving someone else’s install, so every run sets an
+          explicit permission ceiling. AnyAgent itself adds zero runtime
+          dependencies to your tool.
         </p>
         <SafetyPresets />
+        <p className="hm-foot-note">
+          <Link className="hm-link" href="/docs/permissions">
+            How permissions work →
+          </Link>
+        </p>
       </div>
     </section>
 
@@ -200,21 +188,37 @@ const Page = () => (
           For anything else, an adapter is one file.
         </p>
         <ul className="hm-wall">
-          {HARNESSES.map((h) => (
-            <li key={h.name}>
-              <img
-                alt=""
-                height={40}
-                loading="lazy"
-                src={`/agents/${h.logo}.svg`}
-                width={40}
-              />
-              <span className="hm-wall-info">
-                <span className="hm-wall-name">{h.name}</span>
-                <span className={`hm-status is-${h.status}`}>{h.status}</span>
-              </span>
-            </li>
-          ))}
+          {HARNESSES.map((h) => {
+            const cell = (
+              <>
+                <img
+                  alt=""
+                  height={40}
+                  loading="lazy"
+                  src={`/agents/${h.logo}.svg`}
+                  width={40}
+                />
+                <span className="hm-wall-info">
+                  <span className="hm-wall-name">{h.name}</span>
+                  <span className={`hm-status is-${h.status}`}>{h.status}</span>
+                </span>
+              </>
+            );
+            return (
+              <li key={h.name}>
+                {h.status === "shipped" ? (
+                  <Link
+                    className="hm-wall-cell"
+                    href={`/docs/adapters/${h.logo}`}
+                  >
+                    {cell}
+                  </Link>
+                ) : (
+                  <span className="hm-wall-cell">{cell}</span>
+                )}
+              </li>
+            );
+          })}
         </ul>
         <p className="hm-foot-note">
           <Link className="hm-link" href="/docs/adding-an-adapter">
