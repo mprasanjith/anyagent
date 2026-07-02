@@ -1,31 +1,29 @@
 ---
 title: Escape hatches
-description: Reach native CLI capabilities the unified surface doesn't model.
+description: Reach native CLI capabilities the unified surface does not model, from adding one flag to owning the whole process.
 ---
 
-The unified surface covers what most harnesses have in common, which means every CLI can do things it doesn't model. When you need one of those, anyagent gives you two ways down, in increasing order of control.
+The unified surface covers what most harnesses share, which means every CLI can do things it does not model: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI's native capabilities, in increasing order of control. This page covers `extraArgs` for adding native flags, `agent.raw.buildInvocation` for the exact command, and `agent.raw.spawn` for owning the process, plus when to reach for each. Before rebuilding anything, check whether an event's `raw` field already carries what you need.
 
-## `extraArgs`: add native flags, keep normalized events
+## extraArgs: add native flags, keep normalized events
 
-`extraArgs` appends native CLI flags to the run while everything else stays the same. You still get the normalized event stream and lifecycle management. Reach for it when the surface almost fits and one flag closes the gap:
+`extraArgs` appends native CLI flags to the argv while everything else stays the same. You keep the normalized event stream and the lifecycle management, so this is the smallest step down. Reach for it when the surface almost fits and one flag closes the gap.
 
 ```ts
 import { create } from "anyagent";
 import { claudeCode } from "anyagent/claude-code";
 
 const agent = create(claudeCode());
-const result = await agent.run("List every TODO in this repo.", {
+const result = await agent.run("Generate API docs from the source.", {
   extraArgs: ["--disallowed-tools", "Bash"],
 });
 ```
 
-Two things to keep in mind. The flags are adapter-specific, so you own their correctness for the CLI you're targeting. And they skip capability validation and the permission mapping, so a flag here can override what `permission` set. Prefer the typed options whenever one exists.
+Here a docs-generation feature blocks the agent from running shell commands with a flag native to the CLI it targets, one the surface does not model. Two caveats apply. The flags are adapter-specific, so you own their correctness for the CLI you target; its [adapter page](/docs/adapters) and the CLI's own docs are the reference. And they bypass capability validation and the permission mapping, so a flag here can override what `permission` set. Prefer the typed options whenever one exists.
 
-## `agent.raw`: take the process yourself
+## agent.raw.buildInvocation: get the exact argv
 
-When you need to own the process, `agent.raw` has two members.
-
-`buildInvocation` returns the exact command anyagent would run, without running it. That's useful for logging, dry runs, or executing the command somewhere else:
+When you want the command without running it, `agent.raw.buildInvocation` returns the exact `Invocation` AnyAgent would spawn: `command`, `args`, `env`, `cwd`, and the `input` piped to stdin. Use it for logging, dry runs, or running the command somewhere else.
 
 ```ts
 const inv = agent.raw.buildInvocation("Fix the build.", { permission: "edit" });
@@ -33,7 +31,11 @@ console.log(inv.command, inv.args.join(" "));
 // claude -p --output-format stream-json --verbose --permission-mode acceptEdits
 ```
 
-`spawn` launches the invocation and hands you the Node `ChildProcess` to drive. The prompt is already wired to stdin. From there you read stdout and handle exit yourself, with no normalized events and no lifecycle management:
+The output is the full argv for the run, so you can print it, diff it, or hand it to another executor. Nothing spawns; you get back only the resolved command.
+
+## agent.raw.spawn: own the ChildProcess
+
+When you need to drive the process yourself, `agent.raw.spawn` launches the invocation and returns the Node `ChildProcess` with the prompt already wired to stdin. This is the most control and the most work: you read stdout, you handle exit, and you get no normalized events and no lifecycle management.
 
 ```ts
 const child = agent.raw.spawn("Explain the auth flow.", {
@@ -42,12 +44,22 @@ const child = agent.raw.spawn("Explain the auth flow.", {
 child.stdout?.pipe(process.stdout);
 ```
 
+Reach for this when you need bidirectional interaction or custom parsing the normalized stream cannot give you. Because AnyAgent no longer manages the process, terminating it and reading its exit are yours to handle.
+
 ## Which one to reach for
 
-| You need                                             | Reach for             |
-| ---------------------------------------------------- | --------------------- |
-| One native flag the surface doesn't model            | `extraArgs`           |
-| The exact argv, for logging or remote execution      | `raw.buildInvocation` |
-| To own the process: custom parsing, bidirectional IO | `raw.spawn`           |
+Pick the smallest hatch that solves your problem:
 
-Before rebuilding event parsing on top of `raw.spawn` for a supported CLI, check whether the normalized stream plus `extraArgs` already gets you there. Every event's `raw` field carries the untouched native payload.
+| You need                                             | Reach for                   |
+| ---------------------------------------------------- | --------------------------- |
+| One native flag the surface does not model           | `extraArgs`                 |
+| The exact argv, for logging or running it elsewhere  | `agent.raw.buildInvocation` |
+| To own the process: custom parsing, bidirectional IO | `agent.raw.spawn`           |
+
+Before you rebuild event parsing on top of `spawn` for a supported CLI, check the normalized stream first. Every event's `raw` field carries the untouched native payload, so what you are after may already be there without leaving the surface.
+
+## Next steps
+
+- [How AnyAgent works](/docs/how-it-works): why the surface leaves native capabilities out
+- [Permissions](/docs/permissions): how `permission` maps before `extraArgs` can override it
+- [API reference](/docs/api): the `RunOptions`, `Invocation`, and `RawHandle` types

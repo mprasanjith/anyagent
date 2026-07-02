@@ -1,0 +1,91 @@
+---
+title: Stream progress
+description: Render an agent's events as it works, and cancel a run cleanly.
+---
+
+This page shows how to stream an agent's activity with `runStream` and render it as a progress display. A long run with no output looks hung to the end user, so showing what the agent is doing is a product requirement. You will render text and tool activity as it arrives, and cancel a run with an `AbortSignal`.
+
+## Loop over events
+
+`agent.runStream(prompt, opts)` is an async generator that yields an `AgentEvent` each time the agent produces one. Loop over it to build a live display in a CLI:
+
+```ts
+for await (const event of agent.runStream(prompt, { permission: "edit" })) {
+  if (event.type === "text-delta") {
+    process.stdout.write(event.text);
+  } else if (event.type === "tool-call") {
+    console.log(`\n[running ${event.name}]`);
+  } else if (event.type === "done") {
+    console.log("\nDone.");
+  }
+}
+```
+
+That prints the agent's answer as it streams and logs a line each time the agent invokes a tool, so the end user sees continuous progress during an `acme init` run.
+
+## The five event types
+
+Every event has a `type`, plus fields for its kind, plus `raw`: the harness's untouched native payload for that event.
+
+| Type          | Fields           | Meaning                                    |
+| ------------- | ---------------- | ------------------------------------------ |
+| `text-delta`  | `text`           | A piece of the agent's answer text         |
+| `tool-call`   | `name`, `input`  | The agent invoked a tool                   |
+| `tool-result` | `name`, `output` | A tool returned its output                 |
+| `usage`       | `usage`          | Token and cost accounting became available |
+| `done`        | `result`         | The run finished; carries the `RunResult`  |
+
+How much text one `text-delta` carries depends on the harness: a token, a chunk, or a whole assistant message. Each [adapter page](/docs/adapters) states its granularity. What holds across every adapter, enforced by the conformance suite, is that concatenating every delta's `text` reproduces `RunResult.text` exactly.
+
+## Get the final result
+
+The `done` event carries the final `RunResult` on `event.result`. It is the same object `agent.run` resolves with: `text`, `events`, `usage`, and `raw`. If you drive the generator by hand instead of looping, `runStream`'s return value is that same result:
+
+```ts
+const stream = agent.runStream(prompt);
+let next = await stream.next();
+while (!next.done) {
+  // handle next.value, an AgentEvent
+  next = await stream.next();
+}
+const result = next.value; // the RunResult
+```
+
+## Agents without a live stream
+
+When an agent's `capabilities.streaming` is `false`, the CLI prints a single final payload rather than a live stream. AnyAgent then delivers the whole answer as one `text-delta` followed by `done`. Your loop needs no special case: it renders one large delta instead of many small ones and works unchanged.
+
+## Cancel a run
+
+Pass an `AbortSignal` to cancel a run. Aborting terminates the underlying process, and the run throws `AnyAgentError` with `code: "Aborted"`. Wire it to Ctrl+C so the end user can stop a run and exit cleanly:
+
+```ts
+import { AnyAgentError } from "anyagent";
+
+const controller = new AbortController();
+process.on("SIGINT", () => controller.abort());
+
+try {
+  for await (const event of agent.runStream(prompt, {
+    signal: controller.signal,
+  })) {
+    if (event.type === "text-delta") {
+      process.stdout.write(event.text);
+    }
+  }
+} catch (err) {
+  if (err instanceof AnyAgentError && err.code === "Aborted") {
+    console.log("\nCancelled.");
+    process.exit(0);
+  }
+  throw err;
+}
+```
+
+Breaking out of the loop early also stops the run. When you `break`, AnyAgent kills the underlying process for you, so an abandoned stream never leaks a running agent. Early exit is safe without an explicit abort.
+
+## Next steps
+
+- [Run a prompt](/docs/running-prompts): the one-shot `run` call and every run option
+- [Handle errors](/docs/errors): branch on `AnyAgentError.code`, including `Aborted`
+- [Production flow](/docs/production): assemble streaming, choice, and error handling end to end

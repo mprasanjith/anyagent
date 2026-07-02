@@ -1,27 +1,29 @@
 ---
 title: Adding an adapter
-description: Implement, record, and verify support for a new coding-agent CLI.
+description: Implement, record, and verify support for a new coding-agent CLI in the AnyAgent repo.
 ---
 
-An adapter is one file of data and pure functions, with no IO of its own. This page walks through implementing the contract, recording real CLI output as fixtures, and running the conformance suite every adapter must pass. One rule governs all of it: no adapter ships against a guessed schema. Every claim about a CLI's flags and output format gets verified against the real thing.
+This guide is for contributors adding CLI support to the AnyAgent repo itself, not for callers building on top of the library. An adapter is one file of data and pure functions with no I/O of its own. The page walks through the contract, recording real CLI output as fixtures, and the conformance and live tests every adapter must pass. One rule governs all of it: no adapter ships against a guessed schema. Every claim about a CLI's flags and output format is verified against a real audit plus recorded real output.
 
 ## Before you start
 
-You'll need:
+You need three things in place:
 
-- A clone of the anyagent repo, with `bun install` run at the root
+- A clone of the AnyAgent repo with `bun install` run at the root
 - The target CLI installed and signed in, so you can record real output
 - The CLI's headless documentation: its non-interactive invocation, streaming format, and permission flags
 
+Per-CLI facts collected during audits live in `docs/specs/harness-audit.md`.
+
 ## The contract
 
-Implement the `Adapter` interface in `packages/anyagent/src/<id>/index.ts` and export it as a factory function:
+Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/<id>/index.ts` and export it as a factory function. The interface has five members:
 
 ```ts
 export interface Adapter {
   meta: AdapterMeta; // id, display name, binary names on PATH
-  detection: DetectionSpec; // version command + regex; omit for defaults
-  capabilities: CapabilityTable; // what RunOptions this CLI honors
+  detection: DetectionSpec; // version command and regex; omit for defaults
+  capabilities: CapabilityTable; // which RunOptions this CLI honors
   buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
   parse: (
     source: OutputSource,
@@ -30,19 +32,27 @@ export interface Adapter {
 }
 ```
 
-`buildInvocation` is pure. It maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything. The core does the spawning, which is what keeps adapters testable offline. Pipe the prompt through `Invocation.input` rather than a positional arg, so large prompts never hit the OS argv size limit.
+`meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
 
-`parse` maps process output to normalized events and must end with exactly one `done`. Under `strict: true`, throw `AnyAgentError` with `code: "Parse"` on any shape you don't recognize. The live drift check relies on strict mode to catch upstream format changes.
+## Keep buildInvocation pure
 
-## Use `ndjsonParser` for NDJSON CLIs
+`buildInvocation` maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything. The core does the spawning, which is what keeps adapters testable offline against fixtures with zero subprocesses.
 
-Most agent CLIs stream newline-delimited JSON, and `ndjsonParser` handles everything those adapters share: decoding, event buffering, exit-code handling, and the terminal `done`. You supply three pieces:
+Pipe the prompt through `Invocation.input` rather than a positional argument. `input` is written to the child's stdin, so a large prompt never hits the OS argv size limit. A positional prompt would.
+
+## Parse rules
+
+`parse` maps process output to normalized events and must end with exactly one `done` event. Under `strict: true`, throw [`AnyAgentError`](/docs/errors) with `code: "Parse"` on any shape you do not recognize. The live drift check depends on strict mode to catch upstream format changes, so an unhandled new event type must throw there rather than pass silently.
+
+## Use ndjsonParser for NDJSON CLIs
+
+Most agent CLIs stream newline-delimited JSON. `ndjsonParser` owns everything those adapters share: decoding one JSON object per line, buffering events into the result, awaiting the process exit and throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
 
 ```ts
 const parse = ndjsonParser<Ctx>({
   init: () => ({ text: [] }), // per-run accumulator state
   map: (obj, ctx, strict) => {
-    // one raw JSON object in, normalized event(s) or null out
+    // one raw JSON object in; normalized event(s) or null out
   },
   finalize: (ctx) => ({
     events: [],
@@ -53,11 +63,11 @@ const parse = ndjsonParser<Ctx>({
 });
 ```
 
-Read `packages/anyagent/src/claude-code/index.ts` alongside this page. It's the reference implementation, and new adapters should mirror its shape.
+`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `null` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. Read `packages/anyagent/src/claude-code/index.ts` alongside this page; it is the reference implementation, and new adapters should mirror its shape.
 
 ## Record real fixtures
 
-Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/<id>/`. The `anyagent-record` CLI captures them: it builds the adapter's own read-only invocation, runs it, and writes the raw output lines to the right path.
+Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/<id>/`. The recorder builds the adapter's own read-only invocation, runs it, and writes the raw output lines to the right path.
 
 First append your adapter to `BUILTINS` in `packages/anyagent/src/internal/registry.ts`, since the recorder resolves adapters by id from that list. Then record from `packages/anyagent/`:
 
@@ -65,15 +75,15 @@ First append your adapter to `BUILTINS` in `packages/anyagent/src/internal/regis
 bun src/cli/record.ts <adapterId> simple "Reply with exactly the word: pong"
 ```
 
-```
+```text
 wrote test/fixtures/<adapterId>/simple.jsonl
 ```
 
-Record at least a `simple` scenario. Add `tools` and `edit` scenarios when the CLI's tool-call and file-change output has its own shapes.
+Record at least a `simple` scenario. Add `tools` and `edit` scenarios when the CLI's tool-call and file-change output has its own shapes that `simple` does not exercise.
 
 ## Run the conformance suite
 
-`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one `done`, ordered events, delta text that concatenates to `RunResult.text`, and permission validation that matches the declared capability table.
+`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one terminal `done`, events in order, delta text that concatenates to `RunResult.text`, and permission validation that matches the declared capability table.
 
 ```ts
 import { runConformance } from "../src/internal/conformance/suite.js";
@@ -87,7 +97,7 @@ test("myAgent passes conformance", async () => {
 
 ## Add a live test
 
-A `test/<id>.live.test.ts` drives the real CLI, opt-in behind `ANYAGENT_LIVE=1`. Its second half is the drift canary. Production parsing is lenient, but the live tier runs fresh CLI output through strict mode, so an upstream format change throws instead of silently producing empty text. Assert shape, never content, since agent output is non-deterministic.
+A `test/<id>.live.test.ts` drives the real CLI, opt-in behind `ANYAGENT_LIVE=1`. Its second half is the drift canary: production parsing is lenient, but the live tier runs fresh CLI output through strict mode, so an upstream format change throws instead of silently producing empty text. Assert shape, never content, since agent output is non-deterministic.
 
 ```bash
 ANYAGENT_LIVE=1 bun test test/my-agent.live.test.ts
@@ -95,11 +105,13 @@ ANYAGENT_LIVE=1 bun test test/my-agent.live.test.ts
 
 ## The checklist
 
-1. `src/<id>/index.ts` exporting the factory, with TSDoc on it
-2. Adapter appended to `BUILTINS`
-3. Recorded fixtures in `test/fixtures/<id>/`
-4. A conformance test over those fixtures
-5. A `*.live.test.ts` with the strict-mode drift check
-6. `bun run check && bun run types && bun test` green at the repo root
+Before you open the change, confirm all six:
 
-Declare `false` for anything you haven't verified against real output. Honest capabilities matter more than broad ones, and [escape hatches](/docs/escape-hatches) carry the rest.
+1. `src/<id>/index.ts` exports the factory, with TSDoc on it
+2. The adapter is appended to `BUILTINS`
+3. Recorded fixtures live in `test/fixtures/<id>/`
+4. A conformance test covers those fixtures
+5. A `*.live.test.ts` includes the strict-mode drift check
+6. `bun run check && bun run types && bun test` is green at the repo root
+
+Declare `false` for anything you have not verified against real output. Honest capabilities matter more than broad ones, and the [escape hatches](/docs/escape-hatches) carry the rest.

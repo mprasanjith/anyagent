@@ -3,64 +3,72 @@ title: Codex
 description: How the codex adapter detects, invokes, and parses OpenAI's Codex CLI.
 ---
 
-The `codex` adapter drives OpenAI's Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto anyagent's normalized stream.
+The `codex` adapter drives OpenAI's Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto AnyAgent's normalized stream. This page covers detection, the capability table and its two unsupported options, how each run option maps to a CLI flag, why the sandbox flag is always explicit, what the stream produces, the usage quirk, errors, and how to resume a session.
+
+Import the factory from the `anyagent/codex` subpath and hand it to `create`:
 
 ```ts
 import { create } from "anyagent";
 import { codex } from "anyagent/codex";
 
 const agent = create(codex());
-const result = await agent.run("Summarize this repo.");
+const result = await agent.run("summarize this repo");
 ```
 
 ## Detection
 
-Detection looks for a `codex` binary on `PATH` and reads its version from `codex --version`. The version is display-only, and behavior never depends on it.
+Detection looks for a `codex` binary on `PATH` and reads the version from `codex --version`. The version is display-only, and behavior never depends on it.
 
 ## Capabilities
 
-| Capability         | Value                                            |
-| ------------------ | ------------------------------------------------ |
-| `streaming`        | `true` (live NDJSON stream)                      |
-| `permissionLevels` | `read-only`, `edit`, `full-auto`                 |
-| `modelSelection`   | `true`                                           |
-| `sessionResume`    | `true`                                           |
-| `mcp`              | `false`                                          |
-| `systemPrompt`     | `false`                                          |
-| `cwd`              | `true`                                           |
-| `structuredOutput` | `true` (informational, reach it via `extraArgs`) |
+The adapter declares two options as unsupported, `mcp` and `systemPrompt`:
 
-Requesting `mcp` or `systemPrompt` on this adapter throws `AnyAgentError` with `code: "UnsupportedCapability"`. Codex can reach both through its `-c` config overrides, which you can pass via [`extraArgs` or `agent.raw`](/docs/escape-hatches).
+| Capability         | Value                                           |
+| ------------------ | ----------------------------------------------- |
+| `streaming`        | `true`, a live NDJSON stream                    |
+| `permissionLevels` | `read-only`, `edit`, `full-auto`                |
+| `modelSelection`   | `true`                                          |
+| `sessionResume`    | `true`                                          |
+| `mcp`              | `false`                                         |
+| `systemPrompt`     | `false`                                         |
+| `cwd`              | `true`                                          |
+| `structuredOutput` | `true`, informational; reach it via `extraArgs` |
+
+Requesting `mcp` or `systemPrompt` throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns. Codex can reach both through its own `-c` config overrides, which remain available via [`extraArgs` or `agent.raw`](/docs/escape-hatches).
 
 ## How options map to flags
 
-Every run executes `codex exec --json`, with the prompt piped over stdin (the `-` positional) so a large prompt never hits the OS argv size limit. Your options append flags:
+Every run executes `codex exec --json` with the prompt piped over stdin through the `-` positional, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) set the sandbox and append further flags:
 
-| Option                    | Flag                                                                        |
-| ------------------------- | --------------------------------------------------------------------------- |
-| `permission: "read-only"` | `--sandbox read-only`                                                       |
-| `permission: "edit"`      | `--sandbox workspace-write`                                                 |
-| `permission: "full-auto"` | `--sandbox danger-full-access`                                              |
-| `model`                   | `--model <name>`                                                            |
-| `resume`                  | `codex exec resume <threadId>` with the sandbox set via `-c sandbox_mode=…` |
+| Option                    | Flag                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| `permission: "read-only"` | `--sandbox read-only`                                                          |
+| `permission: "edit"`      | `--sandbox workspace-write`                                                    |
+| `permission: "full-auto"` | `--sandbox danger-full-access`                                                 |
+| `model`                   | `--model <name>`                                                               |
+| `resume`                  | `codex exec resume <threadId>`, with the sandbox set via `-c sandbox_mode="…"` |
 
-The sandbox level is always passed explicitly. `codex exec` defaults to a read-only sandbox, which would quietly weaken anyagent's `edit` default if the flag were omitted.
+The sandbox level is always passed explicitly. `codex exec` defaults to a read-only sandbox, which would weaken AnyAgent's `edit` default if the flag were omitted. On resume, `codex exec resume` has no `--sandbox` flag, so the adapter sets the sandbox through a `-c sandbox_mode` config override instead.
 
-## What to expect from the stream
+## What the stream produces
 
-Text arrives when a message completes, so the answer is never double-counted against its in-progress updates. Command executions and file changes map to `tool-call` and `tool-result` events, and reasoning items produce no normalized event.
+Text arrives when a message completes, so the answer is never double-counted against its in-progress updates. Command executions and file changes map to `tool-call` and `tool-result` events. Reasoning items produce no normalized event.
 
-Usage has one quirk worth knowing: Codex folds cache reads into its `input_tokens`, so the adapter subtracts `cached_input_tokens` to report uncached input like the other adapters. The exact native accounting stays on `raw`. Codex reports no cost, so `costUsd` is `undefined`.
+## Usage reporting
 
-A top-level `error` or a failed turn throws `AnyAgentError` with `code: "Invocation"`.
+Codex folds cache reads into its `input_tokens`, so the adapter subtracts `cached_input_tokens` to report uncached input like the other adapters. The exact native accounting stays on `raw`. Codex reports no cost, so `costUsd` is `undefined`.
+
+## Errors
+
+A top-level `error` event or a failed turn throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Codex's own message. A nonzero exit or a spawn failure throws the same code.
 
 ## Resume a session
 
-Codex has no single final payload, so the adapter composes one. `result.raw` carries the thread id alongside the native turn-completed event:
+Codex has no single final payload, so the adapter composes one. `result.raw` carries the thread id alongside the native turn-completed event. Read `threadId` and pass it back as `resume`:
 
 ```ts
-const first = await agent.run("Start reviewing this repo.");
+const first = await agent.run("start reviewing this repo");
 const { threadId } = first.raw as { threadId?: string };
 
-const followUp = await agent.run("Continue with src/.", { resume: threadId });
+const followUp = await agent.run("continue with src/", { resume: threadId });
 ```

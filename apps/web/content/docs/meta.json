@@ -1,11 +1,20 @@
 {
   "pages": [
     "index",
-    "concepts",
-    "permissions",
-    "adapters",
-    "escape-hatches",
+    "quickstart",
+    "---Guides---",
+    "detecting-agents",
+    "running-prompts",
+    "streaming",
     "errors",
+    "production",
+    "---Concepts---",
+    "how-it-works",
+    "permissions",
+    "escape-hatches",
+    "---Reference---",
+    "api",
+    "adapters",
     "adding-an-adapter"
   ]
 }

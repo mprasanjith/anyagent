@@ -1,0 +1,113 @@
+---
+title: Detect installed agents
+description: Find the coding agents on the end user's machine and decide what to run.
+---
+
+This page shows how to find which coding agents your end user has installed, tell them what is about to happen, and pick one to run. Detection is the first step in any tool built on AnyAgent, because your prompt runs on the agent your user already has, under their login and their subscription.
+
+## Find what is installed
+
+Call `detect()` to scan the end user's `PATH` for every supported agent. It resolves to an array of `DetectResult`, one per installed agent, and returns an empty array when none are found.
+
+```ts
+import { detect } from "anyagent";
+
+const installed = await detect();
+```
+
+Each `DetectResult` carries what you need to describe and run the agent: `id` (the stable machine name, such as `"claude-code"`), `name` (the display name, such as `"Claude Code"`), `installed`, `version` (a string or `null`), `path` (where the binary resolved), `capabilities`, and the `adapter` itself. The `version` field is for display only. AnyAgent never changes behavior based on it, and a failed version probe leaves it `null` without blocking the agent.
+
+Here is a printed listing inside an `acme init` setup wizard:
+
+```ts
+for (const agent of installed) {
+  const version = agent.version ?? "unknown version";
+  console.log(`${agent.name} (${version}) at ${agent.path}`);
+}
+```
+
+That prints one line per agent, for example `Claude Code (2.0.31) at /usr/local/bin/claude`.
+
+## Choose which agent to run
+
+The list from `detect()` is unordered. There is no ranking and no "best" agent, so which one to run is your product decision. When one agent is installed, use it. When several are, let the end user pick.
+
+This picker prints the options and reads a choice from stdin, with no third-party prompt library:
+
+```ts
+import { create } from "anyagent";
+import { createInterface } from "node:readline/promises";
+
+const rl = createInterface({ input: process.stdin, output: process.stdout });
+installed.forEach((a, i) => console.log(`${i + 1}. ${a.name}`));
+const answer = await rl.question("Which agent should acme init use? ");
+rl.close();
+
+const chosen = installed[Number(answer) - 1] ?? installed[0];
+const agent = create(chosen);
+```
+
+`create()` accepts a `DetectResult` directly and returns a runnable `Agent`. Swap the `readline` step for your own prompt library or UI: the point is that you print the names and map the answer back to a `DetectResult`.
+
+## Tell the user what will happen
+
+Before you run anything, tell the end user which agent you are about to drive. Their prompt runs under their login and bills against their subscription, so name the agent so nothing runs by surprise.
+
+```ts
+console.log(`acme init will run ${chosen.name}, signed in under your account.`);
+```
+
+## Handle an empty machine
+
+When `detect()` returns an empty array, no supported agent is installed. Your response depends on whether the agent is a hard requirement.
+
+When the agent adds an optional feature, degrade gracefully and skip it:
+
+```ts
+if (installed.length === 0) {
+  console.log("No coding agent found. Skipping automatic setup.");
+  runManualSetup();
+}
+```
+
+When the agent is required, tell the user which CLIs you support, naming them from the [supported set](/docs/adapters), and how to install one:
+
+```ts
+if (installed.length === 0) {
+  console.error(
+    "acme init needs a coding agent. Install a supported CLI, sign in, and rerun."
+  );
+  process.exit(1);
+}
+```
+
+## Target one specific agent
+
+When your tool supports exactly one agent, skip detection and import that adapter directly. The subpath exports keep your bundle lean, because you pull in only the adapter you use.
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+```
+
+Every adapter imports the same way from its own subpath, named on its [adapter page](/docs/adapters). Creating an agent from an adapter does not check whether the CLI is installed, so a missing binary surfaces as an `Invocation` error when you run. See [Handle errors](/docs/errors) for that path.
+
+## Adjust to an agent's capabilities
+
+Each `DetectResult` carries a `capabilities` table describing what its CLI can do. Read it before you decide what to ask for, so the same code works across agents with different feature sets.
+
+```ts
+const opts = chosen.capabilities.mcp ? { mcp: acmeMcpServers } : {};
+const agent = create(chosen);
+await agent.run(prompt, opts);
+```
+
+Requesting an option the table does not declare throws before anything spawns, so guarding here keeps a run from failing on an agent that lacks the feature. Each [adapter page](/docs/adapters) lists the table its CLI declares.
+
+## Next steps
+
+- [Run a prompt](/docs/running-prompts): configure and execute a run on the agent you picked
+- [Permissions](/docs/permissions): the three autonomy levels and how each maps to a CLI
+- [Production flow](/docs/production): assemble detection, choice, and error handling end to end

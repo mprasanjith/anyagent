@@ -1,44 +1,105 @@
 ---
-title: Errors
-description: The single AnyAgentError type, its code union, and when each code fires.
+title: Handle errors
+description: Branch on AnyAgentError.code to fail well in a tool you ship to other people.
 ---
 
-Everything anyagent throws is one class, `AnyAgentError`. There's no subclass tree to match against. You branch on the `code` property, which carries one of four values.
+This page shows how to handle failures in a tool built on AnyAgent. Everything AnyAgent throws is one class, `AnyAgentError`, with no subclass tree. You branch on its `code`, which is one of four values, and turn each into a response that makes sense to your end user. Results never hide failures, so a `try/catch` around the run is the whole story.
 
-## The four codes
+## Branch on the code
 
-| Code                    | When it fires                                                                                                 |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `UnsupportedCapability` | You asked for something this CLI can't do. Thrown before anything spawns.                                     |
-| `Invocation`            | The CLI went wrong: it failed to spawn, exited nonzero, or reported an agent-level error.                     |
-| `Parse`                 | The CLI ran, but its output didn't match the shape the adapter expects, or the stream ended without a `done`. |
-| `Aborted`               | Your `AbortSignal` fired and the run was terminated.                                                          |
-
-## Branch on `code`
+Import `AnyAgentError` and switch on `err.code`. There is nothing else to match against:
 
 ```ts
 import { AnyAgentError } from "anyagent";
 
 try {
-  await agent.run(prompt, { signal });
+  await agent.run(prompt);
 } catch (err) {
-  if (err instanceof AnyAgentError && err.code === "Aborted") {
-    return; // the user cancelled; not a failure
+  if (err instanceof AnyAgentError) {
+    // branch on err.code
   }
   throw err;
 }
 ```
 
-## What the error carries
+## The four codes
 
-Beyond `message` and `code`, three fields help you diagnose what went wrong:
+Each code tells you where the run failed and what you can do about it in a shipped tool.
 
-- **`raw`**: the underlying cause, either a native error or the harness's own error payload
-- **`argv`**: the exact command line that ran, attached when a process was involved
-- **`stderr`**: what the CLI printed to stderr, attached when a process was involved
+`UnsupportedCapability` fires when you ask for something the CLI cannot do: an option its capability table does not declare, or a permission level it does not offer. It is thrown before anything spawns. Fix your options, or read `agent.capabilities` first and degrade the feature when it is missing.
 
-For an `Invocation` error, `argv` and `stderr` together usually tell the story: a missing binary, an expired login, or a flag the installed version doesn't know.
+`Invocation` fires when the CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error. Surface `stderr` to diagnose it. Common real causes are a missing binary, an expired login, and an installed CLI too old to know a flag you passed.
+
+`Parse` fires when the CLI ran but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI's output format. Report it upstream so the adapter can be updated.
+
+`Aborted` fires when your `AbortSignal` fired and the run was terminated. This is usually a user cancelling on purpose, so treat it as a normal exit rather than a failure.
+
+## Diagnostic fields
+
+Beyond `message` and `code`, three fields help you diagnose a failure and write useful bug reports:
+
+- `raw`: the underlying cause, either a native error or the harness's own error payload
+- `argv`: the exact command line that ran, attached when a process was involved
+- `stderr`: what the CLI printed to stderr, attached when a process was involved
+
+Log all three when a run fails unexpectedly, so a bug report carries what ran and what the CLI said:
+
+```ts
+console.error(err.message);
+console.error("command:", err.argv?.join(" "));
+console.error("stderr:", err.stderr);
+```
 
 ## Results never hide failures
 
-Holding a `RunResult` means the run succeeded. anyagent never resolves with an error tucked inside the result, so wrap the call in `try/catch` and treat the resolved value as the answer.
+Holding a `RunResult` means the run succeeded. AnyAgent never resolves with an error tucked inside the result, so you never inspect a result to learn whether it worked. Wrap the run in `try/catch` and treat the resolved value as the answer.
+
+## A complete example
+
+This wraps the `acme init` run and turns each code into a message for the end user:
+
+```ts
+import { AnyAgentError } from "anyagent";
+
+try {
+  const result = await agent.run(prompt, { permission: "edit" });
+  console.log(result.text);
+} catch (err) {
+  if (!(err instanceof AnyAgentError)) {
+    throw err;
+  }
+  switch (err.code) {
+    case "Aborted":
+      console.log("Cancelled.");
+      process.exit(0);
+    case "UnsupportedCapability":
+      console.error(
+        `${agent.adapter.meta.name} cannot do that: ${err.message}`
+      );
+      break;
+    case "Invocation":
+      console.error(
+        "The agent failed to run. Check that it is installed and signed in."
+      );
+      console.error(err.stderr);
+      break;
+    case "Parse":
+      console.error(
+        "Unexpected output from the agent. Please report this to Acme."
+      );
+      console.error("command:", err.argv?.join(" "));
+      break;
+    default:
+      throw err;
+  }
+  process.exit(1);
+}
+```
+
+Each branch gives the end user something to act on: a cancellation is not an error, a capability gap names what the agent lacks, an invocation failure points at install and login, and a parse failure asks for a report with the command line attached.
+
+## Next steps
+
+- [Run a prompt](/docs/running-prompts): the run options that a capability error asks you to fix
+- [Permissions](/docs/permissions): the levels behind an `UnsupportedCapability` on `permission`
+- [Production flow](/docs/production): assemble detection, streaming, and error handling end to end

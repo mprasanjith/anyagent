@@ -1,4 +1,4 @@
-export const appName = "anyagent";
+export const appName = "AnyAgent";
 export const docsRoute = "/docs";
 export const docsImageRoute = "/og/docs";
 export const docsContentRoute = "/llms.mdx/docs";

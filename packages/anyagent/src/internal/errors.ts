@@ -1,5 +1,5 @@
 /**
- * Which way a run failed. Every error anyagent throws carries exactly one of
+ * Which way a run failed. Every error AnyAgent throws carries exactly one of
  * these on its `code`:
  *
  * - `"UnsupportedCapability"` — you asked for something this agent's CLI
@@ -19,7 +19,7 @@ export type AnyAgentErrorCode =
   | "Aborted";
 
 /**
- * The single error type everything in anyagent throws — there is no subclass
+ * The single error type everything in AnyAgent throws — there is no subclass
  * tree to match against. Branch on `code`:
  *
  * ```ts

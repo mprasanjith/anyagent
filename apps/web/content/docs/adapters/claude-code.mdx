@@ -3,64 +3,74 @@ title: Claude Code
 description: How the claude-code adapter detects, invokes, and parses Anthropic's Claude Code CLI.
 ---
 
-The `claude-code` adapter drives Anthropic's Claude Code CLI in headless mode. It declares the full capability table, and it doubles as the reference implementation to mirror when you're [writing a new adapter](/docs/adding-an-adapter).
+The `claude-code` adapter drives Anthropic's Claude Code CLI in headless mode. It declares the full capability table, and it is the reference implementation to mirror when you are [adding an adapter](/docs/adding-an-adapter). This page covers detection, the capability table, how each run option maps to a CLI flag, what the stream produces, how usage is reported, and how to resume a session.
+
+Import the factory from the `anyagent/claude-code` subpath and hand it to `create`:
 
 ```ts
 import { create } from "anyagent";
 import { claudeCode } from "anyagent/claude-code";
 
 const agent = create(claudeCode());
-const result = await agent.run("Summarize this repo.");
+const result = await agent.run("summarize this repo");
 ```
 
 ## Detection
 
-Detection looks for a `claude` binary on `PATH` and reads its version from `claude --version`. The version lands on `DetectResult.version` for display. anyagent never changes behavior based on it.
+Detection looks for a `claude` binary on `PATH` and reads the version from `claude --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; AnyAgent never changes behavior based on it, and a failed version probe leaves it `null` without blocking use.
 
 ## Capabilities
 
-| Capability         | Value                                            |
-| ------------------ | ------------------------------------------------ |
-| `streaming`        | `true` (live NDJSON stream)                      |
-| `permissionLevels` | `read-only`, `edit`, `full-auto`                 |
-| `modelSelection`   | `true`                                           |
-| `sessionResume`    | `true`                                           |
-| `mcp`              | `true`                                           |
-| `systemPrompt`     | `true`                                           |
-| `cwd`              | `true`                                           |
-| `structuredOutput` | `true` (informational, reach it via `extraArgs`) |
+The adapter declares every field of the [capability table](/docs/api#capabilitytable) as supported:
+
+| Capability         | Value                                           |
+| ------------------ | ----------------------------------------------- |
+| `streaming`        | `true`, a live NDJSON stream                    |
+| `permissionLevels` | `read-only`, `edit`, `full-auto`                |
+| `modelSelection`   | `true`                                          |
+| `sessionResume`    | `true`                                          |
+| `mcp`              | `true`                                          |
+| `systemPrompt`     | `true`                                          |
+| `cwd`              | `true`                                          |
+| `structuredOutput` | `true`, informational; reach it via `extraArgs` |
 
 ## How options map to flags
 
-Every run executes `claude -p --output-format stream-json --verbose`, with the prompt piped over stdin so a large prompt never hits the OS argv size limit. Your options append flags:
+Every run executes `claude -p --output-format stream-json --verbose` with a `--permission-mode` flag set from the permission level. The prompt travels over stdin rather than as a positional argument, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
 
-| Option                    | Flag                                                       |
-| ------------------------- | ---------------------------------------------------------- |
-| `permission: "read-only"` | `--permission-mode default`                                |
-| `permission: "edit"`      | `--permission-mode acceptEdits`                            |
-| `permission: "full-auto"` | `--permission-mode bypassPermissions`                      |
-| `model`                   | `--model <name>` (Claude Code's vocabulary, e.g. `"opus"`) |
-| `systemPrompt`            | `--append-system-prompt <text>` (appends, never replaces)  |
-| `resume`                  | `--resume <sessionId>`                                     |
-| `mcp`                     | `--mcp-config <json>`                                      |
+| Option                    | Flag                                                               |
+| ------------------------- | ------------------------------------------------------------------ |
+| `permission: "read-only"` | `--permission-mode default`                                        |
+| `permission: "edit"`      | `--permission-mode acceptEdits`                                    |
+| `permission: "full-auto"` | `--permission-mode bypassPermissions`                              |
+| `model`                   | `--model <name>`, in Claude Code's own vocabulary such as `"opus"` |
+| `systemPrompt`            | `--append-system-prompt <text>`, which appends and never replaces  |
+| `resume`                  | `--resume <sessionId>`                                             |
+| `mcp`                     | `--mcp-config <json>`, the servers serialized to JSON              |
 
-## What to expect from the stream
+## What the stream produces
 
-Claude Code emits whole assistant messages, so one `text-delta` usually carries a full message rather than a token. Thinking blocks produce no normalized event, though the reasoning stays reachable on the surrounding raw payloads.
+Claude Code emits whole assistant messages, so one `text-delta` carries a full message rather than a token. Thinking blocks produce no normalized event, though the reasoning stays reachable on the surrounding raw payloads.
 
-Usage lands on `RunResult.usage` with `inputTokens`, `outputTokens`, and `costUsd`. Note that `inputTokens` counts uncached input only. Cache reads and writes stay as separate line items on `result.raw`.
+Tool use maps to `tool-call` and its result to `tool-result`. Concatenating every `text-delta` reproduces `RunResult.text` exactly, as the conformance suite requires.
 
-If the CLI reports an agent-level error, the run throws `AnyAgentError` with `code: "Invocation"` and the CLI's own error detail.
+## Usage reporting
+
+Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens`, `outputTokens`, and `costUsd`. `inputTokens` counts uncached input only. Cache reads and writes stay as separate line items on `result.raw`, so read the raw payload when you need exact cache accounting.
+
+## Errors
+
+When the CLI reports an agent-level error, the run throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and the CLI's own error detail. A nonzero exit or a spawn failure throws the same code.
 
 ## Resume a session
 
-Claude Code reports a session id in its final payload. Read it from `result.raw` and pass it back as `resume`:
+Claude Code reports a session id in its final payload. Read `session_id` from `result.raw` and pass it back as `resume`:
 
 ```ts
-const first = await agent.run("Review the auth module.");
+const first = await agent.run("review the auth module");
 const { session_id } = first.raw as { session_id?: string };
 
-const followUp = await agent.run("Now fix what you found.", {
+const followUp = await agent.run("now fix what you found", {
   resume: session_id,
 });
 ```

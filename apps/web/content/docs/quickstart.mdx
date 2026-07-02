@@ -1,0 +1,97 @@
+---
+title: Quickstart
+description: Install AnyAgent, detect a coding agent the user has installed, and run your first prompt against it.
+---
+
+This page takes you from install to a working script that detects an installed coding agent and runs a prompt on it. You will run a read-only inspection first, then upgrade the same script to stream live progress. The examples use Bun, and Node works the same way.
+
+## Prerequisites
+
+Before you start, make sure you have:
+
+- Node.js 18 or later, or Bun
+- At least one [supported agent CLI](/docs/adapters) installed and signed in; the supported-agents page links each CLI's headless setup docs
+
+AnyAgent drives the agent the user already authenticated, so no API key is needed here.
+
+## Install
+
+Add the package with your package manager:
+
+```bash
+bun add anyagent
+```
+
+<Callout type="warn">
+  AnyAgent is pre-release and is not published to npm yet. The commands and API
+  on this page match the current `main` branch.
+</Callout>
+
+The library ships as Node-compatible ESM with zero runtime dependencies, so it behaves the same under Node and Bun.
+
+## Detect and run a prompt
+
+Create a file named `run-agent.ts`:
+
+```ts
+import { create, detect } from "anyagent";
+
+const installed = await detect();
+if (installed.length === 0) {
+  throw new Error("No supported coding agent found on PATH.");
+}
+
+const agent = create(installed[0]);
+const result = await agent.run(
+  "List the top-level scripts in package.json and what each one does.",
+  { permission: "read-only" }
+);
+
+console.log(result.text);
+```
+
+`detect()` scans the user's `PATH` and returns every supported agent it finds. `create()` wraps the first result in a runnable handle, and `run()` sends the prompt with `read-only` permission, so the agent inspects files but changes nothing. The answer lands on `result.text`.
+
+Run the script from inside a project that has a `package.json`:
+
+```bash
+bun run-agent.ts
+```
+
+You will see the agent's answer printed to your terminal:
+
+```text
+- build: compiles the TypeScript sources with tsc
+- test: runs the unit test suite
+- lint: checks formatting and lint rules
+```
+
+Your output will differ, since it comes from whichever agent the machine has installed and from that project's own scripts.
+
+## Stream live progress
+
+For a run longer than one answer, show progress as it happens. Swap `run` for `runStream`, which yields events while the agent works:
+
+```ts
+import { create, detect } from "anyagent";
+
+const [found] = await detect();
+if (!found) throw new Error("No supported coding agent found on PATH.");
+
+const agent = create(found);
+for await (const event of agent.runStream(
+  "List the top-level scripts in package.json and what each one does.",
+  { permission: "read-only" }
+)) {
+  if (event.type === "text-delta") process.stdout.write(event.text);
+  if (event.type === "tool-call") console.log(`\n[tool] ${event.name}`);
+}
+```
+
+Each `text-delta` event carries a piece of the answer as it arrives, and each `tool-call` event names a tool the agent invoked, such as reading a file. If you `break` out of the loop early, AnyAgent kills the underlying process for you, so an abandoned stream never leaks a running agent.
+
+## Next steps
+
+- [Detecting agents](/docs/detecting-agents): find installs, let the user choose, and fall back
+- [Production flow](/docs/production): the recommended end-to-end setup for a shipped tool
+- [How it works](/docs/how-it-works): the design behind the unified surface

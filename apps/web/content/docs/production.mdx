@@ -1,0 +1,149 @@
+---
+title: Ship to production
+description: The recommended end-to-end flow for a tool built on AnyAgent, assembled step by step around an acme init wizard.
+---
+
+This guide assembles the recommended flow for a tool you ship to end users, from detecting their agent to handling every failure. The running example is `acme init`, a setup wizard that wires the fictional Acme SDK into the end user's project. Each step is a small block of code; together they form a command you could assemble into a real tool. Adapt the shape to your use case: a read-only analysis feature and a code generator constrain the run differently, and each section says where.
+
+The flow has five steps: detect the installed agents, tell the user what is about to happen, let them choose when several exist, run with visible progress and a tightly scoped prompt, then handle every error code. Read each step's linked guide for the full detail; this page shows how they fit together.
+
+## Detect what the user has installed
+
+Start by finding every supported agent on the machine. `detect()` returns an unordered array of installed agents and an empty array when none are found. It never ranks them, so an empty result is your signal to fall back or guide setup.
+
+```ts
+import { detect } from "anyagent";
+import type { DetectResult } from "anyagent";
+
+const found = await detect();
+```
+
+Each `DetectResult` carries the `adapter`, `id`, `name`, `version` (for display only), `path`, and the agent's `capabilities`. You pass the one you pick straight to `create()`. The [detecting agents](/docs/detecting-agents) guide covers choosing and falling back in depth.
+
+## Tell the user what is about to happen
+
+Before running anything, state which agent you will use and that it runs on the user's own login and subscription. The prompt executes on their machine, under their credentials, so they should know which agent handles it and that it may make model calls they pay for.
+
+```ts
+const announce = (agent: DetectResult): void => {
+  console.log(`acme init will use ${agent.name} (${agent.path}).`);
+  console.log("It runs on your login and your subscription.");
+};
+```
+
+This is plain output, not part of the AnyAgent API. Keep it honest: name the agent and the account it draws on so nothing about billing or credentials surprises the user.
+
+## Let the user choose when several are installed
+
+When `detect()` returns more than one agent, ask which to use rather than picking for them. When it returns exactly one, use it. When it returns none, fall back or walk the user through installing an agent if your tool cannot work without one.
+
+```ts
+import { create } from "anyagent";
+import type { Agent } from "anyagent";
+
+const pickAgent = async (found: DetectResult[]): Promise<Agent | null> => {
+  if (found.length === 0) {
+    console.error(
+      "No supported coding agent found. Install one, sign in, and rerun acme init."
+    );
+    return null;
+  }
+  const chosen =
+    found.length === 1 ? found[0] : await promptUserToChoose(found);
+  return create(chosen);
+};
+```
+
+`promptUserToChoose` is your own prompt over `found`, keyed on each result's `name`. If the agent is a hard requirement, the empty case should name a [supported CLI](/docs/adapters) and point to its install docs rather than failing silently. The [detecting agents](/docs/detecting-agents) guide shows richer selection and fallback patterns.
+
+## Run with visible progress and a scoped prompt
+
+Stream the run so the user sees work as it happens, and scope the prompt so the agent stays local. Use `runStream` to render `text-delta` events live; the stream ends with a `done` event carrying the final `RunResult`.
+
+```ts
+const runInit = async (agent: Agent): Promise<string> => {
+  const prompt = [
+    "Add the Acme SDK to this project.",
+    "Only edit package.json and files under src/.",
+    "Do not run git, do not commit, do not push.",
+    "Create src/acme.ts with an initialized client and wire it into src/index.ts.",
+  ].join(" ");
+
+  let answer = "";
+  for await (const event of agent.runStream(prompt, { permission: "edit" })) {
+    if (event.type === "text-delta") {
+      process.stdout.write(event.text);
+    }
+    if (event.type === "done") {
+      answer = event.result.text;
+    }
+  }
+  return answer;
+};
+```
+
+The prompt does the guardrail work: it names the exact files the agent may touch, keeps the change local, and forbids commits and pushes. Never let a shipped tool commit or push on the user's behalf; leave the diff for them to review. Use `permission: "edit"`, the default, so the agent can write files while its CLI's own confirmations still gate riskier shell commands. Reserve `full-auto` for sandboxed environments, and use `read-only` for analysis features that only inspect and report. See [permissions](/docs/permissions) for the levels and [streaming](/docs/streaming) for progress and cancellation.
+
+## Handle every error code
+
+Every failure throws `AnyAgentError` with one of four codes; holding a `RunResult` means the run succeeded. Branch on `.code` and give a message a stranger could act on. Cancellation through an `AbortSignal` is not a failure, so return quietly on `"Aborted"`.
+
+```ts
+import { AnyAgentError } from "anyagent";
+
+const runWithHandling = async (agent: Agent): Promise<void> => {
+  try {
+    await runInit(agent);
+  } catch (err) {
+    if (!(err instanceof AnyAgentError)) {
+      throw err;
+    }
+    switch (err.code) {
+      case "Aborted":
+        return;
+      case "UnsupportedCapability":
+        console.error(
+          "This agent cannot do what acme init asked. Try another installed agent."
+        );
+        return;
+      case "Invocation":
+        console.error(
+          "The coding agent failed to run. Check that it is signed in."
+        );
+        console.error(err.argv?.join(" "), err.stderr);
+        return;
+      case "Parse":
+        console.error(
+          "The agent produced output acme init could not read. Please report this with the log above."
+        );
+        console.error(err.argv?.join(" "), err.stderr);
+        return;
+      default:
+        throw err;
+    }
+  }
+};
+```
+
+`argv` and `stderr` are attached whenever a process was involved, so log them on `"Invocation"` and `"Parse"` to make bug reports actionable. The [errors](/docs/errors) guide details each code and when it fires.
+
+## Before you ship
+
+Run through this list before releasing a tool built on AnyAgent:
+
+- Detect first, and handle the none-installed case with a message that names a supported CLI and its setup steps
+- Tell the user which agent runs and that it draws on their login and subscription
+- Ask which agent to use when more than one is installed
+- Scope the prompt: name the files, keep changes local, forbid commits and pushes
+- Run at `permission: "edit"` for tools that change code, `read-only` for analysis, never `full-auto` outside a sandbox
+- Handle all four error codes with messages a stranger can act on
+- Pin nothing to agent versions; `version` is for display, and AnyAgent targets current CLIs
+- Test with each supported CLI and with none installed
+- Log `argv` and `stderr` on failure so users can file useful bug reports
+
+## Next steps
+
+- [Detecting agents](/docs/detecting-agents): choose an agent and fall back gracefully
+- [Streaming](/docs/streaming): render progress and cancel a run
+- [Permissions](/docs/permissions): pick the right autonomy level
+- [Errors](/docs/errors): the four codes and how to handle each

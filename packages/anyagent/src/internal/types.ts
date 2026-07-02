@@ -271,7 +271,7 @@ export interface AdapterMeta {
  * One agent CLI as found (or not) on this machine — hand it straight to
  * `create()` to get a runnable {@link Agent}. `path` is where the binary
  * resolved. `version` is whatever the CLI reported, kept for display only:
- * anyagent never gates behavior on it, and a version probe that fails leaves
+ * AnyAgent never gates behavior on it, and a version probe that fails leaves
  * it `null` without blocking use.
  */
 export interface DetectResult {
@@ -323,7 +323,7 @@ export interface Adapter {
  * Direct access to the native CLI, for capabilities the unified surface does
  * not model (bidirectional sessions, harness-specific output modes, …).
  *
- * `buildInvocation` returns the exact command anyagent would run — useful for
+ * `buildInvocation` returns the exact command AnyAgent would run — useful for
  * logging, or for running it yourself somewhere else. `spawn` launches it and
  * hands you the Node `ChildProcess` to drive: you read stdout, you handle
  * exit, and you get no normalized events and no lifecycle management. The

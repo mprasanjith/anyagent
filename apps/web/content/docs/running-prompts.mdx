@@ -1,0 +1,102 @@
+---
+title: Run a prompt
+description: Configure a run with RunOptions and execute it against an installed agent.
+---
+
+This page shows how to run one prompt on an agent and read the result. You will write a scoped prompt, set run options such as the working directory and model, and handle the `RunResult` that comes back. Every option is validated against the agent's capability table before any process spawns, so an unsupported request fails fast with a catchable error rather than mid-run.
+
+## Run and read the result
+
+`agent.run(prompt, opts)` sends a prompt and resolves with a `RunResult` when the agent finishes. Here is the `acme init` wiring prompt, running with the default `edit` permission and an instruction to keep changes local:
+
+```ts
+const result = await agent.run(
+  "Add the Acme SDK to this project: install the dependency, create acme.config.ts with sensible defaults, and wire it into the app entry point. Only edit files in this repo. Do not run git commit or git push.",
+  { permission: "edit" }
+);
+
+console.log(result.text);
+```
+
+`RunResult` has four fields: `text` (the agent's final answer, all text concatenated), `events` (every event in order, with the terminal `done` excluded), `usage` (token and cost accounting when the CLI reports it), and `raw` (the harness's untouched final payload). Holding a `RunResult` means the run succeeded, because every failure throws instead. See [Handle errors](/docs/errors) for that path.
+
+The `events` list is held in memory for the whole run. For a long agentic run, consume [`runStream`](/docs/streaming) as events arrive rather than collecting them all at the end.
+
+## Write a scoped prompt
+
+An agent does what the prompt tells it, so be specific. Name the files it should touch, state the goal, and say what to leave alone. The `acme init` prompt above names `acme.config.ts`, scopes changes to the repo, and forbids git commands.
+
+Keep changes small and local. Never instruct the agent to commit or push, so the end user reviews the diff before anything reaches their history. Pair the prompt with a [permission level](/docs/permissions) that bounds what the agent can touch.
+
+## Set the working directory
+
+`cwd` sets the directory the agent works in. It defaults to the current process's working directory. Point it at the target project when your tool runs from elsewhere:
+
+```ts
+await agent.run(prompt, { cwd: "/home/user/projects/acme-app" });
+```
+
+## Choose a model
+
+`model` takes a name in the CLI's own vocabulary; each [adapter page](/docs/adapters) shows how the option maps. Not every agent honors model selection, so guard it with `capabilities.modelSelection`:
+
+```ts
+const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
+await agent.run(prompt, opts);
+```
+
+Requesting `model` on an agent whose table reports `modelSelection: false` throws before anything spawns.
+
+## Append a system prompt
+
+`systemPrompt` is appended to the CLI's own system prompt. It never replaces it. Use it to set standing instructions for the run:
+
+```ts
+await agent.run(prompt, {
+  systemPrompt: "Follow the Acme SDK conventions in docs/conventions.md.",
+});
+```
+
+Not every CLI accepts a system prompt, so guard with `capabilities.systemPrompt` when your tool targets more than one agent.
+
+## Pass environment variables
+
+`env` sets extra environment variables for the run, merged over the parent process's environment rather than replacing it:
+
+```ts
+await agent.run(prompt, { env: { ACME_ENV: "development" } });
+```
+
+## Resume a session
+
+To continue a prior conversation, pass its session id as `resume`. The id lives on the previous run's `raw` payload under a harness-specific key, documented on each [adapter page](/docs/adapters).
+
+```ts
+const first = await agent.run("Start reviewing this repo.");
+const { session_id } = first.raw as { session_id?: string };
+
+const followUp = await agent.run("Now fix the issues you found.", {
+  resume: session_id,
+});
+```
+
+Here the harness reports the id as `session_id`; your target's adapter page names its key. Guard with `capabilities.sessionResume` when targeting an agent that might lack it.
+
+## Attach MCP servers
+
+`mcp` attaches Model Context Protocol servers for the run, keyed by the name the agent sees them under. Each entry sets `command`, `args`, and optional `env` for a local server, or `url` for a remote one:
+
+```ts
+const opts = agent.capabilities.mcp
+  ? { mcp: { db: { command: "npx", args: ["acme-db-mcp"] } } }
+  : {};
+await agent.run(prompt, opts);
+```
+
+Guard with `capabilities.mcp`: requesting servers on an agent that declares `mcp: false` throws `UnsupportedCapability` before spawning. When a CLI has its own config-based route to MCP instead, its [adapter page](/docs/adapters) says so, reachable through [escape hatches](/docs/escape-hatches).
+
+## Next steps
+
+- [Stream progress](/docs/streaming): show the end user what the agent is doing during a run
+- [Permissions](/docs/permissions): the three autonomy levels and how each maps to a CLI
+- [Handle errors](/docs/errors): branch on `AnyAgentError.code` when a run fails
