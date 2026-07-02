@@ -77,9 +77,9 @@ Everything you can tune about a single run. All fields are optional. Each field 
 
 | Value            | Meaning                                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `read-only`      | The agent inspects files and answers, but changes nothing.                                                               |
+| `read`           | The agent inspects files and answers, but changes nothing.                                                               |
 | `edit` (default) | The agent creates and modifies files, while the CLI's own guardrails still apply to riskier actions like shell commands. |
-| `full-auto`      | Every permission prompt is auto-approved and the agent runs unattended.                                                  |
+| `auto`           | Every permission prompt is auto-approved and the agent runs unattended.                                                  |
 
 CLIs with finer-grained native levels expose them only through [`RunOptions.extraArgs`](#runoptions) or [`RawHandle`](#rawhandle).
 

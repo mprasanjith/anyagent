@@ -14,7 +14,7 @@ test("live: claude answers a trivial prompt", async () => {
     return;
   }
   const agent = create(claudeCode());
-  const res = await agent.run(PROMPT, { permission: "read-only" });
+  const res = await agent.run(PROMPT, { permission: "read" });
   expect(res.text.toLowerCase()).toContain("pong");
   // Real-output check: the parser extracted usage from the result event.
   expect(typeof res.usage?.outputTokens).toBe("number");
@@ -29,7 +29,7 @@ test("live: real output parses clean under strict mode", async () => {
     return;
   }
   const adapter = claudeCode();
-  const inv = adapter.buildInvocation(PROMPT, { permission: "read-only" });
+  const inv = adapter.buildInvocation(PROMPT, { permission: "read" });
   const source = spawnAndStream(inv);
   let sawText = false;
   let finalText: string | undefined;

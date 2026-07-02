@@ -26,7 +26,7 @@ The adapter declares every field of the [capability table](/docs/api#capabilityt
 | Capability         | Value                                           |
 | ------------------ | ----------------------------------------------- |
 | `streaming`        | `true`, a live NDJSON stream                    |
-| `permissionLevels` | `read-only`, `edit`, `full-auto`                |
+| `permissionLevels` | `read`, `edit`, `auto`                          |
 | `modelSelection`   | `true`                                          |
 | `sessionResume`    | `true`                                          |
 | `mcp`              | `true`                                          |
@@ -38,15 +38,15 @@ The adapter declares every field of the [capability table](/docs/api#capabilityt
 
 Every run executes `claude -p --output-format stream-json --verbose` with a `--permission-mode` flag set from the permission level. The prompt travels over stdin rather than as a positional argument, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
 
-| Option                    | Flag                                                               |
-| ------------------------- | ------------------------------------------------------------------ |
-| `permission: "read-only"` | `--permission-mode default`                                        |
-| `permission: "edit"`      | `--permission-mode acceptEdits`                                    |
-| `permission: "full-auto"` | `--permission-mode bypassPermissions`                              |
-| `model`                   | `--model <name>`, in Claude Code's own vocabulary such as `"opus"` |
-| `systemPrompt`            | `--append-system-prompt <text>`, which appends and never replaces  |
-| `resume`                  | `--resume <sessionId>`                                             |
-| `mcp`                     | `--mcp-config <json>`, the servers serialized to JSON              |
+| Option               | Flag                                                               |
+| -------------------- | ------------------------------------------------------------------ |
+| `permission: "read"` | `--permission-mode default`                                        |
+| `permission: "edit"` | `--permission-mode acceptEdits`                                    |
+| `permission: "auto"` | `--permission-mode bypassPermissions`                              |
+| `model`              | `--model <name>`, in Claude Code's own vocabulary such as `"opus"` |
+| `systemPrompt`       | `--append-system-prompt <text>`, which appends and never replaces  |
+| `resume`             | `--resume <sessionId>`                                             |
+| `mcp`                | `--mcp-config <json>`, the servers serialized to JSON              |
 
 ## What the stream produces
 

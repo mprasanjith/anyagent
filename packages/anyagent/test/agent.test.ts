@@ -63,14 +63,12 @@ test("non-streaming adapter synthesizes a single delta", async () => {
   expect(res.text).toBe("the answer");
 });
 
-test("requesting read-only on a binary-perms adapter throws UnsupportedCapability", async () => {
+test("requesting read on a binary-perms adapter throws UnsupportedCapability", async () => {
   const agent = new AgentImpl(
     fakeBinaryPerms,
     runnerFromFixture('{"t":"end"}')
   );
-  await expect(
-    agent.run("q", { permission: "read-only" })
-  ).rejects.toMatchObject({
+  await expect(agent.run("q", { permission: "read" })).rejects.toMatchObject({
     code: "UnsupportedCapability",
   });
 });

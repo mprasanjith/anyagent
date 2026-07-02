@@ -19,7 +19,7 @@ const main = async (): Promise<void> => {
     process.exit(2);
   }
   const inv = adapter.buildInvocation(promptParts.join(" "), {
-    permission: "read-only",
+    permission: "read",
   });
   const source = spawnAndStream(inv);
   let body = "";

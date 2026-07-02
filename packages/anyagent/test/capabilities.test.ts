@@ -10,7 +10,7 @@ const full: CapabilityTable = {
   cwd: true,
   mcp: true,
   modelSelection: true,
-  permissionLevels: ["read-only", "edit", "full-auto"],
+  permissionLevels: ["read", "edit", "auto"],
   sessionResume: true,
   streaming: true,
   structuredOutput: true,
@@ -28,7 +28,7 @@ const limited = adapterWith(
   {
     ...full,
     modelSelection: false,
-    permissionLevels: ["edit", "full-auto"],
+    permissionLevels: ["edit", "auto"],
     sessionResume: false,
   },
   "opencode"
@@ -36,14 +36,14 @@ const limited = adapterWith(
 
 test("default permission is edit", () => {
   expect(resolvePermission({})).toBe("edit");
-  expect(resolvePermission({ permission: "full-auto" })).toBe("full-auto");
+  expect(resolvePermission({ permission: "auto" })).toBe("auto");
 });
 
 test("passes when all requested caps supported", () => {
   expect(() =>
     validateOptions(fullAgent, {
       model: "x",
-      permission: "read-only",
+      permission: "read",
       resume: "s",
     })
   ).not.toThrow();
@@ -59,7 +59,7 @@ test("throws UnsupportedCapability naming the adapter", () => {
 });
 
 test("throws when requesting a permission level not offered", () => {
-  expect(() => validateOptions(limited, { permission: "read-only" })).toThrow(
+  expect(() => validateOptions(limited, { permission: "read" })).toThrow(
     expect.objectContaining({ code: "UnsupportedCapability" })
   );
 });

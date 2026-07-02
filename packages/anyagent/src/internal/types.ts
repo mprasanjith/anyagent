@@ -3,12 +3,12 @@ import type { ChildProcess } from "node:child_process";
 /**
  * How much autonomy the agent gets over your working directory:
  *
- * - `"read-only"` — the agent can inspect files and answer, but not change
+ * - `"read"` — the agent can inspect files and answer, but not change
  *   anything.
  * - `"edit"` (the default) — the agent can create and modify files, while its
  *   CLI's own guardrails still apply to riskier actions like shell commands.
- * - `"full-auto"` — every permission prompt is auto-approved and the agent
- *   runs unattended. Use with care.
+ * - `"auto"` — every permission prompt is auto-approved and the agent runs
+ *   unattended. Use with care.
  *
  * These three levels are the whole surface; the enum never widens. Each
  * adapter maps your chosen level onto its CLI's native flags (Claude Code's
@@ -19,7 +19,7 @@ import type { ChildProcess } from "node:child_process";
  * with finer-grained native levels expose them only through
  * {@link RunOptions.extraArgs} or {@link RawHandle}.
  */
-export type PermissionLevel = "read-only" | "edit" | "full-auto";
+export type PermissionLevel = "read" | "edit" | "auto";
 
 /**
  * What one agent CLI can do. Read it from {@link Agent.capabilities} (or a

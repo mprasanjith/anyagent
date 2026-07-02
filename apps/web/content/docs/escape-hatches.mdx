@@ -39,7 +39,7 @@ When you need to drive the process yourself, `agent.raw.spawn` launches the invo
 
 ```ts
 const child = agent.raw.spawn("Explain the auth flow.", {
-  permission: "read-only",
+  permission: "read",
 });
 child.stdout?.pipe(process.stdout);
 ```

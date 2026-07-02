@@ -44,13 +44,13 @@ if (installed.length === 0) {
 const agent = create(installed[0]);
 const result = await agent.run(
   "List the top-level scripts in package.json and what each one does.",
-  { permission: "read-only" }
+  { permission: "read" }
 );
 
 console.log(result.text);
 ```
 
-`detect()` scans the user's `PATH` and returns every supported agent it finds. `create()` wraps the first result in a runnable handle, and `run()` sends the prompt with `read-only` permission, so the agent inspects files but changes nothing. The answer lands on `result.text`.
+`detect()` scans the user's `PATH` and returns every supported agent it finds. `create()` wraps the first result in a runnable handle, and `run()` sends the prompt with `read` permission, so the agent inspects files but changes nothing. The answer lands on `result.text`.
 
 Run the script from inside a project that has a `package.json`:
 
@@ -81,7 +81,7 @@ if (!found) throw new Error("No supported coding agent found on PATH.");
 const agent = create(found);
 for await (const event of agent.runStream(
   "List the top-level scripts in package.json and what each one does.",
-  { permission: "read-only" }
+  { permission: "read" }
 )) {
   if (event.type === "text-delta") process.stdout.write(event.text);
   if (event.type === "tool-call") console.log(`\n[tool] ${event.name}`);

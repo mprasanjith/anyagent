@@ -16,7 +16,7 @@ const CAPS: CapabilityTable = {
   // which we have not verified against real output; use extraArgs or raw.
   mcp: false,
   modelSelection: true,
-  permissionLevels: ["read-only", "edit", "full-auto"],
+  permissionLevels: ["read", "edit", "auto"],
   sessionResume: true,
   streaming: true,
   structuredOutput: true,
@@ -24,9 +24,9 @@ const CAPS: CapabilityTable = {
 };
 
 const SANDBOX_MODE: Record<PermissionLevel, string> = {
+  auto: "danger-full-access",
   edit: "workspace-write",
-  "full-auto": "danger-full-access",
-  "read-only": "read-only",
+  read: "read-only",
 };
 
 interface Ctx {

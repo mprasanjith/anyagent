@@ -82,7 +82,7 @@ const runInit = async (agent: Agent): Promise<string> => {
 };
 ```
 
-The prompt does the guardrail work: it names the exact files the agent may touch, keeps the change local, and forbids commits and pushes. Never let a shipped tool commit or push on the user's behalf; leave the diff for them to review. Use `permission: "edit"`, the default, so the agent can write files while its CLI's own confirmations still gate riskier shell commands. Reserve `full-auto` for sandboxed environments, and use `read-only` for analysis features that only inspect and report. See [permissions](/docs/permissions) for the levels and [streaming](/docs/streaming) for progress and cancellation.
+The prompt does the guardrail work: it names the exact files the agent may touch, keeps the change local, and forbids commits and pushes. Never let a shipped tool commit or push on the user's behalf; leave the diff for them to review. Use `permission: "edit"`, the default, so the agent can write files while its CLI's own confirmations still gate riskier shell commands. Reserve `auto` for sandboxed environments, and use `read` for analysis features that only inspect and report. See [permissions](/docs/permissions) for the levels and [streaming](/docs/streaming) for progress and cancellation.
 
 ## Handle every error code
 
@@ -135,7 +135,7 @@ Run through this list before releasing a tool built on AnyAgent:
 - Tell the user which agent runs and that it draws on their login and subscription
 - Ask which agent to use when more than one is installed
 - Scope the prompt: name the files, keep changes local, forbid commits and pushes
-- Run at `permission: "edit"` for tools that change code, `read-only` for analysis, never `full-auto` outside a sandbox
+- Run at `permission: "edit"` for tools that change code, `read` for analysis, never `auto` outside a sandbox
 - Handle all four error codes with messages a stranger can act on
 - Pin nothing to agent versions; `version` is for display, and AnyAgent targets current CLIs
 - Test with each supported CLI and with none installed

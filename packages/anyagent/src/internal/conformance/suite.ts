@@ -2,7 +2,7 @@ import { AgentImpl } from "../agent.js";
 import type { Adapter, AgentEvent, PermissionLevel } from "../types.js";
 import { fixedRunner } from "./scenarios.js";
 
-const ALL_LEVELS: PermissionLevel[] = ["read-only", "edit", "full-auto"];
+const ALL_LEVELS: PermissionLevel[] = ["read", "edit", "auto"];
 
 const assert = (cond: boolean, msg: string): void => {
   if (!cond) {

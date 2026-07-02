@@ -26,7 +26,7 @@ The adapter declares two options as unsupported, `mcp` and `systemPrompt`:
 | Capability         | Value                                           |
 | ------------------ | ----------------------------------------------- |
 | `streaming`        | `true`, a live NDJSON stream                    |
-| `permissionLevels` | `read-only`, `edit`, `full-auto`                |
+| `permissionLevels` | `read`, `edit`, `auto`                          |
 | `modelSelection`   | `true`                                          |
 | `sessionResume`    | `true`                                          |
 | `mcp`              | `false`                                         |
@@ -40,13 +40,13 @@ Requesting `mcp` or `systemPrompt` throws [`AnyAgentError`](/docs/errors) with `
 
 Every run executes `codex exec --json` with the prompt piped over stdin through the `-` positional, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) set the sandbox and append further flags:
 
-| Option                    | Flag                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------ |
-| `permission: "read-only"` | `--sandbox read-only`                                                          |
-| `permission: "edit"`      | `--sandbox workspace-write`                                                    |
-| `permission: "full-auto"` | `--sandbox danger-full-access`                                                 |
-| `model`                   | `--model <name>`                                                               |
-| `resume`                  | `codex exec resume <threadId>`, with the sandbox set via `-c sandbox_mode="…"` |
+| Option               | Flag                                                                           |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `permission: "read"` | `--sandbox read-only`                                                          |
+| `permission: "edit"` | `--sandbox workspace-write`                                                    |
+| `permission: "auto"` | `--sandbox danger-full-access`                                                 |
+| `model`              | `--model <name>`                                                               |
+| `resume`             | `codex exec resume <threadId>`, with the sandbox set via `-c sandbox_mode="…"` |
 
 The sandbox level is always passed explicitly. `codex exec` defaults to a read-only sandbox, which would weaken AnyAgent's `edit` default if the flag were omitted. On resume, `codex exec resume` has no `--sandbox` flag, so the adapter sets the sandbox through a `-c sandbox_mode` config override instead.
 

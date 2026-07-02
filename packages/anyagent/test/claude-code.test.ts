@@ -89,9 +89,9 @@ test("buildInvocation maps prompt, stream-json, and edit permission by default",
 });
 
 test("permission levels map to native modes", () => {
-  expect(modeOf("read-only")).toBe("default");
+  expect(modeOf("read")).toBe("default");
   expect(modeOf("edit")).toBe("acceptEdits");
-  expect(modeOf("full-auto")).toBe("bypassPermissions");
+  expect(modeOf("auto")).toBe("bypassPermissions");
 });
 
 test("parses a simple text answer with usage", async () => {

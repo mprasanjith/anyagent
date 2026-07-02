@@ -23,7 +23,7 @@ if (!found) throw new Error("No supported coding agent installed.");
 
 const agent = create(found);
 const result = await agent.run("Summarize this project in one sentence.", {
-  permission: "read-only",
+  permission: "read",
 });
 console.log(result.text);
 ```
