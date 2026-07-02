@@ -20,8 +20,8 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   description:
-    "A unified SDK for Claude Code, Codex, Gemini CLI, Cursor, and every other coding agent on your end-user's machine.",
-  title: "anyagent — any coding agent, one SDK",
+    "AnyAgent detects the coding agent your end users already have installed (Claude Code, Codex, Gemini CLI) and drives it from your tool. You collect no API keys and pay no inference bill.",
+  title: "AnyAgent: use the coding agent your users already have",
 };
 
 const GITHUB = "https://github.com/mprasanjith/anyagent";
@@ -53,7 +53,7 @@ const Page = () => (
     <nav className="hm-nav">
       <div className="hm-shell hm-nav-row">
         <Link className="hm-wordmark" href="/">
-          anyagent
+          AnyAgent
         </Link>
         <div className="hm-nav-links">
           <Link className="hm-nav-link" href="/docs">
@@ -71,13 +71,14 @@ const Page = () => (
       <div className="hm-shell hm-hero-inner">
         <div className="hm-reveal" style={iVar(0)}>
           <h1>
-            Any coding agent.
+            Your users already have a coding agent.
             <br />
-            One SDK.
+            Use it.
           </h1>
           <p className="hm-lede">
-            A unified SDK for Claude Code, Codex, Gemini CLI, Cursor, and every
-            other coding agent on your end-user's machine.
+            AnyAgent detects the coding agent installed and signed in on your
+            end-user’s machine and drives it from your tool. Prompts run on
+            their install, under their login and subscription.
           </p>
           <div className="hm-hero-actions">
             <Link className="hm-btn" href="/docs">
@@ -93,32 +94,7 @@ const Page = () => (
 
     <section className="hm-section">
       <div className="hm-shell" data-reveal>
-        <h2>What you build with it</h2>
-        <p className="hm-body">
-          If your end-users are developers, a coding agent is probably already
-          on their machine, installed and logged in. anyagent puts it to work
-          from your tooling.
-        </p>
-        <div className="hm-cases">
-          <div className="hm-case">
-            <h3>Setup wizards</h3>
-            <p>Wire your SDK into the user's existing codebase.</p>
-          </div>
-          <div className="hm-case">
-            <h3>Migrations</h3>
-            <p>Run migrations that read the code they're changing.</p>
-          </div>
-          <div className="hm-case">
-            <h3>Tests, docs, commit messages</h3>
-            <p>Bring AI models to your CLI or your scripts.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section className="hm-section">
-      <div className="hm-shell" data-reveal>
-        <h2>The exact same code. Any agent.</h2>
+        <h2>Detect the agent, then run your prompt</h2>
         <figure className="hm-codeframe">
           <figcaption className="hm-label">INSTALLER.TS</figcaption>
           <pre aria-label="Detect the installed agent and run a prompt">
@@ -148,14 +124,42 @@ const Page = () => (
           can fall back.
         </p>
         <p className="hm-body">
-          Prompts run through the user's own install, on their login and their
-          subscription. No keys to collect, no bill to eat.
+          The prompt runs on the user’s own install, under their login and
+          subscription. You collect no API keys and pay no inference bill.
         </p>
         <p className="hm-body">
-          <Link className="hm-link" href="/docs/concepts">
+          The same code path works against whichever supported agent they have.{" "}
+          <Link className="hm-link" href="/docs/how-it-works">
             How the unified surface works →
           </Link>
         </p>
+      </div>
+    </section>
+
+    <section className="hm-section">
+      <div className="hm-shell" data-reveal>
+        <h2>What you build with it</h2>
+        <p className="hm-body">
+          You ship the prompt and the guardrails; the user’s agent supplies the
+          model and the auth. AnyAgent suits tools that run a defined task
+          against the user’s own project.
+        </p>
+        <div className="hm-cases">
+          <div className="hm-case">
+            <h3>Setup wizards</h3>
+            <p>
+              Wire your SDK into the user’s codebase from your init command.
+            </p>
+          </div>
+          <div className="hm-case">
+            <h3>Migrations</h3>
+            <p>Apply a framework upgrade across the user’s repo.</p>
+          </div>
+          <div className="hm-case">
+            <h3>Generators</h3>
+            <p>Produce changelogs, tests, or docs from the current source.</p>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -178,10 +182,11 @@ const Page = () => (
 
     <section className="hm-section">
       <div className="hm-shell" data-reveal>
-        <h2>Safe by default.</h2>
+        <h2>Safe by default</h2>
         <p className="hm-body">
-          Three safety presets, mapped to each CLI's native flags. And anyagent
-          itself adds zero runtime dependencies to your tool.
+          Your tool is driving someone else’s install, so the permission ceiling
+          is explicit: three presets, mapped to each CLI’s native flags.
+          AnyAgent itself adds zero runtime dependencies to your tool.
         </p>
         <SafetyPresets />
       </div>
@@ -189,10 +194,10 @@ const Page = () => (
 
     <section className="hm-section">
       <div className="hm-shell" data-reveal>
-        <h2>Built to cover every harness.</h2>
+        <h2>Whichever agent they have</h2>
         <p className="hm-body">
-          Fourteen harnesses out of the box. For anything else, an adapter is
-          one file.
+          Fourteen harnesses audited: two adapters shipped, twelve on the way.
+          For anything else, an adapter is one file.
         </p>
         <ul className="hm-wall">
           {HARNESSES.map((h) => (
@@ -221,7 +226,9 @@ const Page = () => (
 
     <footer className="hm-footer">
       <div className="hm-shell hm-footer-inner">
-        <p className="hm-footer-line">Ship the agent layer once.</p>
+        <p className="hm-footer-line">
+          Add AnyAgent to your tool with one zero-dependency package.
+        </p>
         <div className="hm-footer-actions">
           <span className="hm-install">
             <code>bun add anyagent</code>
@@ -236,7 +243,7 @@ const Page = () => (
         </div>
         <div className="hm-footer-meta">
           <Link className="hm-wordmark" href="/">
-            anyagent
+            AnyAgent
           </Link>
           <Link href="/docs">Docs</Link>
           <a href={GITHUB}>GitHub</a>
