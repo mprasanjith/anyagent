@@ -3,7 +3,7 @@ title: Permissions
 description: The three autonomy levels, what each means for the user's machine, and how AnyAgent maps them onto each CLI.
 ---
 
-Every run carries one of three permission levels that bound how much the agent can do to the working directory. This page explains what each level means for the end user's machine, when to pick which for a shipped tool, and how AnyAgent maps your choice onto each CLI's native flags. The enum is fixed at `read`, `edit`, and `auto`, and it never widens or silently up- or downgrades your request.
+Every run carries one of three permission levels that bound how much the agent can do to the working directory: `read`, `edit` (the default), and `auto`. The enum never widens and never silently up- or downgrades your request.
 
 ## The three levels
 
@@ -21,7 +21,7 @@ await agent.run("Fix the failing test in test/parser.test.ts", {
 });
 ```
 
-This run lets the agent edit files to fix the test, while its CLI still prompts before running commands you have not pre-approved. Omitting `permission` gives you the same `edit` behavior, since `edit` is the default.
+This run lets the agent edit files to fix the test, while its CLI still prompts before running commands you have not pre-approved. Omitting `permission` gives the same behavior, since `edit` is the default.
 
 <Callout type="warn">
   `auto` disables the CLI's own confirmation prompts, so the agent approves
@@ -36,11 +36,11 @@ Match the level to what your feature does. For a tool that changes code, a setup
 
 Native permission surfaces differ across harnesses: some CLIs take a three-way level flag, some a single autonomy switch, some a per-tool allowlist, and some grade autonomy finer than three levels. Each adapter translates your level onto whichever its CLI uses, and the mapping never lands on something stronger or weaker than you asked for. The exact flag behind each level is documented on the agent's [adapter page](/docs/adapters).
 
-AnyAgent always passes the level explicitly rather than relying on a CLI's default. A CLI whose own default is weaker or stronger than `edit` would otherwise silently change what runs, so passing it every time keeps your chosen level the one that runs.
+AnyAgent always passes the level explicitly rather than relying on a CLI's default, since a CLI whose own default is weaker or stronger than `edit` would otherwise silently change what runs.
 
 ## Why the enum stays fixed
 
-Three levels are the whole surface. AnyAgent never widens the enum for one harness and never maps your request to a different level behind your back. If a CLI cannot honor the level you ask for, the run throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns; check `agent.capabilities.permissionLevels` to see what an agent offers. A CLI with only a single autonomy switch, for example, cannot honor `read`.
+Three levels are the whole surface, and AnyAgent never widens the enum for one harness. If a CLI cannot honor the level you ask for, the run throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns; check `agent.capabilities.permissionLevels` to see what an agent offers. A CLI with only a single autonomy switch, for example, cannot honor `read`.
 
 Some CLIs have finer-grained native permission systems underneath, such as allow-listing individual tools. Those stay reachable through [escape hatches](/docs/escape-hatches), while the three-level enum remains the whole unified surface.
 

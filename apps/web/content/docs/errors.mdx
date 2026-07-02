@@ -3,7 +3,7 @@ title: Handle errors
 description: Branch on AnyAgentError.code to fail well in a tool you ship to other people.
 ---
 
-This page shows how to handle failures in a tool built on AnyAgent. Everything AnyAgent throws is one class, `AnyAgentError`, with no subclass tree. You branch on its `code`, which is one of four values, and turn each into a response that makes sense to your end user. Results never hide failures, so a `try/catch` around the run is the whole story.
+Everything AnyAgent throws is one class, `AnyAgentError`, with no subclass tree. You branch on its `code`, one of four values, and turn each into a response that makes sense to your end user. Results never hide failures: holding a `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story.
 
 ## Branch on the code
 
@@ -50,10 +50,6 @@ console.error("command:", err.argv?.join(" "));
 console.error("stderr:", err.stderr);
 ```
 
-## Results never hide failures
-
-Holding a `RunResult` means the run succeeded. AnyAgent never resolves with an error tucked inside the result, so you never inspect a result to learn whether it worked. Wrap the run in `try/catch` and treat the resolved value as the answer.
-
 ## A complete example
 
 This wraps the `acme init` run and turns each code into a message for the end user:
@@ -96,7 +92,7 @@ try {
 }
 ```
 
-Each branch gives the end user something to act on: a cancellation is not an error, a capability gap names what the agent lacks, an invocation failure points at install and login, and a parse failure asks for a report with the command line attached.
+Each branch gives the end user something to act on.
 
 ## Next steps
 

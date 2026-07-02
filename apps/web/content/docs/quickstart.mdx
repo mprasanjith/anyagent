@@ -3,16 +3,16 @@ title: Quickstart
 description: Install AnyAgent, detect a coding agent the user has installed, and run your first prompt against it.
 ---
 
-This page takes you from install to a working script that detects an installed coding agent and runs a prompt on it. You will run a read-only inspection first, then upgrade the same script to stream live progress. The examples use Bun, and Node works the same way.
+This page takes you from install to a working script: detect an installed coding agent, run a read-only prompt on it, then upgrade the same script to stream live progress. The examples use Bun, and Node works the same way.
 
 ## Prerequisites
 
-Before you start, make sure you have:
+You need:
 
 - Node.js 18 or later, or Bun
 - At least one [supported agent CLI](/docs/adapters) installed and signed in; the supported-agents page links each CLI's headless setup docs
 
-AnyAgent drives the agent the user already authenticated, so no API key is needed here.
+No API key is needed: the prompt runs on the agent the user already signed in to.
 
 ## Install
 
@@ -26,8 +26,6 @@ bun add anyagent
   AnyAgent is pre-release and is not published to npm yet. The commands and API
   on this page match the current `main` branch.
 </Callout>
-
-The library ships as Node-compatible ESM with zero runtime dependencies, so it behaves the same under Node and Bun.
 
 ## Detect and run a prompt
 
@@ -66,7 +64,7 @@ You will see the agent's answer printed to your terminal:
 - lint: checks formatting and lint rules
 ```
 
-Your output will differ, since it comes from whichever agent the machine has installed and from that project's own scripts.
+Your output will differ with the project and the installed agent.
 
 ## Stream live progress
 
@@ -88,7 +86,7 @@ for await (const event of agent.runStream(
 }
 ```
 
-Each `text-delta` event carries a piece of the answer as it arrives, and each `tool-call` event names a tool the agent invoked, such as reading a file. If you `break` out of the loop early, AnyAgent kills the underlying process for you, so an abandoned stream never leaks a running agent.
+Each `text-delta` event carries a piece of the answer as it arrives, and each `tool-call` event names a tool the agent invoked, such as reading a file. Breaking out of the loop early kills the underlying process, so an abandoned stream never leaks a running agent.
 
 ## Next steps
 

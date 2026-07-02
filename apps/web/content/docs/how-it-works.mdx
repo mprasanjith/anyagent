@@ -3,7 +3,7 @@ title: How AnyAgent works
 description: "The mental model behind AnyAgent: one unified surface, a thin core, pure adapters, and native payloads kept on raw."
 ---
 
-AnyAgent runs one prompt-and-run flow against whichever coding-agent CLI a machine has installed. This page builds the mental model behind that: the unified surface that models what every harness shares, the split between a thin core that does all I/O and pure adapters that only describe their CLI, capability tables that tell you what each agent supports, and the `raw` field that keeps every native detail reachable. Understand these four ideas and the rest of the API follows.
+This page builds the mental model behind AnyAgent in four ideas: a unified surface that models what every harness shares, a thin core with pure adapters, capability tables that tell you what each agent supports, and a `raw` field that keeps every native detail reachable. Understand these and the rest of the API follows.
 
 ## One surface across every harness
 
@@ -20,7 +20,7 @@ An adapter is data plus two pure functions:
 - `buildInvocation(prompt, opts)` returns the exact command, arguments, environment, working directory, and stdin input to run
 - `parse(source, { strict })` turns the process output into normalized events, ending in exactly one `done`
 
-Purity is the point. Because an adapter only maps inputs to outputs and never launches anything, it is tested offline against recorded fixtures of real CLI output, with zero subprocesses. That is also why [adding an adapter](/docs/adding-an-adapter) is a single file.
+Because an adapter only maps inputs to outputs and never launches anything, it is tested offline against recorded fixtures of real CLI output, with zero subprocesses. That is also why [adding an adapter](/docs/adding-an-adapter) is a single file.
 
 Here is one run through the split, from your call to the events you receive:
 
@@ -31,8 +31,6 @@ flowchart LR
   C --> D[Adapter parses output]
   D --> E[Normalized events end in done]
 ```
-
-Your code calls `run`, the core validates the options against the adapter's capability table and spawns the CLI, the adapter's `parse` reads the process output, and you receive normalized events that finish with a single `done`.
 
 ## Capability tables describe each CLI
 
@@ -58,7 +56,7 @@ const { session_id } = first.raw as { session_id?: string };
 const followUp = await agent.run("Continue with src/.", { resume: session_id });
 ```
 
-The first run's `raw` carries the id, here under `session_id`, and passing it as `resume` continues the same conversation. Each [adapter page](/docs/adapters) documents its raw shape, including the key its session id lives under.
+Each [adapter page](/docs/adapters) documents its raw shape, including the key its session id lives under.
 
 ## Next steps
 

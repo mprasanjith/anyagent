@@ -3,7 +3,7 @@ title: Escape hatches
 description: Reach native CLI capabilities the unified surface does not model, from adding one flag to owning the whole process.
 ---
 
-The unified surface covers what most harnesses share, which means every CLI can do things it does not model: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI's native capabilities, in increasing order of control. This page covers `extraArgs` for adding native flags, `agent.raw.buildInvocation` for the exact command, and `agent.raw.spawn` for owning the process, plus when to reach for each. Before rebuilding anything, check whether an event's `raw` field already carries what you need.
+The unified surface covers what most harnesses share, which means every CLI can do things it does not model: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI's native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
 
 ## extraArgs: add native flags, keep normalized events
 
@@ -31,7 +31,7 @@ console.log(inv.command, inv.args.join(" "));
 // claude -p --output-format stream-json --verbose --permission-mode acceptEdits
 ```
 
-The output is the full argv for the run, so you can print it, diff it, or hand it to another executor. Nothing spawns; you get back only the resolved command.
+Nothing spawns; you get back only the resolved command.
 
 ## agent.raw.spawn: own the ChildProcess
 

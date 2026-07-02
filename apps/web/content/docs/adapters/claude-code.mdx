@@ -3,7 +3,7 @@ title: Claude Code
 description: How the claude-code adapter detects, invokes, and parses Anthropic's Claude Code CLI.
 ---
 
-The `claude-code` adapter drives Anthropic's Claude Code CLI in headless mode. It declares the full capability table, and it is the reference implementation to mirror when you are [adding an adapter](/docs/adding-an-adapter). This page covers detection, the capability table, how each run option maps to a CLI flag, what the stream produces, how usage is reported, and how to resume a session.
+The `claude-code` adapter drives Anthropic's Claude Code CLI in headless mode. It declares the full capability table, and it is the reference implementation to mirror when you are [adding an adapter](/docs/adding-an-adapter).
 
 Import the factory from the `anyagent/claude-code` subpath and hand it to `create`:
 
@@ -17,7 +17,7 @@ const result = await agent.run("summarize this repo");
 
 ## Detection
 
-Detection looks for a `claude` binary on `PATH` and reads the version from `claude --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; AnyAgent never changes behavior based on it, and a failed version probe leaves it `null` without blocking use.
+Detection looks for a `claude` binary on `PATH` and reads the version from `claude --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only, and behavior never depends on it.
 
 ## Capabilities
 
@@ -52,7 +52,7 @@ Every run executes `claude -p --output-format stream-json --verbose` with a `--p
 
 Claude Code emits whole assistant messages, so one `text-delta` carries a full message rather than a token. Thinking blocks produce no normalized event, though the reasoning stays reachable on the surrounding raw payloads.
 
-Tool use maps to `tool-call` and its result to `tool-result`. Concatenating every `text-delta` reproduces `RunResult.text` exactly, as the conformance suite requires.
+Tool use maps to `tool-call` and its result to `tool-result`.
 
 ## Usage reporting
 

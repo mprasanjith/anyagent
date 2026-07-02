@@ -3,7 +3,7 @@ title: Codex
 description: How the codex adapter detects, invokes, and parses OpenAI's Codex CLI.
 ---
 
-The `codex` adapter drives OpenAI's Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto AnyAgent's normalized stream. This page covers detection, the capability table and its two unsupported options, how each run option maps to a CLI flag, why the sandbox flag is always explicit, what the stream produces, the usage quirk, errors, and how to resume a session.
+The `codex` adapter drives OpenAI's Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto AnyAgent's normalized stream.
 
 Import the factory from the `anyagent/codex` subpath and hand it to `create`:
 

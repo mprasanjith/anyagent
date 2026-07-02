@@ -3,7 +3,7 @@ title: Run a prompt
 description: Configure a run with RunOptions and execute it against an installed agent.
 ---
 
-This page shows how to run one prompt on an agent and read the result. You will write a scoped prompt, set run options such as the working directory and model, and handle the `RunResult` that comes back. Every option is validated against the agent's capability table before any process spawns, so an unsupported request fails fast with a catchable error rather than mid-run.
+This page shows how to run one prompt on an agent: write a scoped prompt, set run options, and read the `RunResult`. Every option is validated against the agent's capability table before any process spawns, so an unsupported request fails fast with a catchable error rather than mid-run; the guards shown per option below all rely on this.
 
 ## Run and read the result
 
@@ -45,8 +45,6 @@ const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
 await agent.run(prompt, opts);
 ```
 
-Requesting `model` on an agent whose table reports `modelSelection: false` throws before anything spawns.
-
 ## Append a system prompt
 
 `systemPrompt` is appended to the CLI's own system prompt. It never replaces it. Use it to set standing instructions for the run:
@@ -57,7 +55,7 @@ await agent.run(prompt, {
 });
 ```
 
-Not every CLI accepts a system prompt, so guard with `capabilities.systemPrompt` when your tool targets more than one agent.
+Guard with `capabilities.systemPrompt` when your tool targets more than one agent.
 
 ## Pass environment variables
 
@@ -80,7 +78,7 @@ const followUp = await agent.run("Now fix the issues you found.", {
 });
 ```
 
-Here the harness reports the id as `session_id`; your target's adapter page names its key. Guard with `capabilities.sessionResume` when targeting an agent that might lack it.
+Guard with `capabilities.sessionResume` when targeting an agent that might lack it.
 
 ## Attach MCP servers
 
@@ -93,7 +91,7 @@ const opts = agent.capabilities.mcp
 await agent.run(prompt, opts);
 ```
 
-Guard with `capabilities.mcp`: requesting servers on an agent that declares `mcp: false` throws `UnsupportedCapability` before spawning. When a CLI has its own config-based route to MCP instead, its [adapter page](/docs/adapters) says so, reachable through [escape hatches](/docs/escape-hatches).
+When a CLI has its own config-based route to MCP instead, its [adapter page](/docs/adapters) says so, reachable through [escape hatches](/docs/escape-hatches).
 
 ## Next steps
 

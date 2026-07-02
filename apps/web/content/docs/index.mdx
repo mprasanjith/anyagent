@@ -7,9 +7,7 @@ AnyAgent is a TypeScript library that detects which of the [supported coding-age
 
 ## Why it exists
 
-The developers who use your tool already have a coding agent installed and signed in. AnyAgent puts that install to work: the prompt you write runs on their agent, under their login, on their subscription. You collect no API keys and pay no inference bill.
-
-That shifts the cost and the credentials to where they already exist. Your tool ships the logic; the user's agent supplies the model and the auth.
+The developers who use your tool already have a coding agent installed and signed in. AnyAgent puts that install to work: the prompt you write runs on their agent, under their login, on their subscription. You collect no API keys and pay no inference bill. Your tool ships the logic; the user's agent supplies the model and the auth.
 
 ## A first look
 
@@ -38,16 +36,8 @@ AnyAgent suits tools that run a defined task against the user's own project:
 - **Migration and codemod runners**: apply a framework upgrade across a repo
 - **Generators**: produce changelogs, tests, or docs from the current source
 
-Each of these runs on the end user's agent, so you ship the prompt and the guardrails while they supply the model.
-
 ## How the docs are organized
 
 Start with the [Quickstart](/docs/quickstart) for the shortest path to a working script. The guides then cover one task each: [detecting agents](/docs/detecting-agents), [running prompts](/docs/running-prompts), [streaming](/docs/streaming), [permissions](/docs/permissions), [errors](/docs/errors), and the recommended [production flow](/docs/production).
 
 For the reasoning behind the design, read [how it works](/docs/how-it-works). When you need a capability the unified surface does not model, see the [escape hatches](/docs/escape-hatches). The [API reference](/docs/api) lists every type, and each [supported agent](/docs/adapters) has an adapter page documenting how it maps onto the surface.
-
-## Next steps
-
-- [Quickstart](/docs/quickstart): detect an agent and run your first prompt
-- [How it works](/docs/how-it-works): the thin core and pure adapter design
-- [Detecting agents](/docs/detecting-agents): find installs and let the user choose

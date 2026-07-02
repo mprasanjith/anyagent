@@ -3,7 +3,7 @@ title: Detect installed agents
 description: Find the coding agents on the end user's machine and decide what to run.
 ---
 
-This page shows how to find which coding agents your end user has installed, tell them what is about to happen, and pick one to run. Detection is the first step in any tool built on AnyAgent, because your prompt runs on the agent your user already has, under their login and their subscription.
+This page shows how to find the coding agents installed on the end user's machine, pick one to run, and handle a machine with none.
 
 ## Find what is installed
 
@@ -15,7 +15,7 @@ import { detect } from "anyagent";
 const installed = await detect();
 ```
 
-Each `DetectResult` carries what you need to describe and run the agent: `id` (the stable machine name, such as `"claude-code"`), `name` (the display name, such as `"Claude Code"`), `installed`, `version` (a string or `null`), `path` (where the binary resolved), `capabilities`, and the `adapter` itself. The `version` field is for display only. AnyAgent never changes behavior based on it, and a failed version probe leaves it `null` without blocking the agent.
+Each `DetectResult` carries what you need to describe and run the agent: `id` (the stable machine name, such as `"claude-code"`), `name` (the display name, such as `"Claude Code"`), `installed`, `version` (display only; a failed probe leaves it `null`), `path` (where the binary resolved), `capabilities`, and the `adapter` itself.
 
 Here is a printed listing inside an `acme init` setup wizard:
 
@@ -47,11 +47,11 @@ const chosen = installed[Number(answer) - 1] ?? installed[0];
 const agent = create(chosen);
 ```
 
-`create()` accepts a `DetectResult` directly and returns a runnable `Agent`. Swap the `readline` step for your own prompt library or UI: the point is that you print the names and map the answer back to a `DetectResult`.
+`create()` accepts a `DetectResult` directly and returns a runnable `Agent`. Swap the `readline` step for your own prompt library or UI; you print the names and map the answer back to a `DetectResult`.
 
 ## Tell the user what will happen
 
-Before you run anything, tell the end user which agent you are about to drive. Their prompt runs under their login and bills against their subscription, so name the agent so nothing runs by surprise.
+Before you run anything, name the agent you are about to drive. The prompt runs under the user's login and bills against their subscription, so nothing should run by surprise.
 
 ```ts
 console.log(`acme init will run ${chosen.name}, signed in under your account.`);

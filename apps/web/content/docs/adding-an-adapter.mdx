@@ -3,7 +3,7 @@ title: Adding an adapter
 description: Implement, record, and verify support for a new coding-agent CLI in the AnyAgent repo.
 ---
 
-This guide is for contributors adding CLI support to the AnyAgent repo itself, not for callers building on top of the library. An adapter is one file of data and pure functions with no I/O of its own. The page walks through the contract, recording real CLI output as fixtures, and the conformance and live tests every adapter must pass. One rule governs all of it: no adapter ships against a guessed schema. Every claim about a CLI's flags and output format is verified against a real audit plus recorded real output.
+This guide is for contributors adding CLI support to the AnyAgent repo itself, not for callers building on top of the library. An adapter is one file of data and pure functions with no I/O of its own. One rule governs all of it: no adapter ships against a guessed schema; every claim about a CLI's flags and output format is verified against a real audit plus recorded real output.
 
 ## Before you start
 
@@ -36,7 +36,7 @@ export interface Adapter {
 
 ## Keep buildInvocation pure
 
-`buildInvocation` maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything. The core does the spawning, which is what keeps adapters testable offline against fixtures with zero subprocesses.
+`buildInvocation` maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything; the core does the spawning, which keeps adapters testable offline with zero subprocesses.
 
 Pipe the prompt through `Invocation.input` rather than a positional argument. `input` is written to the child's stdin, so a large prompt never hits the OS argv size limit. A positional prompt would.
 

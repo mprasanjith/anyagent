@@ -3,7 +3,7 @@ title: Stream progress
 description: Render an agent's events as it works, and cancel a run cleanly.
 ---
 
-This page shows how to stream an agent's activity with `runStream` and render it as a progress display. A long run with no output looks hung to the end user, so showing what the agent is doing is a product requirement. You will render text and tool activity as it arrives, and cancel a run with an `AbortSignal`.
+This page shows how to stream an agent's activity with `runStream` and cancel a run with an `AbortSignal`. A long run with no output looks hung to the end user, so showing what the agent is doing is a product requirement.
 
 ## Loop over events
 
@@ -21,7 +21,7 @@ for await (const event of agent.runStream(prompt, { permission: "edit" })) {
 }
 ```
 
-That prints the agent's answer as it streams and logs a line each time the agent invokes a tool, so the end user sees continuous progress during an `acme init` run.
+That prints the agent's answer as it streams and logs a line each time the agent invokes a tool.
 
 ## The five event types
 
@@ -82,7 +82,7 @@ try {
 }
 ```
 
-Breaking out of the loop early also stops the run. When you `break`, AnyAgent kills the underlying process for you, so an abandoned stream never leaks a running agent. Early exit is safe without an explicit abort.
+Breaking out of the loop early also stops the run: AnyAgent kills the underlying process for you, so early exit is safe without an explicit abort.
 
 ## Next steps
 
