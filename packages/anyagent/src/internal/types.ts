@@ -38,35 +38,44 @@ export type PermissionLevel = "read" | "edit" | "auto";
  */
 export interface CapabilityTable {
   /**
-   * Whether `runStream` events are the harness's own live stream (`true`) or
-   * synthesized (`false`). When `false`, the underlying CLI prints plain text
-   * or a single final object, so you receive one `text-delta` carrying the
-   * whole answer, then `done`. Informational only — `runStream` works either
-   * way.
+   * Whether the agent streams its work as it goes. When `true`, `runStream`
+   * relays the agent's own live events. When `false`, the CLI only prints a
+   * final answer, so you get it all at once — one `text-delta` with the whole
+   * reply, then `done`. Either way `runStream` works; this just tells you
+   * whether to expect progressive output.
    */
   streaming: boolean;
   /**
-   * The {@link PermissionLevel}s this CLI can honor. Requesting one that is
-   * missing throws `UnsupportedCapability` instead of silently mapping to
-   * something stronger or weaker.
+   * The {@link PermissionLevel}s this agent supports. Asking for one that
+   * isn't listed fails fast, rather than quietly giving the agent more or less
+   * freedom than you asked for.
    */
   permissionLevels: PermissionLevel[];
   /**
-   * Whether the underlying CLI can produce schema-constrained output. The
-   * unified surface does not model this yet, so the flag is informational
-   * only: to use it, pass the CLI's native flag via
-   * {@link RunOptions.extraArgs} or drive the process through `agent.raw`.
+   * Whether the agent can return output shaped to a schema. AnyAgent doesn't
+   * model this yet, so it's informational: to use it, pass the CLI's own flag
+   * via {@link RunOptions.extraArgs} or drive the process through
+   * {@link RawHandle}.
    */
   structuredOutput: boolean;
-  /** Whether {@link RunOptions.model} is honored. */
+  /** Whether you can pick the model for a run. See {@link RunOptions.model}. */
   modelSelection: boolean;
-  /** Whether {@link RunOptions.resume} can continue a prior session. */
+  /**
+   * Whether the agent can pick up an earlier conversation. See
+   * {@link RunOptions.resume}.
+   */
   sessionResume: boolean;
-  /** Whether {@link RunOptions.mcp} servers can be attached to a run. */
+  /** Whether you can attach MCP servers to a run. See {@link RunOptions.mcp}. */
   mcp: boolean;
-  /** Whether {@link RunOptions.systemPrompt} is honored. */
+  /**
+   * Whether you can add to the agent's system prompt. See
+   * {@link RunOptions.systemPrompt}.
+   */
   systemPrompt: boolean;
-  /** Whether {@link RunOptions.cwd} is honored. */
+  /**
+   * Whether you can choose the directory the agent works in. See
+   * {@link RunOptions.cwd}.
+   */
   cwd: boolean;
 }
 
@@ -256,32 +265,94 @@ export interface DetectionSpec {
 }
 
 /**
+ * The ids of the agents AnyAgent ships with, as a lookup whose keys feed
+ * {@link AgentId}. A third-party adapter can teach the id type about its own
+ * agent by adding to this interface through module augmentation:
+ *
+ * ```ts
+ * declare module "anyagent" {
+ *   interface KnownAgents {
+ *     "my-cli": true;
+ *   }
+ * }
+ * ```
+ */
+export interface KnownAgents {
+  "claude-code": true;
+  codex: true;
+}
+
+/**
+ * The id of a coding agent. The built-in ids (`keyof {@link KnownAgents}`)
+ * autocomplete, but any string is accepted, so custom adapters fit too — an
+ * `AgentId` is still just a `string` you can store or compare freely.
+ */
+export type AgentId = keyof KnownAgents | (string & Record<never, never>);
+
+/**
  * How an adapter identifies itself: `id` is the stable machine name
  * (`"claude-code"`), `name` the human-readable one (`"Claude Code"`), and
  * `bin` the executable names to look for on `PATH` in priority order — the
  * first one found wins, even if a later one also exists.
  */
 export interface AdapterMeta {
-  id: string;
+  id: AgentId;
   name: string;
   bin: string[];
 }
 
 /**
- * One agent CLI as found (or not) on this machine — hand it straight to
- * `create()` to get a runnable {@link Agent}. `path` is where the binary
- * resolved. `version` is whatever the CLI reported, kept for display only:
- * AnyAgent never gates behavior on it, and a version probe that fails leaves
- * it `null` without blocking use.
+ * One coding agent found on the machine and ready to run. `detect()` gives you
+ * one of these for each installed agent; hand it straight to `create()` to get
+ * a runnable {@link Agent}.
  */
 export interface DetectResult {
-  adapter: Adapter;
-  id: string;
+  /**
+   * The stable id of the agent tool, e.g. `"claude-code"`. Use this
+   * to programmatically identify a specific agent tool.
+   */
+  id: AgentId;
+  /** The human-readable agent tool name, e.g. `"Claude Code"`. */
   name: string;
-  installed: boolean;
+  /**
+   * The installed version, e.g. `"2.0.31"`, or `null` when the agent doesn't
+   * report one.
+   */
   version: string | null;
-  path: string | null;
+  /** The full path to the agent's program on disk. */
+  path: string;
+  /** What this agent can and can't do, so you can tailor a run to it. */
   capabilities: CapabilityTable;
+  /**
+   * The adapter that knows how to drive this agent. `create()` uses it; you
+   * won't normally reach for it yourself.
+   */
+  adapter: Adapter;
+}
+
+/**
+ * The raw result of checking for one agent, produced by built-in detection or
+ * a custom {@link Adapter.detect}. Unlike {@link DetectResult} it also covers
+ * the not-found case — that's why `path` can be `null`: when the agent's
+ * program isn't on `PATH`, `installed` is `false` and `path` is `null`.
+ * `detect()` drops those and hands you only {@link DetectResult}s, so you
+ * won't meet this type unless you're writing an adapter.
+ */
+export interface Detection {
+  /** Whether the agent's program was found on the user's `PATH`. */
+  installed: boolean;
+  /** The full path to the program on disk, or `null` when it wasn't found. */
+  path: string | null;
+  /** A short, stable id for the agent, e.g. `"claude-code"`. */
+  id: AgentId;
+  /** The agent's display name, e.g. `"Claude Code"`. */
+  name: string;
+  /** The installed version, or `null` when none was reported. */
+  version: string | null;
+  /** What this agent can and can't do. */
+  capabilities: CapabilityTable;
+  /** The adapter that knows how to drive this agent. */
+  adapter: Adapter;
 }
 
 /**
@@ -301,7 +372,7 @@ export interface Adapter {
   detection: DetectionSpec;
   capabilities: CapabilityTable;
   /** Replace default detection entirely; most adapters omit this. */
-  detect?: (probe: VersionProbe) => Promise<DetectResult>;
+  detect?: (probe: VersionProbe) => Promise<Detection>;
   /**
    * Map a prompt plus validated options to the exact process to spawn. Pure:
    * build the {@link Invocation}, never launch it.

@@ -13,7 +13,7 @@ const probe: VersionProbe = {
 test("detect returns only installed adapters, unordered list", async () => {
   const res = await detect({ adapters: [fakeStreaming, fakeText], probe });
   expect(res.map((r) => r.id)).toEqual(["fake-stream"]);
-  expect(res[0]?.installed).toBe(true);
+  expect(res[0]?.path).toBe("/usr/bin/fake-stream");
   expect(res[0]?.adapter).toBe(fakeStreaming);
 });
 

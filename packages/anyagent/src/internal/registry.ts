@@ -2,7 +2,12 @@ import { claudeCode } from "../claude-code/index.js";
 import { codex } from "../codex/index.js";
 import { runDetect } from "./detect.js";
 import { realProbe } from "./runtime/spawn.js";
-import type { Adapter, DetectResult, VersionProbe } from "./types.js";
+import type {
+  Adapter,
+  Detection,
+  DetectResult,
+  VersionProbe,
+} from "./types.js";
 
 /** Built-in adapters. A new adapter appends its factory result here. */
 export const BUILTINS: Adapter[] = [claudeCode(), codex()];
@@ -36,5 +41,16 @@ export const detect = async (
   const adapters = opts.adapters ?? BUILTINS;
   const probe = opts.probe ?? realProbe;
   const results = await Promise.all(adapters.map((a) => runDetect(a, probe)));
-  return results.filter((r) => r.installed);
+  return results
+    .filter(
+      (d): d is Detection & { path: string } => d.installed && d.path !== null
+    )
+    .map((d) => ({
+      adapter: d.adapter,
+      capabilities: d.capabilities,
+      id: d.id,
+      name: d.name,
+      path: d.path,
+      version: d.version,
+    }));
 };

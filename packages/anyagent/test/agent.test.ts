@@ -129,7 +129,6 @@ test("create() accepts a DetectResult and builds an agent for its adapter", () =
     adapter: fakeStreaming,
     capabilities: fakeStreaming.capabilities,
     id: "fake-stream",
-    installed: true,
     name: "Fake Stream",
     path: "/usr/bin/fake-stream",
     version: "1.0.0",
