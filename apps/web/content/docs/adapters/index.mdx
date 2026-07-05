@@ -3,11 +3,18 @@ title: Supported agents
 description: Every coding-agent CLI AnyAgent detects and drives, with a page per adapter documenting its mappings and quirks.
 ---
 
-These are the agent CLIs AnyAgent supports. `detect()` scans for all of them, and each has its own subpath export for targeting it directly. Everything harness-specific lives on the agent's adapter page: how detection finds it, the capability table it declares, how each run option maps to a native flag, what its stream produces, and where its session id lives on `raw`.
+import { getPageTreePeers } from "fumadocs-core/page-tree";
+import { Card, Cards } from "fumadocs-ui/components/card";
+import { source } from "@/lib/source";
 
-| Agent                                     | Binary   | Import                 | CLI headless docs                                                          |
-| ----------------------------------------- | -------- | ---------------------- | -------------------------------------------------------------------------- |
-| [Claude Code](/docs/adapters/claude-code) | `claude` | `anyagent/claude-code` | [Headless mode](https://code.claude.com/docs/en/headless)                  |
-| [Codex](/docs/adapters/codex)             | `codex`  | `anyagent/codex`       | [Non-interactive mode](https://developers.openai.com/codex/noninteractive) |
+These are the agent CLIs AnyAgent supports. `detect()` scans for all of them, and each has its own subpath export for targeting it directly. Everything harness-specific lives on the agent’s adapter page: how detection finds it, the capability table it declares, how each run option maps to a native flag, what its stream produces, and where its session id lives on `raw`.
+
+<Cards>
+  {getPageTreePeers(source.getPageTree(), "/docs/adapters").map((peer) => (
+    <Card href={peer.url} key={peer.url} title={peer.name}>
+      {peer.description}
+    </Card>
+  ))}
+</Cards>
 
 An adapter ships only against a verified audit and recorded real CLI output, never a guessed schema. To bring another CLI into this list, see [Adding an adapter](/docs/adding-an-adapter).

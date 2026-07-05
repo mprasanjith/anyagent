@@ -10,7 +10,7 @@ const allCaps: CapabilityTable = {
   cwd: true,
   mcp: true,
   modelSelection: true,
-  permissionLevels: ["read-only", "edit", "full-auto"],
+  permissionLevels: ["read", "edit", "auto"],
   sessionResume: true,
   streaming: true,
   structuredOutput: true,
@@ -98,6 +98,6 @@ export const fakeText: Adapter = {
 
 export const fakeBinaryPerms: Adapter = {
   ...fakeStreaming,
-  capabilities: { ...allCaps, permissionLevels: ["edit", "full-auto"] },
+  capabilities: { ...allCaps, permissionLevels: ["edit", "auto"] },
   meta: { bin: ["fake-binary"], id: "fake-binary", name: "Fake Binary" },
 };

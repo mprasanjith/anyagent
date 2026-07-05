@@ -1,9 +1,9 @@
 ---
 title: Codex
-description: How the codex adapter detects, invokes, and parses OpenAI's Codex CLI.
+description: How the codex adapter detects, invokes, and parses OpenAI’s Codex CLI.
 ---
 
-The `codex` adapter drives OpenAI's Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto AnyAgent's normalized stream. This page covers detection, the capability table and its two unsupported options, how each run option maps to a CLI flag, why the sandbox flag is always explicit, what the stream produces, the usage quirk, errors, and how to resume a session.
+The `codex` adapter drives OpenAI’s Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto AnyAgent’s normalized stream.
 
 Import the factory from the `anyagent/codex` subpath and hand it to `create`:
 
@@ -26,7 +26,7 @@ The adapter declares two options as unsupported, `mcp` and `systemPrompt`:
 | Capability         | Value                                           |
 | ------------------ | ----------------------------------------------- |
 | `streaming`        | `true`, a live NDJSON stream                    |
-| `permissionLevels` | `read-only`, `edit`, `full-auto`                |
+| `permissionLevels` | `read`, `edit`, `auto`                          |
 | `modelSelection`   | `true`                                          |
 | `sessionResume`    | `true`                                          |
 | `mcp`              | `false`                                         |
@@ -40,15 +40,15 @@ Requesting `mcp` or `systemPrompt` throws [`AnyAgentError`](/docs/errors) with `
 
 Every run executes `codex exec --json` with the prompt piped over stdin through the `-` positional, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) set the sandbox and append further flags:
 
-| Option                    | Flag                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------ |
-| `permission: "read-only"` | `--sandbox read-only`                                                          |
-| `permission: "edit"`      | `--sandbox workspace-write`                                                    |
-| `permission: "full-auto"` | `--sandbox danger-full-access`                                                 |
-| `model`                   | `--model <name>`                                                               |
-| `resume`                  | `codex exec resume <threadId>`, with the sandbox set via `-c sandbox_mode="…"` |
+| Option               | Flag                                                                           |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `permission: "read"` | `--sandbox read-only`                                                          |
+| `permission: "edit"` | `--sandbox workspace-write`                                                    |
+| `permission: "auto"` | `--sandbox danger-full-access`                                                 |
+| `model`              | `--model <name>`                                                               |
+| `resume`             | `codex exec resume <threadId>`, with the sandbox set via `-c sandbox_mode="…"` |
 
-The sandbox level is always passed explicitly. `codex exec` defaults to a read-only sandbox, which would weaken AnyAgent's `edit` default if the flag were omitted. On resume, `codex exec resume` has no `--sandbox` flag, so the adapter sets the sandbox through a `-c sandbox_mode` config override instead.
+The sandbox level is always passed explicitly. `codex exec` defaults to a read-only sandbox, which would weaken AnyAgent’s `edit` default if the flag were omitted. On resume, `codex exec resume` has no `--sandbox` flag, so the adapter sets the sandbox through a `-c sandbox_mode` config override instead.
 
 ## What the stream produces
 
@@ -60,7 +60,7 @@ Codex folds cache reads into its `input_tokens`, so the adapter subtracts `cache
 
 ## Errors
 
-A top-level `error` event or a failed turn throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Codex's own message. A nonzero exit or a spawn failure throws the same code.
+A top-level `error` event or a failed turn throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Codex’s own message. A nonzero exit or a spawn failure throws the same code.
 
 ## Resume a session
 

@@ -37,7 +37,6 @@
   --text-lg: 1.5rem;
   --text-xl: 2rem;
   --text-2xl: clamp(1.9rem, 2.4vw + 0.9rem, 2.75rem);
-  --text-stat: clamp(2.5rem, 4vw + 1rem, 4.5rem);
   --text-display: clamp(2.75rem, 5vw + 1rem, 5.25rem);
   --radius-card: 12px;
   --radius-pill: 999px;

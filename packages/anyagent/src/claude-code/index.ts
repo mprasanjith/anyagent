@@ -14,7 +14,7 @@ const CAPS: CapabilityTable = {
   cwd: true,
   mcp: true,
   modelSelection: true,
-  permissionLevels: ["read-only", "edit", "full-auto"],
+  permissionLevels: ["read", "edit", "auto"],
   sessionResume: true,
   streaming: true,
   structuredOutput: true,
@@ -22,9 +22,9 @@ const CAPS: CapabilityTable = {
 };
 
 const PERMISSION_MODE: Record<PermissionLevel, string> = {
+  auto: "bypassPermissions",
   edit: "acceptEdits",
-  "full-auto": "bypassPermissions",
-  "read-only": "default",
+  read: "default",
 };
 
 interface Ctx {

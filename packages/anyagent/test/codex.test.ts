@@ -89,9 +89,9 @@ test("buildInvocation maps prompt, json mode, and edit permission by default", (
 });
 
 test("permission levels map to native sandbox modes", () => {
-  expect(sandboxOf("read-only")).toBe("read-only");
+  expect(sandboxOf("read")).toBe("read-only");
   expect(sandboxOf("edit")).toBe("workspace-write");
-  expect(sandboxOf("full-auto")).toBe("danger-full-access");
+  expect(sandboxOf("auto")).toBe("danger-full-access");
 });
 
 test("resume builds the exec resume form with sandbox as a config override", () => {

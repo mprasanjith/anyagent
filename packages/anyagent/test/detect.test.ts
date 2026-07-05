@@ -4,7 +4,7 @@ import { defaultDetect, runDetect } from "../src/internal/detect.js";
 import type {
   Adapter,
   CapabilityTable,
-  DetectResult,
+  Detection,
   RunResult,
   VersionProbe,
 } from "../src/internal/types.js";
@@ -98,7 +98,7 @@ test("falls back to default version command and regex (captures suffix)", async 
 });
 
 test("runDetect delegates to a custom adapter.detect when present", async () => {
-  const custom: DetectResult = {
+  const custom: Detection = {
     adapter,
     capabilities: caps,
     id: "demo",

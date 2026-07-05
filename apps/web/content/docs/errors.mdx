@@ -3,7 +3,7 @@ title: Handle errors
 description: Branch on AnyAgentError.code to fail well in a tool you ship to other people.
 ---
 
-This page shows how to handle failures in a tool built on AnyAgent. Everything AnyAgent throws is one class, `AnyAgentError`, with no subclass tree. You branch on its `code`, which is one of four values, and turn each into a response that makes sense to your end user. Results never hide failures, so a `try/catch` around the run is the whole story.
+Everything AnyAgent throws is one class, `AnyAgentError`, with no subclass tree. You branch on its `code`, one of four values, and turn each into a response that makes sense to your end user. Results never hide failures: holding a `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story.
 
 ## Branch on the code
 
@@ -30,15 +30,15 @@ Each code tells you where the run failed and what you can do about it in a shipp
 
 `Invocation` fires when the CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error. Surface `stderr` to diagnose it. Common real causes are a missing binary, an expired login, and an installed CLI too old to know a flag you passed.
 
-`Parse` fires when the CLI ran but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI's output format. Report it upstream so the adapter can be updated.
+`Parse` fires when the CLI ran but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format. Report it upstream so the adapter can be updated.
 
-`Aborted` fires when your `AbortSignal` fired and the run was terminated. This is usually a user cancelling on purpose, so treat it as a normal exit rather than a failure.
+`Aborted` fires when your `AbortSignal` fired and the run was terminated. In a shipped tool that is the end user cancelling on purpose, so treat it as a normal exit rather than a failure.
 
 ## Diagnostic fields
 
 Beyond `message` and `code`, three fields help you diagnose a failure and write useful bug reports:
 
-- `raw`: the underlying cause, either a native error or the harness's own error payload
+- `raw`: the underlying cause, either a native error or the harness’s own error payload
 - `argv`: the exact command line that ran, attached when a process was involved
 - `stderr`: what the CLI printed to stderr, attached when a process was involved
 
@@ -49,10 +49,6 @@ console.error(err.message);
 console.error("command:", err.argv?.join(" "));
 console.error("stderr:", err.stderr);
 ```
-
-## Results never hide failures
-
-Holding a `RunResult` means the run succeeded. AnyAgent never resolves with an error tucked inside the result, so you never inspect a result to learn whether it worked. Wrap the run in `try/catch` and treat the resolved value as the answer.
 
 ## A complete example
 
@@ -96,7 +92,7 @@ try {
 }
 ```
 
-Each branch gives the end user something to act on: a cancellation is not an error, a capability gap names what the agent lacks, an invocation failure points at install and login, and a parse failure asks for a report with the command line attached.
+Each branch gives the end user something to act on.
 
 ## Next steps
 

@@ -3,7 +3,7 @@ title: Adding an adapter
 description: Implement, record, and verify support for a new coding-agent CLI in the AnyAgent repo.
 ---
 
-This guide is for contributors adding CLI support to the AnyAgent repo itself, not for callers building on top of the library. An adapter is one file of data and pure functions with no I/O of its own. The page walks through the contract, recording real CLI output as fixtures, and the conformance and live tests every adapter must pass. One rule governs all of it: no adapter ships against a guessed schema. Every claim about a CLI's flags and output format is verified against a real audit plus recorded real output.
+This guide is for contributors adding CLI support to the AnyAgent repo itself, not for callers building on top of the library. An adapter is one file of data and pure functions with no I/O of its own. One rule governs all of it: no adapter ships against a guessed schema; every claim about a CLI’s flags and output format is verified against a real audit plus recorded real output.
 
 ## Before you start
 
@@ -11,19 +11,20 @@ You need three things in place:
 
 - A clone of the AnyAgent repo with `bun install` run at the root
 - The target CLI installed and signed in, so you can record real output
-- The CLI's headless documentation: its non-interactive invocation, streaming format, and permission flags
+- The CLI’s headless documentation: its non-interactive invocation, streaming format, and permission flags
 
 Per-CLI facts collected during audits live in `docs/specs/harness-audit.md`.
 
 ## The contract
 
-Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/<id>/index.ts` and export it as a factory function. The interface has five members:
+Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/<id>/index.ts` and export it as a factory function. The interface has five required members plus an optional `detect`:
 
 ```ts
 export interface Adapter {
   meta: AdapterMeta; // id, display name, binary names on PATH
   detection: DetectionSpec; // version command and regex; omit for defaults
   capabilities: CapabilityTable; // which RunOptions this CLI honors
+  detect?: (probe: VersionProbe) => Promise<Detection>;
   buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
   parse: (
     source: OutputSource,
@@ -32,13 +33,13 @@ export interface Adapter {
 }
 ```
 
-`meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
+`meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run. `detect` replaces default detection entirely; omit it unless the CLI needs one. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
 
 ## Keep buildInvocation pure
 
-`buildInvocation` maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything. The core does the spawning, which is what keeps adapters testable offline against fixtures with zero subprocesses.
+`buildInvocation` maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything. The core does the spawning, which keeps adapters testable offline with zero subprocesses.
 
-Pipe the prompt through `Invocation.input` rather than a positional argument. `input` is written to the child's stdin, so a large prompt never hits the OS argv size limit. A positional prompt would.
+Pipe the prompt through `Invocation.input` rather than a positional argument. `input` is written to the child’s stdin, so a large prompt never hits the OS argv size limit. A positional prompt would.
 
 ## Parse rules
 
@@ -55,7 +56,7 @@ const parse = ndjsonParser<Ctx>({
     // one raw JSON object in; normalized event(s) or null out
   },
   finalize: (ctx) => ({
-    events: [],
+    events: [], // the parser overwrites this with the buffered events
     raw: ctx.raw,
     text: ctx.text.join(""),
     usage: ctx.usage,
@@ -63,11 +64,11 @@ const parse = ndjsonParser<Ctx>({
 });
 ```
 
-`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `null` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. Read `packages/anyagent/src/claude-code/index.ts` alongside this page; it is the reference implementation, and new adapters should mirror its shape.
+`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `null` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. `finalize` does not need to collect events itself: the parser buffers everything `map` emits and fills `RunResult.events` after `finalize` returns. Read `packages/anyagent/src/claude-code/index.ts` alongside this page; it is the reference implementation, and new adapters should mirror its shape.
 
 ## Record real fixtures
 
-Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/<id>/`. The recorder builds the adapter's own read-only invocation, runs it, and writes the raw output lines to the right path.
+Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/<id>/`. The recorder builds the adapter’s own read-only invocation, runs it, and writes the raw output lines to the right path.
 
 First append your adapter to `BUILTINS` in `packages/anyagent/src/internal/registry.ts`, since the recorder resolves adapters by id from that list. Then record from `packages/anyagent/`:
 
@@ -79,14 +80,22 @@ bun src/cli/record.ts <adapterId> simple "Reply with exactly the word: pong"
 wrote test/fixtures/<adapterId>/simple.jsonl
 ```
 
-Record at least a `simple` scenario. Add `tools` and `edit` scenarios when the CLI's tool-call and file-change output has its own shapes that `simple` does not exercise.
+Record at least a `simple` scenario. Add `tools` and `edit` scenarios when the CLI’s tool-call and file-change output has its own shapes that `simple` does not exercise.
 
 ## Run the conformance suite
 
-`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one terminal `done`, events in order, delta text that concatenates to `RunResult.text`, and permission validation that matches the declared capability table.
+`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one terminal `done`, delta text that concatenates to `RunResult.text`, a valid invocation for every declared permission level, and an `UnsupportedCapability` throw for every capability left undeclared. Add a test to `test/conformance.test.ts`:
 
 ```ts
+import { test } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { runConformance } from "../src/internal/conformance/suite.js";
+import { myAgent } from "../src/my-agent/index.js";
+
+const read = (p: string) =>
+  readFileSync(path.join(import.meta.dir, p), "utf-8");
 
 test("myAgent passes conformance", async () => {
   await runConformance(myAgent(), {

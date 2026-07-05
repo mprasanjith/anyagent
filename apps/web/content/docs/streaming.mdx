@@ -1,9 +1,9 @@
 ---
 title: Stream progress
-description: Render an agent's events as it works, and cancel a run cleanly.
+description: Render an agent’s events as it works, and cancel a run cleanly.
 ---
 
-This page shows how to stream an agent's activity with `runStream` and render it as a progress display. A long run with no output looks hung to the end user, so showing what the agent is doing is a product requirement. You will render text and tool activity as it arrives, and cancel a run with an `AbortSignal`.
+This page shows how to stream an agent’s activity with `runStream` and cancel a run with an `AbortSignal`. A long run with no output looks hung to the end user, so showing what the agent is doing is a product requirement.
 
 ## Loop over events
 
@@ -21,25 +21,25 @@ for await (const event of agent.runStream(prompt, { permission: "edit" })) {
 }
 ```
 
-That prints the agent's answer as it streams and logs a line each time the agent invokes a tool, so the end user sees continuous progress during an `acme init` run.
+That prints the agent’s answer as it streams and logs a line each time the agent invokes a tool.
 
 ## The five event types
 
-Every event has a `type`, plus fields for its kind, plus `raw`: the harness's untouched native payload for that event.
+Every event has a `type` plus fields for its kind. All but `done` also carry `raw`: the harness’s untouched native payload for that event.
 
 | Type          | Fields           | Meaning                                    |
 | ------------- | ---------------- | ------------------------------------------ |
-| `text-delta`  | `text`           | A piece of the agent's answer text         |
+| `text-delta`  | `text`           | A piece of the agent’s answer text         |
 | `tool-call`   | `name`, `input`  | The agent invoked a tool                   |
 | `tool-result` | `name`, `output` | A tool returned its output                 |
 | `usage`       | `usage`          | Token and cost accounting became available |
 | `done`        | `result`         | The run finished; carries the `RunResult`  |
 
-How much text one `text-delta` carries depends on the harness: a token, a chunk, or a whole assistant message. Each [adapter page](/docs/adapters) states its granularity. What holds across every adapter, enforced by the conformance suite, is that concatenating every delta's `text` reproduces `RunResult.text` exactly.
+How much text one `text-delta` carries depends on the harness: a token, a chunk, or a whole assistant message. Each [adapter page](/docs/adapters) states its granularity. What holds across every adapter, enforced by the conformance suite, is that concatenating every delta’s `text` reproduces `RunResult.text` exactly.
 
 ## Get the final result
 
-The `done` event carries the final `RunResult` on `event.result`. It is the same object `agent.run` resolves with: `text`, `events`, `usage`, and `raw`. If you drive the generator by hand instead of looping, `runStream`'s return value is that same result:
+The `done` event carries the final `RunResult` on `event.result`. It is the same object `agent.run` resolves with: `text`, `events`, `usage`, and `raw`. If you drive the generator by hand instead of looping, `runStream`’s return value is that same result:
 
 ```ts
 const stream = agent.runStream(prompt);
@@ -53,7 +53,7 @@ const result = next.value; // the RunResult
 
 ## Agents without a live stream
 
-When an agent's `capabilities.streaming` is `false`, the CLI prints a single final payload rather than a live stream. AnyAgent then delivers the whole answer as one `text-delta` followed by `done`. Your loop needs no special case: it renders one large delta instead of many small ones and works unchanged.
+When an agent’s `capabilities.streaming` is `false`, the CLI prints a single final payload rather than a live stream. AnyAgent then delivers the whole answer as one `text-delta` followed by `done`. Your loop needs no special case: it renders one large delta instead of many small ones and works unchanged.
 
 ## Cancel a run
 
@@ -82,7 +82,7 @@ try {
 }
 ```
 
-Breaking out of the loop early also stops the run. When you `break`, AnyAgent kills the underlying process for you, so an abandoned stream never leaks a running agent. Early exit is safe without an explicit abort.
+Breaking out of the loop early also stops the run: AnyAgent kills the underlying process for you, so early exit is safe without an explicit abort.
 
 ## Next steps
 

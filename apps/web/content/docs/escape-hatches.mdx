@@ -3,7 +3,7 @@ title: Escape hatches
 description: Reach native CLI capabilities the unified surface does not model, from adding one flag to owning the whole process.
 ---
 
-The unified surface covers what most harnesses share, which means every CLI can do things it does not model: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI's native capabilities, in increasing order of control. This page covers `extraArgs` for adding native flags, `agent.raw.buildInvocation` for the exact command, and `agent.raw.spawn` for owning the process, plus when to reach for each. Before rebuilding anything, check whether an event's `raw` field already carries what you need.
+The unified surface covers what most harnesses share, which means every CLI can do things it does not model: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI’s native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
 
 ## extraArgs: add native flags, keep normalized events
 
@@ -19,7 +19,7 @@ const result = await agent.run("Generate API docs from the source.", {
 });
 ```
 
-Here a docs-generation feature blocks the agent from running shell commands with a flag native to the CLI it targets, one the surface does not model. Two caveats apply. The flags are adapter-specific, so you own their correctness for the CLI you target; its [adapter page](/docs/adapters) and the CLI's own docs are the reference. And they bypass capability validation and the permission mapping, so a flag here can override what `permission` set. Prefer the typed options whenever one exists.
+Here a docs-generation feature blocks the agent from running shell commands with a flag native to the CLI it targets, one the surface does not model. Two caveats apply: the flags are adapter-specific, so you own their correctness for the CLI you target, and they are appended after the flags AnyAgent builds, without validation, so a later flag can override what `permission` set. Prefer a typed option whenever one exists; the [adapter page](/docs/adapters) and the CLI’s own docs are the reference for the rest.
 
 ## agent.raw.buildInvocation: get the exact argv
 
@@ -31,7 +31,9 @@ console.log(inv.command, inv.args.join(" "));
 // claude -p --output-format stream-json --verbose --permission-mode acceptEdits
 ```
 
-The output is the full argv for the run, so you can print it, diff it, or hand it to another executor. Nothing spawns; you get back only the resolved command.
+Nothing spawns; you get back only the resolved command.
+
+Unlike `run` and `runStream`, the `raw` calls skip capability validation: an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`. Check `agent.capabilities` yourself when it matters.
 
 ## agent.raw.spawn: own the ChildProcess
 
@@ -39,7 +41,7 @@ When you need to drive the process yourself, `agent.raw.spawn` launches the invo
 
 ```ts
 const child = agent.raw.spawn("Explain the auth flow.", {
-  permission: "read-only",
+  permission: "read",
 });
 child.stdout?.pipe(process.stdout);
 ```
@@ -56,7 +58,7 @@ Pick the smallest hatch that solves your problem:
 | The exact argv, for logging or running it elsewhere  | `agent.raw.buildInvocation` |
 | To own the process: custom parsing, bidirectional IO | `agent.raw.spawn`           |
 
-Before you rebuild event parsing on top of `spawn` for a supported CLI, check the normalized stream first. Every event's `raw` field carries the untouched native payload, so what you are after may already be there without leaving the surface.
+Before you rebuild event parsing on top of `spawn` for a supported CLI, check the normalized stream first. Every event’s `raw` field carries the untouched native payload, so what you are after may already be there without leaving the surface.
 
 ## Next steps
 
