@@ -3,11 +3,11 @@ title: Ship to production
 description: The recommended end-to-end flow for a tool built on AnyAgent, assembled step by step around an acme init wizard.
 ---
 
-This guide assembles the recommended flow for a tool you ship to end users, in five steps: detect the installed agents, tell the user what is about to happen, let them choose when several exist, run with visible progress and a tightly scoped prompt, then handle every error code. The running example is `acme init`, a setup wizard that wires the fictional Acme SDK into the end user's project. This page shows how the steps fit together; each step links its guide for the full detail.
+This guide assembles the recommended flow for a tool you ship to end users: detect, announce, choose, run with visible progress, handle every error code. The running example is `acme init`, a setup wizard that wires the fictional Acme SDK into the end user’s project. This page shows how the steps fit together; each step links its guide for the full detail.
 
 ## Detect what the user has installed
 
-Start by finding every supported agent on the machine. `detect()` returns an unordered array of installed agents and an empty array when none are found. It never ranks them, so an empty result is your signal to fall back or guide setup.
+Start by finding every supported agent on the machine. `detect()` returns an array of installed agents whose order carries no preference, and an empty array is your signal to fall back or guide setup.
 
 ```ts
 import { detect } from "anyagent";
@@ -16,11 +16,11 @@ import type { DetectResult } from "anyagent";
 const found = await detect();
 ```
 
-Each `DetectResult` carries the `adapter`, `id`, `name`, `version` (for display only), `path`, and the agent's `capabilities`. You pass the one you pick straight to `create()`.
+Each `DetectResult` carries the `adapter`, `id`, `name`, `version` (for display only), `path`, and the agent’s `capabilities`. You pass the one you pick straight to `create()`.
 
 ## Tell the user what is about to happen
 
-Before running anything, state which agent you will use and that it runs on the user's own login and subscription. The prompt executes on their machine, under their credentials, so they should know which agent handles it and that it may make model calls they pay for.
+Before running anything, state which agent you will use. The prompt executes on the user’s machine, under their credentials, so they should know which agent handles it and that it may make model calls they pay for.
 
 ```ts
 const announce = (agent: DetectResult): void => {
@@ -38,19 +38,19 @@ import { create } from "anyagent";
 import type { Agent } from "anyagent";
 
 const pickAgent = async (found: DetectResult[]): Promise<Agent | null> => {
-  if (found.length === 0) {
+  const [first] = found;
+  if (!first) {
     console.error(
       "No supported coding agent found. Install one, sign in, and rerun acme init."
     );
     return null;
   }
-  const chosen =
-    found.length === 1 ? found[0] : await promptUserToChoose(found);
+  const chosen = found.length === 1 ? first : await promptUserToChoose(found);
   return create(chosen);
 };
 ```
 
-`promptUserToChoose` is your own prompt over `found`, keyed on each result's `name`. If the agent is a hard requirement, the empty case should name a [supported CLI](/docs/adapters) and point to its install docs rather than failing silently. [Detecting agents](/docs/detecting-agents) shows richer selection and fallback patterns.
+`promptUserToChoose` is your own prompt over `found`, keyed on each result’s `name`. If the agent is a hard requirement, the empty case should name a [supported CLI](/docs/adapters) and point to its install docs rather than failing silently. [Detecting agents](/docs/detecting-agents) shows richer selection and fallback patterns.
 
 ## Run with visible progress and a scoped prompt
 
@@ -78,7 +78,7 @@ const runInit = async (agent: Agent): Promise<string> => {
 };
 ```
 
-The prompt does the guardrail work: it names the exact files the agent may touch, keeps the change local, and forbids commits and pushes. Never let a shipped tool commit or push on the user's behalf; leave the diff for them to review. Run at `edit`, the default; see [permissions](/docs/permissions) for choosing a level and [streaming](/docs/streaming) for progress and cancellation.
+The prompt does the guardrail work: it names the exact files the agent may touch, keeps the change local, and forbids commits and pushes. Never let a shipped tool commit or push on the user’s behalf; leave the diff for them to review. Run at `edit`, the default; see [permissions](/docs/permissions) for choosing a level and [streaming](/docs/streaming) for progress and cancellation.
 
 ## Handle every error code
 

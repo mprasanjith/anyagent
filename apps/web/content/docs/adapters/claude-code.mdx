@@ -1,9 +1,9 @@
 ---
 title: Claude Code
-description: How the claude-code adapter detects, invokes, and parses Anthropic's Claude Code CLI.
+description: How the claude-code adapter detects, invokes, and parses Anthropic’s Claude Code CLI.
 ---
 
-The `claude-code` adapter drives Anthropic's Claude Code CLI in headless mode. It declares the full capability table, and it is the reference implementation to mirror when you are [adding an adapter](/docs/adding-an-adapter).
+The `claude-code` adapter drives Anthropic’s Claude Code CLI in headless mode. It declares the full capability table, and it is the reference implementation to mirror when you are [adding an adapter](/docs/adding-an-adapter).
 
 Import the factory from the `anyagent/claude-code` subpath and hand it to `create`:
 
@@ -43,14 +43,14 @@ Every run executes `claude -p --output-format stream-json --verbose` with a `--p
 | `permission: "read"` | `--permission-mode default`                                        |
 | `permission: "edit"` | `--permission-mode acceptEdits`                                    |
 | `permission: "auto"` | `--permission-mode bypassPermissions`                              |
-| `model`              | `--model <name>`, in Claude Code's own vocabulary such as `"opus"` |
+| `model`              | `--model <name>`, in Claude Code’s own vocabulary such as `"opus"` |
 | `systemPrompt`       | `--append-system-prompt <text>`, which appends and never replaces  |
 | `resume`             | `--resume <sessionId>`                                             |
-| `mcp`                | `--mcp-config <json>`, the servers serialized to JSON              |
+| `mcp`                | `--mcp-config <json>`, the servers under an `mcpServers` key       |
 
 ## What the stream produces
 
-Claude Code emits whole assistant messages, so one `text-delta` carries a full message rather than a token. Thinking blocks produce no normalized event, though the reasoning stays reachable on the surrounding raw payloads.
+Claude Code emits whole assistant messages, so one `text-delta` carries a message’s full text block rather than a token. Thinking blocks produce no normalized event and are not carried on any event’s `raw`, which holds only that event’s own content block; to capture reasoning, drive the CLI through [`agent.raw`](/docs/escape-hatches).
 
 Tool use maps to `tool-call` and its result to `tool-result`.
 
@@ -60,7 +60,7 @@ Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens`, `outputT
 
 ## Errors
 
-When the CLI reports an agent-level error, the run throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and the CLI's own error detail. A nonzero exit or a spawn failure throws the same code.
+When the CLI reports an agent-level error, the run throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and the CLI’s own error detail. A nonzero exit or a spawn failure throws the same code.
 
 ## Resume a session
 

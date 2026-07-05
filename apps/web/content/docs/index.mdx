@@ -1,43 +1,22 @@
 ---
 title: Introduction
-description: AnyAgent detects the coding-agent CLI a user already has installed and drives it through one unified TypeScript interface.
+description: Detect the coding-agent CLI a machine already has installed and drive it through one interface.
 ---
 
-AnyAgent is a TypeScript library that detects which of the [supported coding-agent CLIs](/docs/adapters) a machine already has installed and drives them through one interface. It has zero runtime dependencies, ships as ESM, and runs on Node 18+ or Bun. You write one prompt-and-run flow, and it works against whichever supported agent your end user has signed in to.
+AnyAgent is a TypeScript library that detects which of the [supported coding-agent CLIs](/docs/adapters) a machine already has installed and drives them through one interface.
+
+It’s an ESM module with zero runtime dependencies and runs on Node.js 18+ and Bun.
 
 ## Why it exists
 
-The developers who use your tool already have a coding agent installed and signed in. AnyAgent puts that install to work: the prompt you write runs on their agent, under their login, on their subscription. You collect no API keys and pay no inference bill. Your tool ships the logic; the user's agent supplies the model and the auth.
+The developers who use your tool likely already have a coding agent. With AnyAgent you can write prompts and skills that run on their agent, under their login, on their subscription. You don’t need to set up API keys or pay inference bills.
 
-## A first look
+## Who this is for
 
-Three calls take you from detection to an answer:
+AnyAgent suits tools that run a defined task against the user’s own project.
 
-```ts
-import { create, detect } from "anyagent";
+For example:
 
-const [found] = await detect();
-if (!found) throw new Error("No supported coding agent installed.");
-
-const agent = create(found);
-const result = await agent.run("Summarize this project in one sentence.", {
-  permission: "read",
-});
-console.log(result.text);
-```
-
-`detect()` returns every supported agent on the user's `PATH`, `create()` wraps one in a runnable handle, and `run()` sends a prompt and resolves with the answer on `result.text`. The [Quickstart](/docs/quickstart) walks through this end to end.
-
-## What you build with it
-
-AnyAgent suits tools that run a defined task against the user's own project:
-
-- **Setup wizards**: an `acme init` command that wires your SDK into the user's codebase
+- **Setup wizards**: an `init` command that wires your SDK into the user’s codebase
 - **Migration and codemod runners**: apply a framework upgrade across a repo
 - **Generators**: produce changelogs, tests, or docs from the current source
-
-## How the docs are organized
-
-Start with the [Quickstart](/docs/quickstart) for the shortest path to a working script. The guides then cover one task each: [detecting agents](/docs/detecting-agents), [running prompts](/docs/running-prompts), [streaming](/docs/streaming), [permissions](/docs/permissions), [errors](/docs/errors), and the recommended [production flow](/docs/production).
-
-For the reasoning behind the design, read [how it works](/docs/how-it-works). When you need a capability the unified surface does not model, see the [escape hatches](/docs/escape-hatches). The [API reference](/docs/api) lists every type, and each [supported agent](/docs/adapters) has an adapter page documenting how it maps onto the surface.

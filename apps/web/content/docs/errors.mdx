@@ -30,15 +30,15 @@ Each code tells you where the run failed and what you can do about it in a shipp
 
 `Invocation` fires when the CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error. Surface `stderr` to diagnose it. Common real causes are a missing binary, an expired login, and an installed CLI too old to know a flag you passed.
 
-`Parse` fires when the CLI ran but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI's output format. Report it upstream so the adapter can be updated.
+`Parse` fires when the CLI ran but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format. Report it upstream so the adapter can be updated.
 
-`Aborted` fires when your `AbortSignal` fired and the run was terminated. This is usually a user cancelling on purpose, so treat it as a normal exit rather than a failure.
+`Aborted` fires when your `AbortSignal` fired and the run was terminated. In a shipped tool that is the end user cancelling on purpose, so treat it as a normal exit rather than a failure.
 
 ## Diagnostic fields
 
 Beyond `message` and `code`, three fields help you diagnose a failure and write useful bug reports:
 
-- `raw`: the underlying cause, either a native error or the harness's own error payload
+- `raw`: the underlying cause, either a native error or the harness’s own error payload
 - `argv`: the exact command line that ran, attached when a process was involved
 - `stderr`: what the CLI printed to stderr, attached when a process was involved
 

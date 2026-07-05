@@ -1,13 +1,13 @@
 ---
 title: Detect installed agents
-description: Find the coding agents on the end user's machine and decide what to run.
+description: Find the coding agents on the end user’s machine and decide what to run.
 ---
 
-This page shows how to find the coding agents installed on the end user's machine, pick one to run, and handle a machine with none.
+This page shows how to find the agents installed on the end user’s machine, pick one to run, and handle a machine with none.
 
 ## Find what is installed
 
-Call `detect()` to scan the end user's `PATH` for every supported agent. It resolves to an array of `DetectResult`, one per installed agent, and returns an empty array when none are found.
+Call `detect()` to scan the end user’s `PATH` for every supported agent. It returns one `DetectResult` per installed agent, and an empty array when none are found.
 
 ```ts
 import { detect } from "anyagent";
@@ -15,46 +15,46 @@ import { detect } from "anyagent";
 const installed = await detect();
 ```
 
-Each `DetectResult` carries what you need to describe and run the agent: `id` (the stable machine name, such as `"claude-code"`), `name` (the display name, such as `"Claude Code"`), `installed`, `version` (display only; a failed probe leaves it `null`), `path` (where the binary resolved), `capabilities`, and the `adapter` itself.
+Each `DetectResult` carries:
 
-Here is a printed listing inside an `acme init` setup wizard:
-
-```ts
-for (const agent of installed) {
-  const version = agent.version ?? "unknown version";
-  console.log(`${agent.name} (${version}) at ${agent.path}`);
-}
-```
-
-That prints one line per agent, for example `Claude Code (2.0.31) at /usr/local/bin/claude`.
+<auto-type-table
+  path="../../../../packages/anyagent/src/internal/types.ts"
+  name="DetectResult"
+/>
 
 ## Choose which agent to run
 
-The list from `detect()` is unordered. There is no ranking and no "best" agent, so which one to run is your product decision. When one agent is installed, use it. When several are, let the end user pick.
-
-This picker prints the options and reads a choice from stdin, with no third-party prompt library:
+The order of results carries no preference: `detect()` follows its adapter list, not a ranking, and there is no "best" agent, so which one to run is your product decision. This rudimentary picker prints the options and reads a choice from stdin:
 
 ```ts
-import { create } from "anyagent";
+import { create, detect } from "anyagent";
 import { createInterface } from "node:readline/promises";
+
+const installed = await detect();
+const [first] = installed;
+if (!first) {
+  throw new Error("No supported coding agent found.");
+}
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 installed.forEach((a, i) => console.log(`${i + 1}. ${a.name}`));
 const answer = await rl.question("Which agent should acme init use? ");
 rl.close();
 
-const chosen = installed[Number(answer) - 1] ?? installed[0];
+const chosen = installed[Number(answer) - 1] ?? first;
 const agent = create(chosen);
 ```
 
-`create()` accepts a `DetectResult` directly and returns a runnable `Agent`. Swap the `readline` step for your own prompt library or UI; you print the names and map the answer back to a `DetectResult`.
+`create()` accepts a `DetectResult` directly and returns a runnable `Agent`.
 
 ## Tell the user what will happen
 
-Before you run anything, name the agent you are about to drive. The prompt runs under the user's login and bills against their subscription, so nothing should run by surprise.
+Before you run anything, name the agent and describe the task you are about to drive. The prompt runs under the user’s login and bills against their subscription, so nothing should run by surprise.
 
 ```ts
-console.log(`acme init will run ${chosen.name}, signed in under your account.`);
+console.log(
+  `acme init will run ${chosen.name} to set up the Acme SDK on your codebase.`
+);
 ```
 
 ## Handle an empty machine
@@ -83,7 +83,7 @@ if (installed.length === 0) {
 
 ## Target one specific agent
 
-When your tool supports exactly one agent, skip detection and import that adapter directly. The subpath exports keep your bundle lean, because you pull in only the adapter you use.
+When your tool supports exactly one agent, skip detection and import that adapter directly. Subpath imports keep your bundle lean: you pull in only the adapter you use.
 
 ```ts
 import { create } from "anyagent";
@@ -92,9 +92,9 @@ import { claudeCode } from "anyagent/claude-code";
 const agent = create(claudeCode());
 ```
 
-Every adapter imports the same way from its own subpath, named on its [adapter page](/docs/adapters). Creating an agent from an adapter does not check whether the CLI is installed, so a missing binary surfaces as an `Invocation` error when you run. See [Handle errors](/docs/errors) for that path.
+Every adapter imports the same way from its own subpath, named on its adapter page. Creating an agent from an adapter does not check whether the CLI is installed, so a missing binary surfaces as an `Invocation` error when you run. See [Handle errors](/docs/errors).
 
-## Adjust to an agent's capabilities
+## Adjust to an agent’s capabilities
 
 Each `DetectResult` carries a `capabilities` table describing what its CLI can do. Read it before you decide what to ask for, so the same code works across agents with different feature sets.
 
@@ -104,7 +104,7 @@ const agent = create(chosen);
 await agent.run(prompt, opts);
 ```
 
-Requesting an option the table does not declare throws before anything spawns, so guarding here keeps a run from failing on an agent that lacks the feature. Each [adapter page](/docs/adapters) lists the table its CLI declares.
+Requesting an unsupported capability throws before the CLI spawns. Each adapter page lists the capability table its CLI declares.
 
 ## Next steps
 

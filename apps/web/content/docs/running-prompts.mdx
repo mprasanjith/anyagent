@@ -3,7 +3,7 @@ title: Run a prompt
 description: Configure a run with RunOptions and execute it against an installed agent.
 ---
 
-This page shows how to run one prompt on an agent: write a scoped prompt, set run options, and read the `RunResult`. Every option is validated against the agent's capability table before any process spawns, so an unsupported request fails fast with a catchable error rather than mid-run; the guards shown per option below all rely on this.
+This page shows how to run one prompt on an agent: write a scoped prompt, set run options, and read the `RunResult`. AnyAgent checks each capability-gated option (`permission`, `cwd`, `model`, `systemPrompt`, `resume`, `mcp`) against the agent’s capability table before any process spawns, so an unsupported request throws at the call site rather than mid-run.
 
 ## Run and read the result
 
@@ -18,7 +18,14 @@ const result = await agent.run(
 console.log(result.text);
 ```
 
-`RunResult` has four fields: `text` (the agent's final answer, all text concatenated), `events` (every event in order, with the terminal `done` excluded), `usage` (token and cost accounting when the CLI reports it), and `raw` (the harness's untouched final payload). Holding a `RunResult` means the run succeeded, because every failure throws instead. See [Handle errors](/docs/errors) for that path.
+`RunResult` has four fields:
+
+- `text`: the agent’s final answer, all text output concatenated
+- `events`: every event in order, without the terminal `done`
+- `usage`: token and cost accounting, when the CLI reports it
+- `raw`: the harness’s untouched final payload
+
+Holding a `RunResult` means the run succeeded, because every failure throws instead. See [Handle errors](/docs/errors) for that path.
 
 The `events` list is held in memory for the whole run. For a long agentic run, consume [`runStream`](/docs/streaming) as events arrive rather than collecting them all at the end.
 
@@ -30,15 +37,17 @@ Keep changes small and local. Never instruct the agent to commit or push, so the
 
 ## Set the working directory
 
-`cwd` sets the directory the agent works in. It defaults to the current process's working directory. Point it at the target project when your tool runs from elsewhere:
+`cwd` sets the directory the agent works in. It defaults to the current process’s working directory. Point it at the target project when your tool runs from elsewhere:
 
 ```ts
 await agent.run(prompt, { cwd: "/home/user/projects/acme-app" });
 ```
 
+Guard with `capabilities.cwd` when your tool targets more than one agent.
+
 ## Choose a model
 
-`model` takes a name in the CLI's own vocabulary; each [adapter page](/docs/adapters) shows how the option maps. Not every agent honors model selection, so guard it with `capabilities.modelSelection`:
+`model` takes a name in the CLI’s own vocabulary; each [adapter page](/docs/adapters) shows how the option maps. Not every agent honors model selection, so guard it with `capabilities.modelSelection`:
 
 ```ts
 const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
@@ -47,7 +56,7 @@ await agent.run(prompt, opts);
 
 ## Append a system prompt
 
-`systemPrompt` is appended to the CLI's own system prompt. It never replaces it. Use it to set standing instructions for the run:
+`systemPrompt` is appended to the CLI’s own system prompt. It never replaces it. Use it to set standing instructions for the run:
 
 ```ts
 await agent.run(prompt, {
@@ -59,7 +68,7 @@ Guard with `capabilities.systemPrompt` when your tool targets more than one agen
 
 ## Pass environment variables
 
-`env` sets extra environment variables for the run, merged over the parent process's environment rather than replacing it:
+`env` sets extra environment variables for the run, merged over the parent process’s environment rather than replacing it:
 
 ```ts
 await agent.run(prompt, { env: { ACME_ENV: "development" } });
@@ -67,7 +76,7 @@ await agent.run(prompt, { env: { ACME_ENV: "development" } });
 
 ## Resume a session
 
-To continue a prior conversation, pass its session id as `resume`. The id lives on the previous run's `raw` payload under a harness-specific key, documented on each [adapter page](/docs/adapters).
+To continue a prior conversation, pass its session id as `resume`. The id lives on the previous run’s `raw` payload under a harness-specific key, documented on each adapter page.
 
 ```ts
 const first = await agent.run("Start reviewing this repo.");
@@ -78,7 +87,7 @@ const followUp = await agent.run("Now fix the issues you found.", {
 });
 ```
 
-Guard with `capabilities.sessionResume` when targeting an agent that might lack it.
+Guard with `capabilities.sessionResume` when targeting an agent that might lack it. Also check that the id you read from `raw` is defined before passing it: `resume: undefined` does not throw, it starts a fresh session.
 
 ## Attach MCP servers
 
@@ -91,7 +100,7 @@ const opts = agent.capabilities.mcp
 await agent.run(prompt, opts);
 ```
 
-When a CLI has its own config-based route to MCP instead, its [adapter page](/docs/adapters) says so, reachable through [escape hatches](/docs/escape-hatches).
+When a CLI routes MCP through its own config instead, its adapter page says so; reach it through [escape hatches](/docs/escape-hatches).
 
 ## Next steps
 

@@ -1,6 +1,6 @@
 ---
 title: Permissions
-description: The three autonomy levels, what each means for the user's machine, and how AnyAgent maps them onto each CLI.
+description: The three autonomy levels, what each means for the user’s machine, and how AnyAgent maps them onto each CLI.
 ---
 
 Every run carries one of three permission levels that bound how much the agent can do to the working directory: `read`, `edit` (the default), and `auto`. The enum never widens and never silently up- or downgrades your request.
@@ -10,7 +10,7 @@ Every run carries one of three permission levels that bound how much the agent c
 Each level draws a different boundary around what the agent may touch:
 
 - **`read`**: the agent inspects files and answers, but changes nothing
-- **`edit`** (the default): the agent creates and modifies files, while the CLI's own guardrails still gate riskier actions like shell commands
+- **`edit`** (the default): the agent creates and modifies files, while the CLI’s own guardrails still gate riskier actions like shell commands
 - **`auto`**: every prompt is auto-approved and the agent runs unattended
 
 You set the level per run through `RunOptions.permission`:
@@ -24,19 +24,23 @@ await agent.run("Fix the failing test in test/parser.test.ts", {
 This run lets the agent edit files to fix the test, while its CLI still prompts before running commands you have not pre-approved. Omitting `permission` gives the same behavior, since `edit` is the default.
 
 <Callout type="warn">
-  `auto` disables the CLI's own confirmation prompts, so the agent approves
+  `auto` disables the CLI’s own confirmation prompts, so the agent approves
   every action itself. Reserve it for sandboxed or disposable environments.
 </Callout>
 
 ## Choosing a level for a shipped tool
 
-Match the level to what your feature does. For a tool that changes code, a setup wizard or a codemod runner, `edit` is almost always right: the agent writes files while the CLI's guardrails still cover shell commands. For a feature that only inspects and reports, such as a repo analysis or a review summary, use `read` so the agent cannot alter the user's project. Reach for `auto` only inside a sandbox where auto-approving every action is safe.
+Match the level to what your feature does:
+
+- **Tools that change code**, a setup wizard or a codemod runner: `edit`. The agent writes files while the CLI’s guardrails still cover shell commands.
+- **Features that inspect and report**, a repo analysis or a review summary: `read`, so the agent cannot alter the user’s project.
+- **Sandboxed or disposable environments only**: `auto`, where auto-approving every action is safe.
 
 ## How the levels map onto CLIs
 
-Native permission surfaces differ across harnesses: some CLIs take a three-way level flag, some a single autonomy switch, some a per-tool allowlist, and some grade autonomy finer than three levels. Each adapter translates your level onto whichever its CLI uses, and the mapping never lands on something stronger or weaker than you asked for. The exact flag behind each level is documented on the agent's [adapter page](/docs/adapters).
+Native permission surfaces differ across harnesses: some CLIs take a three-way level flag, some a single autonomy switch, some a per-tool allowlist, and some grade autonomy finer than three levels. Each adapter translates your level onto whichever its CLI uses, and the mapping never lands on something stronger or weaker than you asked for. The exact flag behind each level is documented on the agent’s [adapter page](/docs/adapters).
 
-AnyAgent always passes the level explicitly rather than relying on a CLI's default, since a CLI whose own default is weaker or stronger than `edit` would otherwise silently change what runs.
+AnyAgent always passes the level explicitly rather than relying on a CLI’s default, since a CLI whose own default is weaker or stronger than `edit` would otherwise silently change what runs.
 
 ## Why the enum stays fixed
 
@@ -47,5 +51,5 @@ Some CLIs have finer-grained native permission systems underneath, such as allow
 ## Next steps
 
 - [How AnyAgent works](/docs/how-it-works): why the surface stays a fixed common denominator
-- [Escape hatches](/docs/escape-hatches): reach a CLI's native permission flags directly
+- [Escape hatches](/docs/escape-hatches): reach a CLI’s native permission flags directly
 - [Errors](/docs/errors): handle `UnsupportedCapability` and the other codes
