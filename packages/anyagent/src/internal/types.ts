@@ -150,9 +150,10 @@ export interface RunOptions {
    * can reach a harness capability the unified surface does not model while
    * keeping normalized events. Adapter-specific — the caller owns correctness.
    *
-   * These bypass capability validation and the permission mapping: a flag here
-   * can override what `permission` set. Prefer the typed options; reach for this
-   * only when nothing else exposes the flag you need.
+   * These flags are never validated and are appended after the flags the
+   * adapter builds, so one here can override what `permission` set. Prefer
+   * the typed options; reach for this only when nothing else exposes the
+   * flag you need.
    */
   extraArgs?: string[];
 }
@@ -170,7 +171,8 @@ export interface RunOptions {
  * chunk, or a whole assistant message (claude-code emits whole messages).
  * What you can rely on — enforced by the conformance suite — is that
  * concatenating every delta's `text` reproduces `RunResult.text` exactly.
- * `raw` on each event is the harness's untouched native payload for it.
+ * `raw` on each event except `done` is the harness's untouched native
+ * payload for it.
  */
 export type AgentEvent =
   | { type: "text-delta"; text: string; raw?: unknown }
@@ -399,6 +401,10 @@ export interface Adapter {
  * hands you the Node `ChildProcess` to drive: you read stdout, you handle
  * exit, and you get no normalized events and no lifecycle management. The
  * prompt is already wired to stdin.
+ *
+ * Neither call validates options against the capability table — an option
+ * the CLI does not support is silently left out of the argv rather than
+ * throwing `UnsupportedCapability`.
  */
 export interface RawHandle {
   buildInvocation: (prompt: string, opts?: RunOptions) => Invocation;

@@ -26,9 +26,9 @@ export interface DetectOptions {
 /**
  * Find every supported coding agent installed on this machine. Each result
  * carries the resolved binary path, the reported version, and the adapter's
- * capability table; pass the one you pick to `create()`. The list is
- * unordered — there is no "best" agent and no ranking — and empty when
- * nothing is installed.
+ * capability table; pass the one you pick to `create()`. The list follows
+ * the adapter registry order, which carries no ranking — there is no "best"
+ * agent — and is empty when nothing is installed.
  *
  * ```ts
  * const installed = await detect();
