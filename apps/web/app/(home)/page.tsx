@@ -20,7 +20,7 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   description:
-    "AnyAgent detects the coding agent your end users already have installed (Claude Code, Codex, more on the way) and drives it from your tool. You collect no API keys and pay no inference bill.",
+    "AnyAgent detects the coding agent your end users already have installed (Claude Code, Codex, opencode, Pi, Goose, and more) and drives it from your tool. You collect no API keys and pay no inference bill.",
   title: "AnyAgent: use the coding agent your users already have",
 };
 
@@ -28,19 +28,25 @@ const GITHUB = "https://github.com/mprasanjith/anyagent";
 
 /** From docs/specs/harness-audit.md — statuses are honest: "shipped" means
  * the adapter exists, "soon" means the headless surface is audited and the
- * adapter is on the way. `logo` is a file in public/agents/. */
-const HARNESSES = [
+ * adapter is on the way. `logo` is a file in public/agents/; `slug` overrides
+ * the adapter-page path when it differs from the logo name. */
+const HARNESSES: {
+  logo: string;
+  name: string;
+  slug?: string;
+  status: string;
+}[] = [
   { logo: "claude-code", name: "Claude Code", status: "shipped" },
   { logo: "codex", name: "Codex", status: "shipped" },
+  { logo: "opencode", name: "opencode", status: "shipped" },
+  { logo: "kilo", name: "Kilo Code", slug: "kilo-code", status: "shipped" },
+  { logo: "pi", name: "Pi", status: "shipped" },
+  { logo: "goose", name: "Goose", status: "shipped" },
+  { logo: "cline", name: "Cline", status: "shipped" },
   { logo: "gemini", name: "Gemini CLI", status: "soon" },
-  { logo: "opencode", name: "opencode", status: "soon" },
-  { logo: "pi", name: "Pi", status: "soon" },
   { logo: "cursor", name: "Cursor", status: "soon" },
   { logo: "copilot", name: "GitHub Copilot", status: "soon" },
-  { logo: "cline", name: "Cline", status: "soon" },
   { logo: "droid", name: "Factory droid", status: "soon" },
-  { logo: "goose", name: "Goose", status: "soon" },
-  { logo: "kilo", name: "Kilo Code", status: "soon" },
   { logo: "kiro-cli", name: "Kiro", status: "soon" },
   { logo: "devin", name: "Devin", status: "soon" },
   { logo: "amp", name: "Amp", status: "soon" },
@@ -190,7 +196,7 @@ const Page = () => (
       <div className="hm-shell" data-reveal>
         <h2>Whichever agent they have</h2>
         <p className="hm-body">
-          Fourteen harnesses audited: two adapters shipped, twelve on the way.
+          Fourteen harnesses audited: seven adapters shipped, seven on the way.
           For anything else, an adapter is one file.
         </p>
         <ul className="hm-wall">
@@ -215,7 +221,7 @@ const Page = () => (
                 {h.status === "shipped" ? (
                   <Link
                     className="hm-wall-cell"
-                    href={`/docs/adapters/${h.logo}`}
+                    href={`/docs/adapters/${h.slug ?? h.logo}`}
                   >
                     {cell}
                   </Link>

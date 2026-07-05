@@ -1,0 +1,20 @@
+{"ts":"2026-07-05T00:09:52.196Z","type":"hook_event","hookEventName":"agent_start","agentId":"agent_1783210192176_08h7ct","taskId":"conv_1783210192189_dodzlhw","parentAgentId":null}
+{"ts":"2026-07-05T00:09:52.199Z","type":"agent_event","event":{"type":"iteration_start","iteration":1}}
+AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.
+{"ts":"2026-07-05T00:09:53.834Z","type":"agent_event","event":{"type":"usage","inputTokens":3609,"outputTokens":63,"cost":0.00057915,"totalInputTokens":3609,"totalOutputTokens":63,"totalCost":0.00057915}}
+{"ts":"2026-07-05T00:09:53.839Z","type":"hook_event","hookEventName":"tool_call","agentId":"agent_1783210192176_08h7ct","taskId":"conv_1783210192189_dodzlhw","parentAgentId":null}
+{"ts":"2026-07-05T00:09:53.840Z","type":"agent_event","event":{"type":"content_start","contentType":"tool","toolName":"read_files","toolCallId":"call_q3yYFoooC0FqNF1Z2JgkaDZW","input":{"files":[{"path":"/tmp/claude-0/-home-user-anyagent/4607b5d3-6066-537d-8246-bda442de73c9/scratchpad/probes/w-cline/README.md"}]}}}
+{"ts":"2026-07-05T00:09:53.851Z","type":"hook_event","hookEventName":"tool_result","agentId":"agent_1783210192176_08h7ct","taskId":"conv_1783210192189_dodzlhw","parentAgentId":null}
+{"ts":"2026-07-05T00:09:53.852Z","type":"agent_event","event":{"type":"content_end","contentType":"tool","toolName":"read_files","toolCallId":"call_q3yYFoooC0FqNF1Z2JgkaDZW","output":[{"query":"/tmp/claude-0/-home-user-anyagent/4607b5d3-6066-537d-8246-bda442de73c9/scratchpad/probes/w-cline/README.md","result":"1 | petrichor","success":true}],"durationMs":12}}
+{"ts":"2026-07-05T00:09:53.852Z","type":"agent_event","event":{"type":"iteration_end","iteration":1,"hadToolCalls":true,"toolCallCount":1}}
+{"ts":"2026-07-05T00:09:53.853Z","type":"agent_event","event":{"type":"iteration_start","iteration":2}}
+{"ts":"2026-07-05T00:09:54.561Z","type":"agent_event","event":{"type":"content_start","contentType":"text","text":"p","accumulated":"p"}}
+{"ts":"2026-07-05T00:09:54.561Z","type":"agent_event","event":{"type":"content_start","contentType":"text","text":"etr","accumulated":"petr"}}
+{"ts":"2026-07-05T00:09:54.578Z","type":"agent_event","event":{"type":"content_start","contentType":"text","text":"ich","accumulated":"petrich"}}
+{"ts":"2026-07-05T00:09:54.578Z","type":"agent_event","event":{"type":"content_start","contentType":"text","text":"or","accumulated":"petrichor"}}
+{"ts":"2026-07-05T00:09:54.613Z","type":"agent_event","event":{"type":"usage","inputTokens":3743,"outputTokens":5,"cacheReadTokens":3584,"cost":0.00029565000000000006,"totalInputTokens":7352,"totalOutputTokens":68,"totalCacheReadTokens":3584,"totalCost":0.0008748}}
+{"ts":"2026-07-05T00:09:54.614Z","type":"agent_event","event":{"type":"content_end","contentType":"text","text":"petrichor"}}
+{"ts":"2026-07-05T00:09:54.615Z","type":"agent_event","event":{"type":"iteration_end","iteration":2,"hadToolCalls":false,"toolCallCount":0}}
+{"ts":"2026-07-05T00:09:54.617Z","type":"hook_event","hookEventName":"agent_end","agentId":"agent_1783210192176_08h7ct","taskId":"conv_1783210192189_dodzlhw","parentAgentId":null}
+{"ts":"2026-07-05T00:09:54.617Z","type":"agent_event","event":{"type":"done","reason":"completed","text":"petrichor","iterations":2,"usage":{"inputTokens":7352,"outputTokens":68,"cacheReadTokens":3584,"totalCost":0.0008748}}}
+{"ts":"2026-07-05T00:09:54.628Z","type":"run_result","finishReason":"completed","iterations":2,"usage":{"inputTokens":7352,"outputTokens":68,"cacheReadTokens":3584,"cacheWriteTokens":0,"totalCost":0.0008748},"aggregateUsage":{"inputTokens":7352,"outputTokens":68,"cacheReadTokens":3584,"cacheWriteTokens":0,"totalCost":0.0008748},"durationMs":2426,"text":"petrichor","model":{"id":"openai/gpt-4o-mini","provider":"openai-compatible"}}

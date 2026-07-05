@@ -1,5 +1,10 @@
 import { claudeCode } from "../claude-code/index.js";
+import { cline } from "../cline/index.js";
 import { codex } from "../codex/index.js";
+import { goose } from "../goose/index.js";
+import { kiloCode } from "../kilo-code/index.js";
+import { opencode } from "../opencode/index.js";
+import { pi } from "../pi/index.js";
 import { runDetect } from "./detect.js";
 import { realProbe } from "./runtime/spawn.js";
 import type {
@@ -10,7 +15,15 @@ import type {
 } from "./types.js";
 
 /** Built-in adapters. A new adapter appends its factory result here. */
-export const BUILTINS: Adapter[] = [claudeCode(), codex()];
+export const BUILTINS: Adapter[] = [
+  claudeCode(),
+  codex(),
+  opencode(),
+  kiloCode(),
+  pi(),
+  goose(),
+  cline(),
+];
 
 /**
  * Overrides for {@link detect}. `adapters` swaps the built-in list for your

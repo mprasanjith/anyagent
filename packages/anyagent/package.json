@@ -26,6 +26,26 @@
     "./codex": {
       "types": "./dist/codex/index.d.ts",
       "import": "./dist/codex/index.js"
+    },
+    "./opencode": {
+      "types": "./dist/opencode/index.d.ts",
+      "import": "./dist/opencode/index.js"
+    },
+    "./kilo-code": {
+      "types": "./dist/kilo-code/index.d.ts",
+      "import": "./dist/kilo-code/index.js"
+    },
+    "./pi": {
+      "types": "./dist/pi/index.d.ts",
+      "import": "./dist/pi/index.js"
+    },
+    "./goose": {
+      "types": "./dist/goose/index.d.ts",
+      "import": "./dist/goose/index.js"
+    },
+    "./cline": {
+      "types": "./dist/cline/index.d.ts",
+      "import": "./dist/cline/index.js"
     }
   },
   "scripts": {

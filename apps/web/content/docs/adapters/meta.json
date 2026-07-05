@@ -1,4 +1,12 @@
 {
   "title": "Adapters",
-  "pages": ["claude-code", "codex"]
+  "pages": [
+    "claude-code",
+    "codex",
+    "opencode",
+    "kilo-code",
+    "pi",
+    "goose",
+    "cline"
+  ]
 }
