@@ -20,7 +20,7 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   description:
-    "AnyAgent detects the coding agent your end users already have installed (Claude Code, Codex, Gemini CLI) and drives it from your tool. You collect no API keys and pay no inference bill.",
+    "AnyAgent detects the coding agent your end users already have installed (Claude Code, Codex, more on the way) and drives it from your tool. You collect no API keys and pay no inference bill.",
   title: "AnyAgent: use the coding agent your users already have",
 };
 
@@ -107,6 +107,12 @@ const Page = () => (
             {" [agent] = "}
             <span className="tok-kw">await</span>
             {" detect();\n"}
+            <span className="tok-kw">if</span>
+            {" (!agent) "}
+            <span className="tok-kw">throw new</span>
+            {" Error("}
+            <span className="tok-str">"no coding agent found"</span>
+            {");\n"}
             <span className="tok-kw">const</span>
             {" result = "}
             <span className="tok-kw">await</span>
