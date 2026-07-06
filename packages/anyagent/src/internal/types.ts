@@ -281,7 +281,12 @@ export interface DetectionSpec {
  */
 export interface KnownAgents {
   "claude-code": true;
+  cline: true;
   codex: true;
+  goose: true;
+  "kilo-code": true;
+  opencode: true;
+  pi: true;
 }
 
 /**

@@ -1,0 +1,28 @@
+---
+title: Kilo Code
+description: How the kilo-code adapter drives the Kilo CLI through the opencode-compatible surface it forked.
+---
+
+The `kilo-code` adapter drives `kilo run --format json`. Kilo Code's CLI is an opencode fork and exposes the identical headless surface — same flags, same step/text/tool event stream — so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode). The sharing is earned, not assumed: every mapping is verified against real `kilo` output and recorded kilo fixtures, so a fork-side drift shows up in kilo's own tests.
+
+Import the factory from the `anyagent/kilo-code` subpath:
+
+```ts
+import { create } from "anyagent";
+import { kiloCode } from "anyagent/kilo-code";
+
+const agent = create(kiloCode());
+const result = await agent.run("summarize this repo", {
+  model: "openrouter/openai/gpt-4o-mini",
+});
+```
+
+## Detection
+
+Detection looks for `kilo`, then `kilocode`, on `PATH` — the first found wins.
+
+## Everything else
+
+Capabilities, flag mappings, stream behavior, errors, and resume are identical to [opencode](/docs/adapters/opencode): `edit`/`auto` permission levels (no `read`), models as `provider/model`, `--auto` for full autonomy, `--session <sessionId>` for resume with the id on `result.raw.sessionId`, and per-step `usage` events summed into the final result.
+
+Auth differs: Kilo works BYOK with standard provider env vars like opencode, or through a Kilo account (`kilo auth login`) whose free tier includes starter credits and free models — either way, no flag changes on this adapter.

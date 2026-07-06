@@ -1,0 +1,10 @@
+{"ts":"2026-07-05T00:05:52.544Z","type":"hook_event","hookEventName":"agent_start","agentId":"agent_1783209952522_ot9eik","taskId":"conv_1783209952536_kix4c76","parentAgentId":null}
+{"ts":"2026-07-05T00:05:52.546Z","type":"agent_event","event":{"type":"iteration_start","iteration":1}}
+{"ts":"2026-07-05T00:05:53.525Z","type":"agent_event","event":{"type":"content_start","contentType":"text","text":"pong","accumulated":"pong"}}
+AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.
+{"ts":"2026-07-05T00:05:53.536Z","type":"agent_event","event":{"type":"usage","inputTokens":3595,"outputTokens":2,"cost":0.00054045,"totalInputTokens":3595,"totalOutputTokens":2,"totalCost":0.00054045}}
+{"ts":"2026-07-05T00:05:53.538Z","type":"agent_event","event":{"type":"content_end","contentType":"text","text":"pong"}}
+{"ts":"2026-07-05T00:05:53.540Z","type":"agent_event","event":{"type":"iteration_end","iteration":1,"hadToolCalls":false,"toolCallCount":0}}
+{"ts":"2026-07-05T00:05:53.541Z","type":"hook_event","hookEventName":"agent_end","agentId":"agent_1783209952522_ot9eik","taskId":"conv_1783209952536_kix4c76","parentAgentId":null}
+{"ts":"2026-07-05T00:05:53.541Z","type":"agent_event","event":{"type":"done","reason":"completed","text":"pong","iterations":1,"usage":{"inputTokens":3595,"outputTokens":2,"totalCost":0.00054045}}}
+{"ts":"2026-07-05T00:05:53.551Z","type":"run_result","finishReason":"completed","iterations":1,"usage":{"inputTokens":3595,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0,"totalCost":0.00054045},"aggregateUsage":{"inputTokens":3595,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0,"totalCost":0.00054045},"durationMs":1003,"text":"pong","model":{"id":"openai/gpt-4o-mini","provider":"openai-compatible"}}

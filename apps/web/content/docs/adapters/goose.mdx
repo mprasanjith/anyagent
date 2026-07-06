@@ -1,0 +1,72 @@
+---
+title: goose
+description: How the goose adapter detects, invokes, and parses Block's goose CLI, and how named-session resume works.
+---
+
+The `goose` adapter drives `goose run --output-format stream-json --quiet` with the prompt piped over stdin via `-i -`. goose is Apache-2.0 open source (Block, now under the Agentic AI Foundation) and BYOK: pick the backend with `GOOSE_PROVIDER` plus the provider's key env var, or goose's own config — no subscription required.
+
+Import the factory from the `anyagent/goose` subpath:
+
+```ts
+import { create } from "anyagent";
+import { goose } from "anyagent/goose";
+
+const agent = create(goose());
+const result = await agent.run("summarize this repo", {
+  env: { GOOSE_PROVIDER: "openrouter" },
+  model: "openai/gpt-4o-mini",
+});
+```
+
+## Detection
+
+Detection looks for a `goose` binary on `PATH` and reads the version from `goose --version`.
+
+## Capabilities
+
+| Capability         | Value                               |
+| ------------------ | ----------------------------------- |
+| `streaming`        | `true`, token-level deltas          |
+| `permissionLevels` | `edit`, `auto`                      |
+| `modelSelection`   | `true`, in the provider's naming    |
+| `sessionResume`    | `true`, by session name (see below) |
+| `mcp`              | `false`                             |
+| `systemPrompt`     | `true`, appended via `--system`     |
+| `cwd`              | `true`                              |
+| `structuredOutput` | `false`                             |
+
+There is no `read` level: goose's chat mode disables tools entirely (the agent could not even read files) and its approval modes can hang a non-interactive run, so neither honestly maps. goose can attach MCP servers via `--with-extension`, but that surface is unverified against real output — reach it through [`extraArgs`](/docs/escape-hatches).
+
+## How options map to flags
+
+Every run executes `goose run --output-format stream-json --quiet -i -`. `--quiet` matters: without it goose prints a banner to stdout that would corrupt the NDJSON stream.
+
+| Option               | Flag                                   |
+| -------------------- | -------------------------------------- |
+| `permission: "edit"` | none — goose's own mode config applies |
+| `permission: "auto"` | env `GOOSE_MODE=auto`                  |
+| `model`              | `--model <model>`                      |
+| `systemPrompt`       | `--system <text>`                      |
+| `resume`             | `--name <name> --resume`               |
+
+The provider is not a run option: set it with `GOOSE_PROVIDER` (the `env` run option works) or goose's config, and pass `model` in that provider's naming.
+
+## What the stream produces
+
+Assistant text arrives as token-level `text-delta` events. `toolRequest` blocks map to `tool-call`, and the matching `toolResponse` (a user-role message) maps to `tool-result`, named via the request's id. The final `complete` event yields a `usage` event with token counts; goose reports no cost.
+
+## Errors
+
+goose reports provider failures as ordinary assistant text ("Ran into this error: …") followed by a `complete` event with null token counts — the run does not throw, and `usage` stays `undefined`. A nonzero exit or spawn failure throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"`.
+
+## Resume a session
+
+goose sessions are resumed by name, and its headless stream carries no session id to hand back on `raw`. Name the first run yourself, then pass the same name as `resume`:
+
+```ts
+const first = await agent.run("start reviewing this repo", {
+  extraArgs: ["--name", "review-1"],
+});
+
+const followUp = await agent.run("continue with src/", { resume: "review-1" });
+```

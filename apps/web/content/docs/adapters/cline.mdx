@@ -1,0 +1,63 @@
+---
+title: Cline
+description: How the cline adapter detects, invokes, and parses the Cline CLI, and which upstream quirks it works around.
+---
+
+The `cline` adapter drives `cline --json --auto-approve true`, mapping the hook/agent-event NDJSON stream onto AnyAgent's normalized events. The Cline CLI is Apache-2.0 open source and BYOK: configure a provider once with `cline auth -p <provider> -k <key>` (openrouter, anthropic, openai, gemini, …) — no subscription required.
+
+Import the factory from the `anyagent/cline` subpath:
+
+```ts
+import { create } from "anyagent";
+import { cline } from "anyagent/cline";
+
+const agent = create(cline());
+const result = await agent.run("summarize this repo", {
+  model: "openai/gpt-4o-mini",
+});
+```
+
+## Detection
+
+Detection looks for a `cline` binary on `PATH` and reads the version from `cline --version`.
+
+## Capabilities
+
+| Capability         | Value                        |
+| ------------------ | ---------------------------- |
+| `streaming`        | `true`, a live NDJSON stream |
+| `permissionLevels` | `edit`, `auto`               |
+| `modelSelection`   | `true`                       |
+| `sessionResume`    | `false` — broken upstream    |
+| `mcp`              | `false`                      |
+| `systemPrompt`     | `false` — replace-only       |
+| `cwd`              | `true`                       |
+| `structuredOutput` | `false`                      |
+
+Three capabilities stay undeclared for honesty rather than convenience:
+
+- **No `read`.** Cline's plan mode still executes shell commands — verified writing a file through `run_commands` — so it cannot stand in for a read-only sandbox.
+- **No `resume`.** `--id` is broken in cline's headless JSON mode: the prompt is never accepted alongside it, in any argument order.
+- **No `systemPrompt`.** cline's `-s` replaces the system prompt entirely, while `RunOptions.systemPrompt` promises append semantics. Reach `-s` via [`extraArgs`](/docs/escape-hatches) if replacement is what you want.
+
+## How options map to flags
+
+| Option               | Flag                                    |
+| -------------------- | --------------------------------------- |
+| `permission: "edit"` | `--auto-approve true`                   |
+| `permission: "auto"` | `--auto-approve true` — same invocation |
+| `model`              | `-m <model>`                            |
+
+Headless cline auto-approves every tool (that is its own default; the adapter pins it explicitly), which makes `edit` and `auto` equivalent.
+
+Two prompt quirks are upstream and the adapter cannot mask them: the prompt must be a positional argument because piped stdin is not read reliably, so a prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches); and a single-word prompt is misparsed as a command name.
+
+## What the stream produces
+
+Text arrives whole per content block from `content_end` events, never double-counted against its partial deltas. Tool content maps to `tool-call` on `content_start` (input is complete there) and `tool-result` on `content_end`. The final `run_result` yields a `usage` event with the run's aggregate tokens and cost.
+
+cline occasionally prints plain-text notices to stdout mid-stream ("AI SDK Warning …"). The adapter filters non-JSON lines before parsing — in strict mode too, because the notices are known cline behavior, not format drift.
+
+## Errors
+
+A `run_result` with `finishReason` other than `"completed"` throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and cline's own message. A nonzero exit throws the same code.

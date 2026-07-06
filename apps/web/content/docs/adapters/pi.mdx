@@ -1,0 +1,69 @@
+---
+title: Pi
+description: How the pi adapter detects, invokes, and parses the Pi coding agent, including its exit-code quirk.
+---
+
+The `pi` adapter drives `pi --mode json -p`, mapping Pi's session/turn/message NDJSON stream onto AnyAgent's normalized events. Pi streams token-level deltas, so `text-delta` events are fine-grained rather than whole messages. Pi is MIT-licensed and pure BYOK: it reads provider keys from ~20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …), so no subscription or account is required.
+
+Import the factory from the `anyagent/pi` subpath:
+
+```ts
+import { create } from "anyagent";
+import { pi } from "anyagent/pi";
+
+const agent = create(pi());
+const result = await agent.run("summarize this repo", {
+  model: "openrouter/openai/gpt-4o-mini",
+});
+```
+
+## Detection
+
+Detection looks for a `pi` binary on `PATH` and reads the version from `pi --version`.
+
+## Capabilities
+
+| Capability         | Value                                         |
+| ------------------ | --------------------------------------------- |
+| `streaming`        | `true`, token-level deltas                    |
+| `permissionLevels` | `read`, `edit`, `auto`                        |
+| `modelSelection`   | `true`, as Pi's `provider/model` pattern      |
+| `sessionResume`    | `true`                                        |
+| `mcp`              | `false` — Pi extends via its own extensions   |
+| `systemPrompt`     | `true`, appended via `--append-system-prompt` |
+| `cwd`              | `true`                                        |
+| `structuredOutput` | `false`                                       |
+
+## How options map to flags
+
+| Option               | Flag                            |
+| -------------------- | ------------------------------- |
+| `permission: "read"` | `--tools read`                  |
+| `permission: "edit"` | none — the default toolset      |
+| `permission: "auto"` | none — same as `edit`           |
+| `model`              | `--model <pattern>`             |
+| `systemPrompt`       | `--append-system-prompt <text>` |
+| `resume`             | `--session-id <id>`             |
+
+Pi has no approval prompts at all — it always runs autonomously — so `edit` and `auto` are the same thing, and `read` works by restricting the toolset to the `read` tool rather than by sandboxing.
+
+The prompt is a positional argument; Pi has no stdin form. A prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches).
+
+## What the stream produces
+
+`text-delta` events carry individual tokens from `message_update` events. Tool calls surface when their arguments are complete, and tool results arrive as their own messages carrying the tool's name. Each `turn_end` yields a `usage` event; `result.usage` sums tokens and cost across turns.
+
+## Errors and the exit-code quirk
+
+Pi exits 0 even when a turn fails. The adapter never trusts the exit code: a turn ending with `stopReason: "error"` throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Pi's own error message.
+
+## Resume a session
+
+The session id rides on `result.raw`:
+
+```ts
+const first = await agent.run("start reviewing this repo");
+const { sessionId } = first.raw as { sessionId?: string };
+
+const followUp = await agent.run("continue with src/", { resume: sessionId });
+```

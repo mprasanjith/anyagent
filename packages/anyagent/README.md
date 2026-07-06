@@ -19,7 +19,7 @@ for await (const ev of agent.runStream("refactor foo.ts")) {
 }
 ```
 
-Zero runtime dependencies. Node 18+ or Bun, ESM. Built-in adapters: `anyagent/claude-code`, `anyagent/codex`.
+Zero runtime dependencies. Node 18+ or Bun, ESM. Built-in adapters: `anyagent/claude-code`, `anyagent/codex`, `anyagent/opencode`, `anyagent/kilo-code`, `anyagent/pi`, `anyagent/goose`, `anyagent/cline`.
 
 Capabilities differ per agent: check `agent.capabilities`. An unsupported request throws `AnyAgentError` (`code: "UnsupportedCapability"`) before anything spawns.
 
