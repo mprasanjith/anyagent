@@ -8,6 +8,7 @@ export type {
   Agent,
   AgentEvent,
   AgentId,
+  CapabilitySupport,
   CapabilityTable,
   Detection,
   DetectionSpec,

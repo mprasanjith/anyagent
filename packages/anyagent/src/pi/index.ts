@@ -10,18 +10,18 @@ import type {
 } from "../internal/types.js";
 
 const CAPS: CapabilityTable = {
-  cwd: true,
+  cwd: "native",
   // Pi extends through its own extension system, not MCP.
   mcp: false,
-  modelSelection: true,
+  modelSelection: "native",
   // Pi has no approval prompts at all, so `edit` and `auto` are the
   // same thing: the default toolset. `read` restricts the agent to the
   // `read` tool via --tools.
   permissionLevels: ["read", "edit", "auto"],
-  sessionResume: true,
-  streaming: true,
-  structuredOutput: false,
-  systemPrompt: true,
+  sessionResume: "native",
+  streaming: "native",
+  structuredOutput: "emulated",
+  systemPrompt: "native",
 };
 
 interface Ctx {

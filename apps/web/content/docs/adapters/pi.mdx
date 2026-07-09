@@ -23,20 +23,20 @@ Detection looks for a `pi` binary on `PATH` and reads the version from `pi --ver
 
 ## Capabilities
 
-The adapter declares one option as unsupported, `mcp`:
+The adapter declares one option as unsupported, `mcp`. Each field is a [`CapabilitySupport`](/docs/api#capabilitysupport): `native` when Pi has its own flag, `emulated` when the core supplies the behavior.
 
-| Capability         | Value                                         |
-| ------------------ | --------------------------------------------- |
-| `streaming`        | `true`, token-level deltas                    |
-| `permissionLevels` | `read`, `edit`, `auto`                        |
-| `modelSelection`   | `true`, as Pi’s `provider/model` pattern      |
-| `sessionResume`    | `true`                                        |
-| `mcp`              | `false`                                       |
-| `systemPrompt`     | `true`, appended via `--append-system-prompt` |
-| `structuredOutput` | `false`                                       |
-| `cwd`              | `true`                                        |
+| Capability         | Value                                           |
+| ------------------ | ----------------------------------------------- |
+| `streaming`        | `native`, token-level deltas                    |
+| `permissionLevels` | `read`, `edit`, `auto`                          |
+| `modelSelection`   | `native`, as Pi’s `provider/model` pattern      |
+| `sessionResume`    | `native`                                        |
+| `mcp`              | `false`                                         |
+| `systemPrompt`     | `native`, appended via `--append-system-prompt` |
+| `structuredOutput` | `emulated`                                      |
+| `cwd`              | `native`                                        |
 
-Pi extends through its own extension system rather than MCP, so `mcp` requesting throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns.
+Pi extends through its own extension system rather than MCP, so requesting `mcp` throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns. Structured output is `emulated`: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
 ## How options map to flags
 

@@ -21,20 +21,32 @@ Detection looks for a `codex` binary on `PATH` and reads the version from `codex
 
 ## Capabilities
 
-The adapter declares two options as unsupported, `mcp` and `systemPrompt`:
+The adapter declares one option as unsupported, `mcp`, and provides `systemPrompt` and `structuredOutput` through core [emulation](/docs/api#capabilitysupport):
 
-| Capability         | Value                                                         |
-| ------------------ | ------------------------------------------------------------- |
-| `streaming`        | `true`, a live NDJSON stream                                  |
-| `permissionLevels` | `read`, `edit`, `auto`                                        |
-| `modelSelection`   | `true`                                                        |
-| `sessionResume`    | `true`                                                        |
-| `mcp`              | `false`                                                       |
-| `systemPrompt`     | `false`                                                       |
-| `structuredOutput` | `true`, informational; pass `--output-schema` via `extraArgs` |
-| `cwd`              | `true`                                                        |
+| Capability         | Value                          |
+| ------------------ | ------------------------------ |
+| `streaming`        | `native`, a live NDJSON stream |
+| `permissionLevels` | `read`, `edit`, `auto`         |
+| `modelSelection`   | `native`                       |
+| `sessionResume`    | `native`                       |
+| `mcp`              | `false`                        |
+| `systemPrompt`     | `emulated`                     |
+| `structuredOutput` | `emulated`                     |
+| `cwd`              | `native`                       |
 
-Requesting `mcp` or `systemPrompt` throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns. Codex can reach both through its own `-c` config overrides, which remain available via [`extraArgs` or `agent.raw`](/docs/escape-hatches).
+`codex exec` has no append-system-prompt flag, so a `systemPrompt` is `emulated`: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent.
+
+```txt
+<system-instructions>
+{your system prompt}
+</system-instructions>
+
+{your prompt}
+```
+
+Structured output is `emulated` too: Codex has a native `--output-schema` path, but until it is verified against recorded output the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
+
+Requesting `mcp` throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns. Codex can reach MCP through its own `-c` config overrides, available via [`extraArgs` or `agent.raw`](/docs/escape-hatches).
 
 ## How options map to flags
 

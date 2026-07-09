@@ -19,20 +19,22 @@ import type {
  */
 
 const CAPS: CapabilityTable = {
-  cwd: true,
-  // MCP servers and system prompts are config-file concerns
-  // (opencode.json / agent files); there is no per-run flag to map.
+  cwd: "native",
+  // MCP servers are a config-file concern (opencode.json / agent files); there
+  // is no per-run flag to map.
   mcp: false,
-  modelSelection: true,
+  modelSelection: "native",
   // No `read` level: permissions are config-file driven, and a denied
   // permission in a non-interactive run can hang waiting for an approval
   // that never comes. `edit` is the CLI's own default behavior; `auto`
   // adds --auto.
   permissionLevels: ["edit", "auto"],
-  sessionResume: true,
-  streaming: true,
-  structuredOutput: false,
-  systemPrompt: false,
+  sessionResume: "native",
+  streaming: "native",
+  structuredOutput: "emulated",
+  // No per-run append-system-prompt flag (system prompts are config-file /
+  // agent-file concerns); the core folds the system prompt into the prompt.
+  systemPrompt: "emulated",
 };
 
 interface Ctx {

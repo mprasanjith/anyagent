@@ -14,7 +14,12 @@ export const resolvePermission = (opts: RunOptions): PermissionLevel =>
 
 type GuardedCap = keyof Pick<
   CapabilityTable,
-  "cwd" | "mcp" | "modelSelection" | "sessionResume" | "systemPrompt"
+  | "cwd"
+  | "mcp"
+  | "modelSelection"
+  | "sessionResume"
+  | "structuredOutput"
+  | "systemPrompt"
 >;
 
 const GUARDED_OPTIONS: readonly (readonly [
@@ -27,6 +32,7 @@ const GUARDED_OPTIONS: readonly (readonly [
   ["resume", "sessionResume", "session resume"],
   ["mcp", "mcp", "MCP config"],
   ["cwd", "cwd", "a working directory"],
+  ["schema", "structuredOutput", "structured output"],
 ];
 
 /**

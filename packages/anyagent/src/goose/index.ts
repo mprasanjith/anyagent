@@ -10,20 +10,20 @@ import type {
 } from "../internal/types.js";
 
 const CAPS: CapabilityTable = {
-  cwd: true,
+  cwd: "native",
   // Goose attaches MCP servers via --with-extension, but that surface is
   // unverified against real output; use extraArgs or raw.
   mcp: false,
-  modelSelection: true,
+  modelSelection: "native",
   // No `read` level: goose's chat mode disables tools entirely (the agent
   // could not even read files), and its approve modes can hang a
   // non-interactive run. `edit` is goose's own default; `auto` pins
   // GOOSE_MODE=auto.
   permissionLevels: ["edit", "auto"],
-  sessionResume: true,
-  streaming: true,
-  structuredOutput: false,
-  systemPrompt: true,
+  sessionResume: "native",
+  streaming: "native",
+  structuredOutput: "emulated",
+  systemPrompt: "native",
 };
 
 interface Ctx {

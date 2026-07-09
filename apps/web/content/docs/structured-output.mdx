@@ -1,0 +1,140 @@
+---
+title: Get structured output
+description: Pass a JSON Schema to a run, read the parsed value from RunResult.json, and handle the validation and retry path.
+---
+
+Pass a JSON Schema to `agent.run()` and AnyAgent returns the agent’s reply parsed and validated against it, on `RunResult.json`. This page shows how to describe the shape you want, read the parsed value, and handle a reply that never matches. It works on every supported agent.
+
+## How structured output is provided
+
+Every built-in adapter declares `structuredOutput` as `"emulated"`. No CLI here has a verified native schema flag yet, so AnyAgent’s core appends your schema to the prompt and parses the reply itself. The behavior is identical on every agent, and the appendix it adds looks like this:
+
+```txt
+{your prompt}
+
+Respond with a single JSON value that matches this JSON Schema. Output only the JSON, with no prose and no code fences.
+
+<json-schema>
+{your schema, pretty-printed}
+</json-schema>
+```
+
+After the agent replies, the core extracts a JSON value from the text, whether it came back bare, in a fenced code block, or embedded in prose, then validates it before handing it to you.
+
+## Describe the shape with a JSON Schema
+
+`RunOptions.schema` takes a plain JSON Schema object. This one asks for a repo’s runtime dependencies and its test command:
+
+```ts
+const schema = {
+  type: "object",
+  properties: {
+    dependencies: { type: "array", items: { type: "string" } },
+    testCommand: { type: "string" },
+  },
+  required: ["dependencies", "testCommand"],
+};
+```
+
+## Run with the schema and read the parsed value
+
+Detect an agent, create it, and pass the schema on the run. The parsed value lands on `result.json`, typed `unknown`, so cast it to the shape you asked for:
+
+```ts
+import { create, detect } from "anyagent";
+
+const [found] = await detect();
+if (!found) {
+  throw new Error("No supported coding agent found.");
+}
+
+const agent = create(found);
+const result = await agent.run(
+  "Inspect this repo and report its runtime dependencies and the command " +
+    "that runs its tests.",
+  { schema, permission: "read" }
+);
+
+const { dependencies, testCommand } = result.json as {
+  dependencies: string[];
+  testCommand: string;
+};
+console.log(testCommand, dependencies);
+```
+
+`result.json` holds the validated value:
+
+```txt
+bun test [ 'react', 'zod', 'hono' ]
+```
+
+The cast is yours to trust. AnyAgent checks the value against the keywords below, but the TypeScript type is an assertion you write, so validate further yourself when a field carries meaning the schema cannot capture.
+
+## Which schema keywords are validated
+
+The core validates the essentials of JSON Schema and ignores the rest:
+
+- `type`, including `"integer"` and `"array"`
+- `properties` and `required`, applied recursively to nested objects
+- `items`, as a single schema applied to every array element
+- `enum`
+
+Every other JSON Schema keyword, such as `minLength`, `pattern`, or `format`, passes without a check. When a value must satisfy one of those, validate it in your own code after reading `result.json`.
+
+## Handle a reply that never matches
+
+When the first reply fails to parse or validate, the core retries once. It re-asks the agent with the failed reply and the specific errors quoted, then validates the second reply. A successful retry returns normally, with the corrected value on `result.json`.
+
+<Callout type="warn">
+  The retry is a second full agent run. On an agent that edits files, a run
+  whose first reply fails validation acts on your repo twice. Prefer
+  `permission: "read"` for extraction tasks so a retry stays side-effect free.
+</Callout>
+
+When the retry also fails, `run()` throws `AnyAgentError` with `code: "Parse"`. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. Each error carries a JSON path, so `$.user.name: expected string, got number` tells you which field came back wrong:
+
+```ts
+import { AnyAgentError, create, detect } from "anyagent";
+
+const [found] = await detect();
+if (!found) {
+  throw new Error("No supported coding agent found.");
+}
+const agent = create(found);
+
+try {
+  const result = await agent.run("Report this repo's dependencies.", {
+    schema,
+    permission: "read",
+  });
+  console.log(result.json);
+} catch (err) {
+  if (err instanceof AnyAgentError && err.code === "Parse") {
+    console.error("The agent could not match the schema:", err.message);
+    console.error("Its last reply was:", err.raw);
+  } else {
+    throw err;
+  }
+}
+```
+
+## Streaming does not parse
+
+`runStream()` accepts a `schema` and uses it to shape the prompt, but it yields raw `text-delta` events and never sets `json`. Parsing and the retry happen only in `run()`, which needs the whole reply in hand. Call `run()` when you want a parsed value, and reserve `runStream()` for showing progress. See [Stream progress](/docs/streaming).
+
+## Guard structured output on unknown agents
+
+`capabilities.structuredOutput` guards the schema option. Every built-in adapter declares it `"emulated"` today, so a schema works on all of them; a future `"native"` mapping would change how the reply is produced, not how you ask for it. When you drive a custom adapter that might not declare it, check first:
+
+```ts
+const opts = agent.capabilities.structuredOutput ? { schema } : {};
+const result = await agent.run("Report this repo's dependencies.", opts);
+```
+
+Requesting a schema on an adapter that declares `structuredOutput: false` throws `AnyAgentError` with `code: "UnsupportedCapability"` before anything spawns. See [Handle errors](/docs/errors).
+
+## Next steps
+
+- [Run a prompt](/docs/running-prompts): the other `RunOptions` fields in context
+- [Handle errors](/docs/errors): the `Parse` and `UnsupportedCapability` codes in full
+- [How AnyAgent works](/docs/how-it-works): native versus emulated capabilities

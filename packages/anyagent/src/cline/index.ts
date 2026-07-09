@@ -10,10 +10,10 @@ import type {
 } from "../internal/types.js";
 
 const CAPS: CapabilityTable = {
-  cwd: true,
+  cwd: "native",
   // MCP servers are `cline mcp` config, not a per-run flag.
   mcp: false,
-  modelSelection: true,
+  modelSelection: "native",
   // No `read` level: cline's plan mode still executes shell commands
   // (verified writing a file through run_commands), so it cannot honestly
   // stand in for `read`. Headless cline auto-approves every tool, which
@@ -22,11 +22,12 @@ const CAPS: CapabilityTable = {
   // `--id` resume is broken in cline's headless JSON mode (the prompt is
   // never accepted alongside it), so resume stays undeclared.
   sessionResume: false,
-  streaming: true,
-  structuredOutput: false,
-  // cline's -s replaces the system prompt entirely; RunOptions.systemPrompt
-  // promises append semantics, so it stays undeclared.
-  systemPrompt: false,
+  streaming: "native",
+  structuredOutput: "emulated",
+  // cline's -s replaces the system prompt entirely; preamble emulation folds
+  // the system prompt into the prompt text, preserving the append semantics
+  // RunOptions.systemPrompt promises.
+  systemPrompt: "emulated",
 };
 
 interface Ctx {
@@ -227,10 +228,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  *
  * Headless cline auto-approves every tool, so `edit` and `auto` are
  * equivalent and there is no `read` level (plan mode still executes
- * shell commands). Session resume and system prompts are undeclared: `--id`
- * is broken in headless JSON mode upstream, and `-s` replaces rather than
- * appends. A failed run throws `AnyAgentError` with cline's own message
- * from `run_result`.
+ * shell commands). Session resume is undeclared: `--id` is broken in headless
+ * JSON mode upstream. System prompts have no append flag (`-s` replaces), so
+ * the core emulates them by folding into the prompt. A failed run throws
+ * `AnyAgentError` with cline's own message from `run_result`.
  */
 export const cline = (): Adapter => ({
   buildInvocation,

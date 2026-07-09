@@ -53,6 +53,8 @@ The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an ag
 
 The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet. Update `anyagent`, and report the failure upstream with `argv` and `stderr` so the adapter can catch up.
 
+`Parse` also fires when you pass a [`schema`](/docs/structured-output) and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update; [Get structured output](/docs/structured-output) covers it.
+
 ## Aborted
 
 Your `AbortSignal` fired and the underlying process was terminated. In a shipped tool that is the end user cancelling on purpose, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming) shows how to wire the signal to Ctrl+C.

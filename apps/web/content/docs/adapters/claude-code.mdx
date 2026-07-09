@@ -21,18 +21,20 @@ Detection looks for a `claude` binary on `PATH` and reads the version from `clau
 
 ## Capabilities
 
-The adapter declares every field of the [capability table](/docs/api#capabilitytable) as supported:
+The adapter declares every field of the [capability table](/docs/api#capabilitytable) as supported. Each field is a [`CapabilitySupport`](/docs/api#capabilitysupport): `native` when the CLI has its own flag, `emulated` when the core supplies the behavior:
 
-| Capability         | Value                                                       |
-| ------------------ | ----------------------------------------------------------- |
-| `streaming`        | `true`, a live NDJSON stream                                |
-| `permissionLevels` | `read`, `edit`, `auto`                                      |
-| `modelSelection`   | `true`                                                      |
-| `sessionResume`    | `true`                                                      |
-| `mcp`              | `true`                                                      |
-| `systemPrompt`     | `true`                                                      |
-| `structuredOutput` | `true`, informational; pass `--json-schema` via `extraArgs` |
-| `cwd`              | `true`                                                      |
+| Capability         | Value                          |
+| ------------------ | ------------------------------ |
+| `streaming`        | `native`, a live NDJSON stream |
+| `permissionLevels` | `read`, `edit`, `auto`         |
+| `modelSelection`   | `native`                       |
+| `sessionResume`    | `native`                       |
+| `mcp`              | `native`                       |
+| `systemPrompt`     | `native`                       |
+| `structuredOutput` | `emulated`                     |
+| `cwd`              | `native`                       |
+
+Structured output is `emulated`: Claude Code has a native schema flag, but it is not yet verified against recorded output, so the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
 ## How options map to flags
 

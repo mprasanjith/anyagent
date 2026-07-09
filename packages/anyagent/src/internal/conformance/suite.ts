@@ -2,6 +2,7 @@ import { AgentImpl } from "../agent.js";
 import type {
   Adapter,
   AgentEvent,
+  CapabilitySupport,
   PermissionLevel,
   RunOptions,
 } from "../types.js";
@@ -115,7 +116,7 @@ export const runConformance = async (
     })
   );
 
-  const probes: [boolean, () => Promise<unknown>][] = [
+  const probes: [CapabilitySupport, () => Promise<unknown>][] = [
     [caps.modelSelection, runWith({ model: "m" })],
     [caps.sessionResume, runWith({ resume: "s" })],
     [caps.systemPrompt, runWith({ systemPrompt: "s" })],

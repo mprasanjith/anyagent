@@ -11,16 +11,21 @@ import type {
 } from "../internal/types.js";
 
 const CAPS: CapabilityTable = {
-  cwd: true,
+  cwd: "native",
   // MCP servers reach Codex only through `-c mcp_servers.*` config overrides,
   // which we have not verified against real output; use extraArgs or raw.
   mcp: false,
-  modelSelection: true,
+  modelSelection: "native",
   permissionLevels: ["read", "edit", "auto"],
-  sessionResume: true,
-  streaming: true,
-  structuredOutput: true,
-  systemPrompt: false,
+  sessionResume: "native",
+  streaming: "native",
+  // Codex has a native `--output-schema` path, but it is unverified against
+  // recorded real output, so core emulation applies until fixtures exist;
+  // flipping to "native" is a recorded-fixture follow-up.
+  structuredOutput: "emulated",
+  // `codex exec` has no append-system-prompt flag; the core folds the system
+  // prompt into the prompt text instead.
+  systemPrompt: "emulated",
 };
 
 const SANDBOX_MODE: Record<PermissionLevel, string> = {
@@ -241,8 +246,9 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * const result = await create(codex()).run("summarize this repo");
  * ```
  *
- * System prompts and MCP servers are not supported on `codex exec`; Codex's
- * `-c` config overrides can reach them via `extraArgs` or `agent.raw`.
+ * MCP servers are not supported on `codex exec`; Codex's `-c` config overrides
+ * can reach them via `extraArgs` or `agent.raw`. System prompts have no native
+ * flag, so the core emulates them by folding them into the prompt.
  */
 export const codex = (): Adapter => ({
   buildInvocation,

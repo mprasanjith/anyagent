@@ -23,20 +23,32 @@ Detection looks for `kilo`, then `kilocode`, on `PATH`, and the first found wins
 
 ## Capabilities
 
-The adapter declares three options as unsupported, `mcp`, `systemPrompt`, and the `read` permission level:
+The adapter declares `mcp` and the `read` permission level as unsupported, and provides `systemPrompt` and `structuredOutput` through core [emulation](/docs/api#capabilitysupport):
 
-| Capability         | Value                        |
-| ------------------ | ---------------------------- |
-| `streaming`        | `true`, a live NDJSON stream |
-| `permissionLevels` | `edit`, `auto`               |
-| `modelSelection`   | `true`, as `provider/model`  |
-| `sessionResume`    | `true`                       |
-| `mcp`              | `false`                      |
-| `systemPrompt`     | `false`                      |
-| `structuredOutput` | `false`                      |
-| `cwd`              | `true`                       |
+| Capability         | Value                          |
+| ------------------ | ------------------------------ |
+| `streaming`        | `native`, a live NDJSON stream |
+| `permissionLevels` | `edit`, `auto`                 |
+| `modelSelection`   | `native`, as `provider/model`  |
+| `sessionResume`    | `native`                       |
+| `mcp`              | `false`                        |
+| `systemPrompt`     | `emulated`                     |
+| `structuredOutput` | `emulated`                     |
+| `cwd`              | `native`                       |
 
-There is no `read` level. Like opencode, Kilo’s per-tool permissions are config-file driven, and a config-denied action in a non-interactive run can hang waiting for an approval that never comes. MCP servers and system prompts are also config-file concerns; reach them through Kilo’s own config or [`extraArgs`](/docs/escape-hatches).
+There is no `read` level. Like opencode, Kilo’s per-tool permissions are config-file driven, and a config-denied action in a non-interactive run can hang waiting for an approval that never comes. MCP servers are also a config-file concern; reach them through Kilo’s own config or [`extraArgs`](/docs/escape-hatches).
+
+Kilo has no per-run append-system-prompt flag, so a `systemPrompt` is `emulated`: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent.
+
+```txt
+<system-instructions>
+{your system prompt}
+</system-instructions>
+
+{your prompt}
+```
+
+Structured output is `emulated` too: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
 ## How options map to flags
 
