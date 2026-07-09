@@ -48,7 +48,7 @@ const probe = (
   which: (b) => Promise.resolve(resolved[b] ?? null),
 });
 
-test("resolves first bin on PATH and parses version", async () => {
+test("resolves the first bin alias found on PATH and parses the version", async () => {
   const r = await defaultDetect(
     adapter,
     probe({ demo: null, "demo-cli": "/usr/bin/demo-cli" }, "Demo 1.2.3 (build)")

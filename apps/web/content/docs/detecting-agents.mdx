@@ -7,12 +7,22 @@ This page shows how to find the agents installed on the end user’s machine, pi
 
 ## Find what is installed
 
-Call `detect()` to scan the end user’s `PATH` for every supported agent. It returns one `DetectResult` per installed agent, and an empty array when none are found.
+Call `detect()` to scan the end user’s `PATH` for every supported agent. It returns one `DetectResult` per installed agent, and an empty array when none are found:
 
 ```ts
 import { detect } from "anyagent";
 
 const installed = await detect();
+for (const found of installed) {
+  console.log(`${found.name} ${found.version ?? "unknown"} at ${found.path}`);
+}
+```
+
+On a machine with Claude Code and Codex installed, this prints:
+
+```txt
+Claude Code 2.0.31 at /home/sam/.local/bin/claude
+Codex 0.48.0 at /usr/local/bin/codex
 ```
 
 Each `DetectResult` carries:
@@ -24,7 +34,7 @@ Each `DetectResult` carries:
 
 ## Choose which agent to run
 
-The order of results carries no preference: `detect()` follows its adapter list, not a ranking, and there is no "best" agent, so which one to run is your product decision. This rudimentary picker prints the options and reads a choice from stdin:
+The order of results carries no preference, and there is no “best” agent, so which one to run is your product decision. This picker prints the options and reads a choice from stdin:
 
 ```ts
 import { create, detect } from "anyagent";
@@ -45,13 +55,26 @@ const chosen = installed[Number(answer) - 1] ?? first;
 const agent = create(chosen);
 ```
 
-`create()` accepts a `DetectResult` directly and returns a runnable `Agent`.
+`create()` accepts a `DetectResult` directly and returns a runnable `Agent`. The prompt looks like this:
+
+```txt
+1. Claude Code
+2. Codex
+Which agent should acme init use? 1
+```
 
 ## Tell the user what will happen
 
 Before you run anything, name the agent and describe the task you are about to drive. The prompt runs under the user’s login and bills against their subscription, so nothing should run by surprise.
 
 ```ts
+import { detect } from "anyagent";
+
+const [chosen] = await detect();
+if (!chosen) {
+  throw new Error("No supported coding agent found.");
+}
+
 console.log(
   `acme init will run ${chosen.name} to set up the Acme SDK on your codebase.`
 );
@@ -61,18 +84,23 @@ console.log(
 
 When `detect()` returns an empty array, no supported agent is installed. Your response depends on whether the agent is a hard requirement.
 
-When the agent adds an optional feature, degrade gracefully and skip it:
+When the agent adds an optional feature, degrade gracefully, skip it, and continue with your manual path:
 
 ```ts
+import { detect } from "anyagent";
+
+const installed = await detect();
 if (installed.length === 0) {
   console.log("No coding agent found. Skipping automatic setup.");
-  runManualSetup();
 }
 ```
 
-When the agent is required, tell the user which CLIs you support, naming them from the [supported set](/docs/adapters), and how to install one:
+When the agent is required, tell the user which CLIs you support, naming them from the [supported agents](/docs/adapters), and how to install one:
 
 ```ts
+import { detect } from "anyagent";
+
+const installed = await detect();
 if (installed.length === 0) {
   console.error(
     "acme init needs a coding agent. Install a supported CLI, sign in, and rerun."
@@ -83,7 +111,7 @@ if (installed.length === 0) {
 
 ## Target one specific agent
 
-When your tool supports exactly one agent, skip detection and import that adapter directly. Subpath imports keep your bundle lean: you pull in only the adapter you use.
+When your tool supports exactly one agent, skip detection and import that adapter directly. Subpath imports pull in only the adapter you use:
 
 ```ts
 import { create } from "anyagent";
@@ -96,12 +124,21 @@ Every adapter imports the same way from its own subpath, named on its adapter pa
 
 ## Adjust to an agent’s capabilities
 
-Each `DetectResult` carries a `capabilities` table describing what its CLI can do. Read it before you decide what to ask for, so the same code works across agents with different feature sets.
+Each `DetectResult` carries a `capabilities` table describing what its CLI can do. Read it before you decide what to ask for, so the same code works across agents with different feature sets:
 
 ```ts
-const opts = chosen.capabilities.mcp ? { mcp: acmeMcpServers } : {};
-const agent = create(chosen);
-await agent.run(prompt, opts);
+import { create, detect } from "anyagent";
+
+const [found] = await detect();
+if (!found) {
+  throw new Error("No supported coding agent found.");
+}
+
+const agent = create(found);
+const opts = found.capabilities.mcp
+  ? { mcp: { db: { command: "npx", args: ["acme-db-mcp"] } } }
+  : {};
+await agent.run("Describe the database schema this app expects.", opts);
 ```
 
 Requesting an unsupported capability throws before the CLI spawns. Each adapter page lists the capability table its CLI declares.
@@ -110,4 +147,4 @@ Requesting an unsupported capability throws before the CLI spawns. Each adapter 
 
 - [Run a prompt](/docs/running-prompts): configure and execute a run on the agent you picked
 - [Permissions](/docs/permissions): the three autonomy levels and how each maps to a CLI
-- [Production flow](/docs/production): assemble detection, choice, and error handling end to end
+- [Ship to production](/docs/production): assemble detection, choice, and error handling end to end

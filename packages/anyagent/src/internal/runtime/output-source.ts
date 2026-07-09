@@ -8,6 +8,11 @@ const STDERR_SNIPPET_LEN = 200;
 const isAbort = (err: Error & { code?: string }): boolean =>
   err.name === "AbortError" || err.code === "ABORT_ERR";
 
+/**
+ * Wrap a spawned child in an {@link OutputSource}: line-buffered stdout,
+ * captured stderr, and an `exitCode` that rejects with a descriptive
+ * `Invocation` (or `Aborted`) error on any failure.
+ */
 export const outputSourceFromChild = (
   child: ChildProcess,
   invocation: Invocation
@@ -72,24 +77,30 @@ export const outputSourceFromChild = (
     throw AnyAgentError.wrap(error, "Invocation");
   };
 
-  const lines = async function* lines(): AsyncIterable<string> {
+  const chunks = async function* chunks(): AsyncIterable<string> {
     const { stdout } = child;
     if (!stdout) {
       return;
     }
-    let buf = "";
     try {
       for await (const chunk of stdout) {
-        buf += chunk.toString("utf-8");
-        let idx = buf.indexOf("\n");
-        while (idx >= 0) {
-          yield buf.slice(0, idx);
-          buf = buf.slice(idx + 1);
-          idx = buf.indexOf("\n");
-        }
+        yield chunk.toString("utf-8");
       }
     } catch (error) {
       await readError(error);
+    }
+  };
+
+  const lines = async function* lines(): AsyncIterable<string> {
+    let buf = "";
+    for await (const chunk of chunks()) {
+      buf += chunk;
+      let idx = buf.indexOf("\n");
+      while (idx >= 0) {
+        yield buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        idx = buf.indexOf("\n");
+      }
     }
     if (buf.length) {
       yield buf;
@@ -97,17 +108,9 @@ export const outputSourceFromChild = (
   };
 
   const text = async (): Promise<string> => {
-    const { stdout } = child;
-    if (!stdout) {
-      return "";
-    }
     let out = "";
-    try {
-      for await (const chunk of stdout) {
-        out += chunk.toString("utf-8");
-      }
-    } catch (error) {
-      await readError(error);
+    for await (const chunk of chunks()) {
+      out += chunk;
     }
     return out;
   };

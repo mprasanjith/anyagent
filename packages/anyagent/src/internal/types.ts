@@ -80,9 +80,9 @@ export interface CapabilityTable {
 }
 
 /**
- * Token and cost accounting for a run, normalized across harnesses. Every
+ * Token and cost accounting for a run, normalized across agents. Every
  * field is optional because each CLI reports a different subset — check for
- * `undefined` rather than assuming a field is present. The harness's exact
+ * `undefined` rather than assuming a field is present. The CLI's exact
  * native accounting is always available on the event's or result's `raw`.
  */
 export interface Usage {
@@ -124,7 +124,7 @@ export type McpConfig = Record<string, McpServer>;
  * Everything you can tune about a single run; all fields are optional. Each
  * option is validated against the adapter's {@link CapabilityTable} up front,
  * so asking for something this agent's CLI cannot do (say, `resume` on a
- * harness without sessions) throws `AnyAgentError`
+ * CLI without sessions) throws `AnyAgentError`
  * (`code: "UnsupportedCapability"`) before any process spawns — a wrong
  * assumption fails fast instead of mid-run.
  */
@@ -147,7 +147,7 @@ export interface RunOptions {
   env?: Record<string, string>;
   /**
    * Escape hatch: extra native CLI flags appended verbatim to the argv, so you
-   * can reach a harness capability the unified surface does not model while
+   * can reach a native capability the unified surface does not model while
    * keeping normalized events. Adapter-specific — the caller owns correctness.
    *
    * These flags are never validated and are appended after the flags the
@@ -167,11 +167,11 @@ export interface RunOptions {
  * - `usage` — token/cost accounting became available.
  * - `done` — the run finished; carries the final {@link RunResult}.
  *
- * How much text one `text-delta` carries depends on the harness: a token, a
+ * How much text one `text-delta` carries depends on the CLI: a token, a
  * chunk, or a whole assistant message (claude-code emits whole messages).
  * What you can rely on — enforced by the conformance suite — is that
  * concatenating every delta's `text` reproduces `RunResult.text` exactly.
- * `raw` on each event except `done` is the harness's untouched native
+ * `raw` on each event except `done` is the CLI's untouched native
  * payload for it.
  */
 export type AgentEvent =
@@ -188,7 +188,7 @@ export type AgentEvent =
  * to learn whether it worked.
  *
  * `text` is the agent's final answer with all text output concatenated. `raw`
- * is the harness's own final payload, untouched, for anything the normalized
+ * is the CLI's own final payload, untouched, for anything the normalized
  * fields leave out (exact cache accounting, session ids, …).
  */
 export interface RunResult {
@@ -399,7 +399,7 @@ export interface Adapter {
 
 /**
  * Direct access to the native CLI, for capabilities the unified surface does
- * not model (bidirectional sessions, harness-specific output modes, …).
+ * not model (bidirectional sessions, CLI-specific output modes, …).
  *
  * `buildInvocation` returns the exact command AnyAgent would run — useful for
  * logging, or for running it yourself somewhere else. `spawn` launches it and

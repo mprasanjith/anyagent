@@ -3,7 +3,9 @@ title: Adding an adapter
 description: Implement, record, and verify support for a new coding-agent CLI in the AnyAgent repo.
 ---
 
-This guide is for contributors adding CLI support to the AnyAgent repo itself, not for callers building on top of the library. An adapter is one file of data and pure functions with no I/O of its own. One rule governs all of it: no adapter ships against a guessed schema; every claim about a CLI’s flags and output format is verified against a real audit plus recorded real output.
+This guide takes you from an empty file to a shipped adapter: implement the contract, register it, record real fixtures, pass conformance, and add a live test. It is for contributors changing the AnyAgent repo itself, not for callers building on top of the library. One rule governs all of it: no adapter ships against a guessed schema, so every claim about a CLI’s flags and output format is verified against a real audit plus recorded real output.
+
+The examples add a fictional Hopper CLI with the id `hopper`; substitute your CLI’s id throughout.
 
 ## Before you start
 
@@ -13,11 +15,11 @@ You need three things in place:
 - The target CLI installed and signed in, so you can record real output
 - The CLI’s headless documentation: its non-interactive invocation, streaming format, and permission flags
 
-Per-CLI facts collected during audits live in `docs/specs/harness-audit.md`.
+Per-CLI facts collected during audits live in the harness audit at `docs/specs/harness-audit.md` in the repo. Verify your CLI’s row there, or write it, before you write code.
 
-## The contract
+## Implement the contract
 
-Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/<id>/index.ts` and export it as a factory function. The interface has five required members plus an optional `detect`:
+Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/hopper/index.ts` and export it as a factory function. The interface has five required members plus an optional `detect`:
 
 ```ts
 export interface Adapter {
@@ -35,92 +37,132 @@ export interface Adapter {
 
 `meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run. `detect` replaces default detection entirely; omit it unless the CLI needs one. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
 
+Read `packages/anyagent/src/claude-code/index.ts` alongside this page. It is the reference implementation, and a new adapter should mirror its shape.
+
 ## Keep buildInvocation pure
 
 `buildInvocation` maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything. The core does the spawning, which keeps adapters testable offline with zero subprocesses.
 
 Pipe the prompt through `Invocation.input` rather than a positional argument. `input` is written to the child’s stdin, so a large prompt never hits the OS argv size limit. A positional prompt would.
 
-## Parse rules
+## Map output to events in parse
 
 `parse` maps process output to normalized events and must end with exactly one `done` event. Under `strict: true`, throw [`AnyAgentError`](/docs/errors) with `code: "Parse"` on any shape you do not recognize. The live drift check depends on strict mode to catch upstream format changes, so an unhandled new event type must throw there rather than pass silently.
 
 ## Use ndjsonParser for NDJSON CLIs
 
-Most agent CLIs stream newline-delimited JSON. `ndjsonParser` owns everything those adapters share: decoding one JSON object per line, buffering events into the result, awaiting the process exit and throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
+When the CLI streams newline-delimited JSON, one JSON object per line, build `parse` from `ndjsonParser`, as most built-in adapters do. The parser owns everything those adapters share: decoding each line, buffering events into the result, throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
 
 ```ts
+import { AnyAgentError } from "../internal/errors.js";
+import { ndjsonParser } from "../internal/ndjson.js";
+
+interface Ctx {
+  text: string[];
+  raw?: unknown;
+}
+
 const parse = ndjsonParser<Ctx>({
-  init: () => ({ text: [] }), // per-run accumulator state
-  map: (obj, ctx, strict) => {
-    // one raw JSON object in; normalized event(s) or null out
-  },
   finalize: (ctx) => ({
-    events: [], // the parser overwrites this with the buffered events
+    events: [], // the parser fills this with everything map emitted
     raw: ctx.raw,
     text: ctx.text.join(""),
-    usage: ctx.usage,
+    usage: undefined,
   }),
+  init: () => ({ text: [] }),
+  map: (obj, ctx, strict) => {
+    const ev = obj as { type: string; text?: string };
+    if (ev.type === "message") {
+      ctx.text.push(ev.text ?? "");
+      return { raw: obj, text: ev.text ?? "", type: "text-delta" };
+    }
+    if (strict) {
+      throw new AnyAgentError("Parse", `unknown event type ${ev.type}`);
+    }
+    return null;
+  },
 });
 ```
 
-`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `null` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. `finalize` does not need to collect events itself: the parser buffers everything `map` emits and fills `RunResult.events` after `finalize` returns. Read `packages/anyagent/src/claude-code/index.ts` alongside this page; it is the reference implementation, and new adapters should mirror its shape.
+`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `null` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. This sketch handles one fictional `message` event and throws on everything else under strict mode; a real adapter maps its CLI’s whole event taxonomy, including tool calls and usage. `finalize` does not collect events itself: the parser buffers everything `map` emits and fills `RunResult.events` after `finalize` returns.
+
+The relative imports above are what an in-repo adapter uses. An adapter published outside this repo imports the same helpers from the package: `ndjsonParser` and `AnyAgentError` from `anyagent`.
+
+## Register the adapter in BUILTINS
+
+Append your factory result to `BUILTINS` in `packages/anyagent/src/internal/registry.ts`. `detect()` scans that list, and the fixture recorder resolves adapters by id from it, so registration comes before recording. Add the import and extend the array; the existing lines stay:
+
+```ts
+import { hopper } from "../hopper/index.js";
+
+export const BUILTINS: Adapter[] = [claudeCode(), codex(), hopper()];
+```
 
 ## Record real fixtures
 
-Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/<id>/`. The recorder builds the adapter’s own read-only invocation, runs it, and writes the raw output lines to the right path.
-
-First append your adapter to `BUILTINS` in `packages/anyagent/src/internal/registry.ts`, since the recorder resolves adapters by id from that list. Then record from `packages/anyagent/`:
+Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/hopper/`. The recorder builds the adapter’s own read-only invocation, runs it, and writes the raw output lines to the right path. Record from `packages/anyagent/`:
 
 ```bash
-bun src/cli/record.ts <adapterId> simple "Reply with exactly the word: pong"
+bun src/cli/record.ts hopper simple "Reply with exactly the word: pong"
 ```
 
 ```text
-wrote test/fixtures/<adapterId>/simple.jsonl
+wrote test/fixtures/hopper/simple.jsonl
 ```
 
 Record at least a `simple` scenario. Add `tools` and `edit` scenarios when the CLI’s tool-call and file-change output has its own shapes that `simple` does not exercise.
 
 ## Run the conformance suite
 
-`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one terminal `done`, delta text that concatenates to `RunResult.text`, a valid invocation for every declared permission level, and an `UnsupportedCapability` throw for every capability left undeclared. Add a test to `test/conformance.test.ts`:
+`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one terminal `done`, delta text that concatenates to `RunResult.text`, a valid invocation for every declared permission level, and an `UnsupportedCapability` throw for every capability left undeclared. Add a test to `packages/anyagent/test/conformance.test.ts`:
 
 ```ts
 import { test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { hopper } from "../src/hopper/index.js";
 import { runConformance } from "../src/internal/conformance/suite.js";
-import { myAgent } from "../src/my-agent/index.js";
 
 const read = (p: string) =>
   readFileSync(path.join(import.meta.dir, p), "utf-8");
 
-test("myAgent passes conformance", async () => {
-  await runConformance(myAgent(), {
-    fixtures: { simple: read("fixtures/my-agent/simple.jsonl") },
+test("hopper passes conformance", async () => {
+  await runConformance(hopper(), {
+    fixtures: { simple: read("fixtures/hopper/simple.jsonl") },
   });
 });
 ```
 
-## Add a live test
-
-A `test/<id>.live.test.ts` drives the real CLI, opt-in behind `ANYAGENT_LIVE=1`. Its second half is the drift canary: production parsing is lenient, but the live tier runs fresh CLI output through strict mode, so an upstream format change throws instead of silently producing empty text. Assert shape, never content, since agent output is non-deterministic.
+The relative import to `../src/internal/conformance/suite.js` is what an in-repo test uses; an adapter published outside this repo imports `runConformance` from the `anyagent/conformance` subpath instead. Run it and confirm it is green before moving on:
 
 ```bash
-ANYAGENT_LIVE=1 bun test test/my-agent.live.test.ts
+bun test test/conformance.test.ts
 ```
 
-## The checklist
+## Add a live test
+
+A `test/hopper.live.test.ts` drives the real CLI, opt-in behind `ANYAGENT_LIVE=1`; without that variable the tests skip, so CI stays hermetic. Mirror `test/claude-code.live.test.ts`: one test runs a trivial prompt and asserts text and usage arrived, and the second is the drift canary. Production parsing is lenient, but the canary runs fresh CLI output through strict mode, so an upstream format change throws instead of silently producing empty text. Assert shape, never content, since agent output is non-deterministic.
+
+```bash
+ANYAGENT_LIVE=1 bun test test/hopper.live.test.ts
+```
+
+## Confirm the checklist
 
 Before you open the change, confirm all six:
 
-1. `src/<id>/index.ts` exports the factory, with TSDoc on it
+1. `src/hopper/index.ts` exports the `hopper()` factory, with TSDoc on it
 2. The adapter is appended to `BUILTINS`
-3. Recorded fixtures live in `test/fixtures/<id>/`
+3. Recorded fixtures live in `test/fixtures/hopper/`
 4. A conformance test covers those fixtures
-5. A `*.live.test.ts` includes the strict-mode drift check
+5. A `hopper.live.test.ts` includes the strict-mode drift check
 6. `bun run check && bun run types && bun test` is green at the repo root
 
 Declare `false` for anything you have not verified against real output. Honest capabilities matter more than broad ones, and the [escape hatches](/docs/escape-hatches) carry the rest.
+
+## Next steps
+
+- [API reference: the adapter contract](/docs/api#adapter-contract): the `Adapter`, `Invocation`, and `OutputSource` types in full
+- [How AnyAgent works](/docs/how-it-works): the thin-core, pure-adapter architecture the contract enforces
+- [Claude Code](/docs/adapters/claude-code): how the reference adapter presents to callers

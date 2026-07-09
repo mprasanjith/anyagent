@@ -25,6 +25,10 @@ export const spawnChild = (
   return child;
 };
 
+/**
+ * The default runner: spawn the invocation and wrap the child in an
+ * {@link OutputSource} for an adapter's `parse` to consume.
+ */
 export const spawnAndStream = (
   invocation: Invocation,
   signal?: AbortSignal
@@ -40,6 +44,10 @@ const isExecutable = async (candidate: string): Promise<string | null> => {
   }
 };
 
+/**
+ * Find `bin` on the `PATH`, trying Windows executable extensions on win32.
+ * Resolves to the first executable match in `PATH` order, or `null`.
+ */
 export const resolveOnPath = async (bin: string): Promise<string | null> => {
   const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   const exts =
@@ -53,6 +61,10 @@ export const resolveOnPath = async (bin: string): Promise<string | null> => {
 
 const PROBE_TIMEOUT_MS = 10_000;
 
+/**
+ * The production {@link VersionProbe}: real `PATH` lookup and real version
+ * commands. Tests pass a fake via `detect({ probe })` instead of this.
+ */
 export const realProbe: VersionProbe = {
   exec: (bin, args) =>
     // oxlint-disable-next-line promise/avoid-new -- child_process events need callback interop.

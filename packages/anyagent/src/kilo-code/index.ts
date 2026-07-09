@@ -6,7 +6,7 @@ import type { Adapter } from "../internal/types.js";
  * identical `kilo run --format json` surface — same flags, same
  * `step_start`/`text`/`tool_use`/`step_finish` stream — verified against real
  * `kilo` output, not assumed from the lineage. See the opencode adapter for
- * the shared behavior: prompt over stdin, `--auto` for `full-auto`,
+ * the shared behavior: prompt over stdin, `--auto` for `auto`,
  * `--session <sessionId>` for `resume` (id on `RunResult.raw.sessionId`),
  * models as `provider/model`.
  *

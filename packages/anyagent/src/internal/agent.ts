@@ -17,13 +17,25 @@ import type {
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
+/**
+ * The concrete {@link Agent}: validates options against the adapter's
+ * capability table, spawns via the injected runner (real process spawn by
+ * default; tests inject fixture-backed runners), and delegates output
+ * parsing to the adapter.
+ */
 export class AgentImpl implements Agent {
   readonly adapter: Adapter;
-  private readonly run_: Runner;
+  private readonly runner: Runner;
+  readonly raw: RawHandle = {
+    buildInvocation: (prompt: string, opts: RunOptions = {}) =>
+      this.build(prompt, opts),
+    spawn: (prompt: string, opts: RunOptions = {}): ChildProcess =>
+      spawnChild(this.build(prompt, opts), opts.signal),
+  };
 
-  constructor(adapter: Adapter, run: Runner = spawnAndStream) {
+  constructor(adapter: Adapter, runner: Runner = spawnAndStream) {
     this.adapter = adapter;
-    this.run_ = run;
+    this.runner = runner;
   }
 
   get capabilities() {
@@ -32,10 +44,10 @@ export class AgentImpl implements Agent {
 
   private build(prompt: string, opts: RunOptions): Invocation {
     const resolved = { ...opts, permission: resolvePermission(opts) };
-    const inv = this.adapter.buildInvocation(prompt, resolved);
+    const invocation = this.adapter.buildInvocation(prompt, resolved);
     return resolved.extraArgs?.length
-      ? { ...inv, args: [...inv.args, ...resolved.extraArgs] }
-      : inv;
+      ? { ...invocation, args: [...invocation.args, ...resolved.extraArgs] }
+      : invocation;
   }
 
   async *runStream(
@@ -43,7 +55,7 @@ export class AgentImpl implements Agent {
     opts: RunOptions = {}
   ): AsyncGenerator<AgentEvent, RunResult> {
     validateOptions(this.adapter, opts);
-    const source = this.run_(this.build(prompt, opts), opts.signal);
+    const source = this.runner(this.build(prompt, opts), opts.signal);
     try {
       return yield* this.adapter.parse(source, { strict: false });
     } finally {
@@ -60,15 +72,6 @@ export class AgentImpl implements Agent {
       }
     }
     throw new AnyAgentError("Parse", "adapter produced no terminal done event");
-  }
-
-  get raw(): RawHandle {
-    return {
-      buildInvocation: (prompt: string, opts: RunOptions = {}) =>
-        this.build(prompt, opts),
-      spawn: (prompt: string, opts: RunOptions = {}): ChildProcess =>
-        spawnChild(this.build(prompt, opts), opts.signal),
-    };
   }
 }
 

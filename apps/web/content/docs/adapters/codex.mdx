@@ -1,6 +1,6 @@
 ---
 title: Codex
-description: How the codex adapter detects, invokes, and parses OpenAI’s Codex CLI.
+description: How the codex adapter detects, invokes, and parses OpenAI’s Codex CLI, and what each run option maps to.
 ---
 
 The `codex` adapter drives OpenAI’s Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto AnyAgent’s normalized stream.
@@ -17,22 +17,22 @@ const result = await agent.run("summarize this repo");
 
 ## Detection
 
-Detection looks for a `codex` binary on `PATH` and reads the version from `codex --version`. The version is display-only, and behavior never depends on it.
+Detection looks for a `codex` binary on `PATH` and reads the version from `codex --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
 
 ## Capabilities
 
 The adapter declares two options as unsupported, `mcp` and `systemPrompt`:
 
-| Capability         | Value                                           |
-| ------------------ | ----------------------------------------------- |
-| `streaming`        | `true`, a live NDJSON stream                    |
-| `permissionLevels` | `read`, `edit`, `auto`                          |
-| `modelSelection`   | `true`                                          |
-| `sessionResume`    | `true`                                          |
-| `mcp`              | `false`                                         |
-| `systemPrompt`     | `false`                                         |
-| `cwd`              | `true`                                          |
-| `structuredOutput` | `true`, informational; reach it via `extraArgs` |
+| Capability         | Value                                                         |
+| ------------------ | ------------------------------------------------------------- |
+| `streaming`        | `true`, a live NDJSON stream                                  |
+| `permissionLevels` | `read`, `edit`, `auto`                                        |
+| `modelSelection`   | `true`                                                        |
+| `sessionResume`    | `true`                                                        |
+| `mcp`              | `false`                                                       |
+| `systemPrompt`     | `false`                                                       |
+| `structuredOutput` | `true`, informational; pass `--output-schema` via `extraArgs` |
+| `cwd`              | `true`                                                        |
 
 Requesting `mcp` or `systemPrompt` throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns. Codex can reach both through its own `-c` config overrides, which remain available via [`extraArgs` or `agent.raw`](/docs/escape-hatches).
 
@@ -50,13 +50,17 @@ Every run executes `codex exec --json` with the prompt piped over stdin through 
 
 The sandbox level is always passed explicitly. `codex exec` defaults to a read-only sandbox, which would weaken AnyAgent’s `edit` default if the flag were omitted. On resume, `codex exec resume` has no `--sandbox` flag, so the adapter sets the sandbox through a `-c sandbox_mode` config override instead.
 
+`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
+
 ## What the stream produces
 
-Text arrives when a message completes, so the answer is never double-counted against its in-progress updates. Command executions and file changes map to `tool-call` and `tool-result` events. Reasoning items produce no normalized event.
+Text arrives when a message completes, so the answer is never double-counted against its in-progress updates. Command executions and file changes map to `tool-call` and `tool-result` events.
+
+Reasoning items and advisory error items produce no normalized event; a fatal failure throws instead of streaming. To capture reasoning, drive the CLI through [`agent.raw`](/docs/escape-hatches).
 
 ## Usage reporting
 
-Codex folds cache reads into its `input_tokens`, so the adapter subtracts `cached_input_tokens` to report uncached input like the other adapters. The exact native accounting stays on `raw`. Codex reports no cost, so `costUsd` is `undefined`.
+Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens` and `outputTokens`. Codex folds cache reads into its native `input_tokens`, so the adapter subtracts `cached_input_tokens` to report uncached input like the other adapters, and the exact native accounting stays on `raw`. Codex reports no cost, so `costUsd` is `undefined`.
 
 ## Errors
 
@@ -72,3 +76,9 @@ const { threadId } = first.raw as { threadId?: string };
 
 const followUp = await agent.run("continue with src/", { resume: threadId });
 ```
+
+## Next steps
+
+- [Permissions](/docs/permissions): what `read`, `edit`, and `auto` mean before they map to flags
+- [Escape hatches](/docs/escape-hatches): reach Codex’s `-c` config overrides through `extraArgs` or `agent.raw`
+- [Claude Code](/docs/adapters/claude-code): the same sections for Anthropic’s Claude Code CLI

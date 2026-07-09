@@ -1,56 +1,74 @@
 ---
 title: API reference
-description: "Every AnyAgent export: the detect and create functions, the run and result types, the error type, and the adapter contract."
+description: "Every AnyAgent export: the detect and create functions, the run and result types, the error class, and the adapter contract."
 full: true
 ---
 
-This page documents everything the `anyagent` package exports: the two entry-point functions, the types you pass and receive at runtime, the single error type, and the contract an adapter implements. Types with a rendered property table come straight from the TypeScript source and its TSDoc. Union types and the error class are documented by hand below.
+This page documents everything the `anyagent` package exports: the two entry-point functions, the types you pass and receive at runtime, the single error class, and the contract an adapter implements.
 
 ## Entry points
 
-The package has one root export plus one subpath per built-in adapter. Import `detect`, `create`, `AnyAgentError`, and the types from the root; import an adapter factory from its subpath.
+Import `detect`, `create`, `AnyAgentError`, and every type from the package root. Adapter authors also reach the `ndjsonParser` helper and the `Detection` type from the root, and the conformance suite from the `anyagent/conformance` subpath. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
 
 ```ts
-import { create, detect, AnyAgentError } from "anyagent";
-import type { Agent, RunOptions, RunResult } from "anyagent";
+import { AnyAgentError, create, detect, ndjsonParser } from "anyagent";
+import type { Agent, Detection, RunOptions, RunResult } from "anyagent";
 import { claudeCode } from "anyagent/claude-code";
+import { codex } from "anyagent/codex";
+import { opencode } from "anyagent/opencode";
+import { kiloCode } from "anyagent/kilo-code";
+import { pi } from "anyagent/pi";
+import { goose } from "anyagent/goose";
+import { cline } from "anyagent/cline";
+import { runConformance } from "anyagent/conformance";
 ```
 
-The adapter subpaths are separate so that importing one adapter never pulls in another, and a caller can ship only the adapters it uses. Each subpath is named on its [adapter page](/docs/adapters).
+`claudeCode()`, `codex()`, `opencode()`, `kiloCode()`, `pi()`, `goose()`, and `cline()` are adapter factories: each returns an [`Adapter`](#adapter) you can hand to `create`. Their flag mappings and raw payload shapes live on the [adapter pages](/docs/adapters).
 
 ## detect
 
-`detect` finds every supported coding agent installed on the machine and returns one [`DetectResult`](#detectresult) per installed agent. The list follows the adapter registry, not any ranking, and is empty when nothing is installed.
+`detect` finds every supported coding agent installed on the machine and returns one [`DetectResult`](#detectresult) per installed agent. The list follows the adapter registry order, which carries no ranking, and is empty when nothing is installed.
 
 ```ts
 const detect: (opts?: DetectOptions) => Promise<DetectResult[]>;
 ```
 
-`DetectOptions` has two fields, both for overriding defaults:
-
-- `adapters`: replace the built-in adapter list with your own, to scan a subset or include a custom adapter
-- `probe`: replace the real `PATH`-and-exec probe with a fake, so tests simulate any machine without spawning processes
-
-Call it with no arguments to scan the built-ins on the real machine, then pass a result to `create`:
+Call it with no arguments to scan the built-in adapters on the real machine, then pass the result you pick to `create`:
 
 ```ts
+import { create, detect } from "anyagent";
+
 const installed = await detect();
-const agent = create(installed[0] ?? claudeCode());
+if (installed.length === 0) {
+  throw new Error("No supported coding agent found.");
+}
+const agent = create(installed[0]);
 ```
+
+`DetectOptions` overrides the defaults:
+
+| Name       | Type           | Default                      | Description                                                                         |
+| ---------- | -------------- | ---------------------------- | ----------------------------------------------------------------------------------- |
+| `adapters` | `Adapter[]`    | the built-in adapters        | adapter list to scan; pass your own to scan a subset or include a custom adapter    |
+| `probe`    | `VersionProbe` | a real `PATH` and exec probe | detection I/O; pass a fake so tests simulate any machine without spawning processes |
 
 ## create
 
-`create` builds a runnable [`Agent`](#agent) from either an adapter factory result or one of `detect`’s results. Use the adapter directly when you know which CLI you want; use a `DetectResult` when you want whatever is installed.
+`create` builds a runnable [`Agent`](#agent) from either an adapter or one of `detect`’s results. Use an adapter directly when you know which CLI you want; use a `DetectResult` when you want whatever is installed.
 
 ```ts
 const create: (source: Adapter | DetectResult) => Agent;
 ```
 
-The call is synchronous and spawns nothing. The process starts when you call `run` or `runStream`.
+The call is synchronous and spawns nothing; the process starts when you call `run` or `runStream`. It also never checks that the CLI is installed, so creating from an adapter on a machine without that CLI surfaces as an `Invocation` error on the first run.
 
 ```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
 const agent = create(claudeCode());
-const result = await agent.run("summarize this repo");
+const result = await agent.run("Summarize this repo.");
+console.log(result.text);
 ```
 
 ## Agent
@@ -64,7 +82,7 @@ An `Agent` is a ready-to-run handle on one installed CLI. `run` resolves with th
 
 ## RunOptions
 
-Everything you can tune about a single run. All fields are optional. Each field is validated against the agent’s [`CapabilityTable`](#capabilitytable) before any process spawns, so requesting something the CLI cannot do throws [`AnyAgentError`](#anyagenterror) with `code: "UnsupportedCapability"` up front.
+Everything you can tune about a single run. All fields are optional. `permission`, `cwd`, `model`, `systemPrompt`, `resume`, and `mcp` are validated against the agent’s [`CapabilityTable`](#capabilitytable) before any process spawns, so requesting something the CLI cannot do throws [`AnyAgentError`](#anyagenterror) with `code: "UnsupportedCapability"` up front. `env`, `signal`, and `extraArgs` work on every agent.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/internal/types.ts"
@@ -75,17 +93,17 @@ Everything you can tune about a single run. All fields are optional. Each field 
 
 `PermissionLevel` bounds how much autonomy the agent gets over your working directory. The enum has exactly three values and never widens. The default is `edit`. Each adapter maps your chosen level onto its CLI’s native flags; a CLI that cannot honor a level throws `UnsupportedCapability` rather than silently downgrading.
 
-| Value            | Meaning                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `read`           | The agent inspects files and answers, but changes nothing.                                                               |
-| `edit` (default) | The agent creates and modifies files, while the CLI’s own guardrails still apply to riskier actions like shell commands. |
-| `auto`           | Every permission prompt is auto-approved and the agent runs unattended.                                                  |
+| Value            | Meaning                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `read`           | inspect files and answer; change nothing                                                        |
+| `edit` (default) | create and modify files, with the CLI’s own guardrails still gating actions like shell commands |
+| `auto`           | auto-approve every permission prompt and run unattended                                         |
 
 CLIs with finer-grained native levels expose them only through [`RunOptions.extraArgs`](#runoptions) or [`RawHandle`](#rawhandle).
 
 ## RunResult
 
-What a finished run gives you back. Holding a `RunResult` means the run succeeded: the CLI exited cleanly and reported no agent-level error, since every failure path throws [`AnyAgentError`](#anyagenterror) instead. `text` is the final answer with all text output concatenated. `raw` is the harness’s own final payload, untouched.
+What a finished run gives you back. Holding a `RunResult` means the run succeeded: the CLI exited cleanly and reported no agent-level error, since every failure path throws [`AnyAgentError`](#anyagenterror) instead. `text` is the final answer with all text output concatenated. `raw` is the CLI’s own final payload, untouched.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/internal/types.ts"
@@ -94,21 +112,21 @@ What a finished run gives you back. Holding a `RunResult` means the run succeede
 
 ## AgentEvent
 
-One normalized event from a running agent, as yielded by `runStream`. `AgentEvent` is a discriminated union on `type` with five variants. Every variant except `done` carries a `raw` field holding the harness’s untouched native payload for that event.
+One normalized event from a running agent, as yielded by `runStream`. `AgentEvent` is a discriminated union on `type` with five variants. Every variant except `done` carries a `raw` field holding the CLI’s untouched native payload for that event.
 
-| `type`        | Payload                           | Meaning                                     |
-| ------------- | --------------------------------- | ------------------------------------------- |
-| `text-delta`  | `text: string`                    | A piece of the agent’s answer text.         |
-| `tool-call`   | `name: string`, `input: unknown`  | The agent invoked a tool with this input.   |
-| `tool-result` | `name: string`, `output: unknown` | A tool returned this output.                |
-| `usage`       | `usage: Usage`                    | Token and cost accounting became available. |
-| `done`        | `result: RunResult`               | The run finished; carries the final result. |
+| `type`        | Payload                           | Meaning                                    |
+| ------------- | --------------------------------- | ------------------------------------------ |
+| `text-delta`  | `text: string`                    | a piece of the agent’s answer text         |
+| `tool-call`   | `name: string`, `input: unknown`  | the agent invoked a tool with this input   |
+| `tool-result` | `name: string`, `output: unknown` | a tool returned this output                |
+| `usage`       | `usage: Usage`                    | token and cost accounting became available |
+| `done`        | `result: RunResult`               | the run finished; carries the final result |
 
-How much text one `text-delta` carries depends on the harness: a token, a chunk, or a whole assistant message. The conformance suite guarantees that concatenating every delta’s `text` reproduces `RunResult.text` exactly.
+How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. The conformance suite guarantees that concatenating every delta’s `text` reproduces `RunResult.text` exactly.
 
 ## Usage
 
-Token and cost accounting for a run, normalized across harnesses. Every field is optional because each CLI reports a different subset, so check for `undefined` rather than assuming a field is present. `inputTokens` counts uncached input only, matching the provider’s own accounting. For exact cache line items, read the native payload on the event’s or result’s `raw`.
+Token and cost accounting for a run, normalized across CLIs. Every field is optional because each CLI reports a different subset, so check for `undefined` rather than assuming a field is present. `inputTokens` counts uncached input only, matching the provider’s own accounting. For exact cache line items, read the native payload on the event’s or result’s `raw`.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/internal/types.ts"
@@ -151,14 +169,36 @@ type McpConfig = Record<string, McpServer>;
 Pass it through [`RunOptions.mcp`](#runoptions) on an agent whose capability table declares `mcp: true`:
 
 ```ts
-await agent.run(prompt, {
-  mcp: { db: { command: "npx", args: ["my-mcp-server"] } },
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+await agent.run("List the tables the app touches.", {
+  mcp: { db: { command: "npx", args: ["acme-db-mcp"] } },
 });
+```
+
+## AgentId and KnownAgents
+
+`AgentId` is the id of a coding agent, such as `"claude-code"`. The built-in ids autocomplete, but any string is accepted, so custom adapters fit too; an `AgentId` is still a `string` you can store or compare freely.
+
+```ts
+type AgentId = keyof KnownAgents | (string & Record<never, never>);
+```
+
+`KnownAgents` is the interface whose keys feed `AgentId`; it ships with a key for every built-in adapter (`"claude-code"`, `"codex"`, `"opencode"`, `"kilo-code"`, `"pi"`, `"goose"`, and `"cline"`). A third-party adapter teaches the type about its own id through module augmentation:
+
+```ts
+declare module "anyagent" {
+  interface KnownAgents {
+    "acme-cli": true;
+  }
+}
 ```
 
 ## AnyAgentError
 
-The single error type everything in AnyAgent throws. There is no subclass tree; you branch on the `code` field.
+The single error type everything in AnyAgent throws. There is no subclass tree; you branch on the `code` field. [Handle errors](/docs/errors) covers what to do about each code.
 
 ```ts
 class AnyAgentError extends Error {
@@ -169,36 +209,51 @@ class AnyAgentError extends Error {
 }
 ```
 
-The fields are:
+| Name     | Type                | Description                                                             |
+| -------- | ------------------- | ----------------------------------------------------------------------- |
+| `code`   | `AnyAgentErrorCode` | which way the run failed; one of the four values below                  |
+| `raw`    | `unknown`           | the underlying cause: a native error or the CLI’s own error payload     |
+| `argv`   | `string[]`          | the command line that ran; attached when a process was involved         |
+| `stderr` | `string`            | what that process wrote to stderr; attached when a process was involved |
 
-- `code`: which way the run failed, one of the four `AnyAgentErrorCode` values below
-- `raw`: the underlying cause, a native error or the harness’s own error payload
-- `argv`: the command that ran, attached when a process was involved
-- `stderr`: what that process wrote to stderr, attached when a process was involved
+`AnyAgentErrorCode` is the union of the four codes:
 
-The four codes:
+```ts
+type AnyAgentErrorCode =
+  | "UnsupportedCapability"
+  | "Invocation"
+  | "Parse"
+  | "Aborted";
+```
 
-| `code`                  | Cause                                                                                                                                                |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UnsupportedCapability` | You asked for an option the capability table does not declare, or a permission level the CLI does not offer. Thrown before anything spawns.          |
-| `Invocation`            | The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error. `argv` and `stderr` show what ran and what it said. |
-| `Parse`                 | The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event.                        |
-| `Aborted`               | Your `AbortSignal` fired and the run was terminated.                                                                                                 |
+| `code`                  | Cause                                                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UnsupportedCapability` | you asked for an option the capability table does not declare, or a permission level the CLI does not offer; thrown before anything spawns          |
+| `Invocation`            | the CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error; `argv` and `stderr` show what ran and what it said |
+| `Parse`                 | the CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event                        |
+| `Aborted`               | your `AbortSignal` fired and the run was terminated                                                                                                 |
 
 Branch on `code` to handle a specific failure:
 
 ```ts
+import { AnyAgentError, create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const controller = new AbortController();
+const agent = create(claudeCode());
+
 try {
-  await agent.run(prompt, { signal });
+  await agent.run("Summarize this repo.", { signal: controller.signal });
 } catch (err) {
   if (err instanceof AnyAgentError && err.code === "Aborted") {
-    return; // the caller cancelled; not a failure
+    console.log("Cancelled.");
+  } else {
+    throw err;
   }
-  throw err;
 }
 ```
 
-The static `AnyAgentError.wrap(err, code?)` normalizes an unknown thrown value into an `AnyAgentError`. It returns the value unchanged if it is already an `AnyAgentError`, otherwise it builds a new one carrying the original as `raw`. The `code` argument defaults to `Invocation`.
+The static `AnyAgentError.wrap(err, code?)` normalizes an unknown thrown value into an `AnyAgentError`. It returns the value unchanged if it is already an `AnyAgentError`, otherwise it builds a new one carrying the original as `raw`. The `code` argument defaults to `"Invocation"`. You need it when writing an adapter, not when handling errors.
 
 ```ts
 const wrap: (err: unknown, code?: AnyAgentErrorCode) => AnyAgentError;
@@ -237,7 +292,7 @@ How detection reads a CLI’s version once its binary is found. An adapter sets 
 
 ### Invocation
 
-A fully-resolved command line: what `buildInvocation` returns and what the core spawns. `env` is merged over the parent process’s environment rather than replacing it. `input`, when present, is written to the child’s stdin, which is then closed, which is how prompts reach CLIs that read them from a pipe.
+A fully-resolved command line: what `buildInvocation` returns and what the core spawns. `env` is merged over the parent process’s environment rather than replacing it. `input`, when present, is written to the child’s stdin, which is then closed; this is how prompts reach CLIs that read them from a pipe.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/internal/types.ts"
@@ -270,3 +325,10 @@ Direct access to the native CLI, reached through `agent.raw`, for capabilities t
   path="../../../../packages/anyagent/src/internal/types.ts"
   name="RawHandle"
 />
+
+## Next steps
+
+- [Run a prompt](/docs/running-prompts): each `RunOptions` field applied in context
+- [Handle errors](/docs/errors): what to do about each `AnyAgentError` code
+- [Escape hatches](/docs/escape-hatches): `extraArgs` and `RawHandle` in practice
+- [Adding an adapter](/docs/adding-an-adapter): implement the adapter contract for a new CLI

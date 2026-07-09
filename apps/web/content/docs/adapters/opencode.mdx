@@ -1,9 +1,9 @@
 ---
 title: opencode
-description: How the opencode adapter invokes and parses the opencode CLI, and what its BYOK setup needs.
+description: How the opencode adapter detects, invokes, and parses the opencode CLI, and what each run option maps to.
 ---
 
-The `opencode` adapter drives `opencode run --format json` with the prompt piped over stdin, mapping the step/text/tool event stream onto AnyAgent's normalized events. opencode is BYOK: it auto-detects standard provider keys (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …) from the environment, so no subscription or account is required.
+The `opencode` adapter drives `opencode run --format json` with the prompt piped over stdin, mapping opencode’s step, text, and tool event stream onto AnyAgent’s normalized events. opencode is BYOK: it reads standard provider keys (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …) from the environment, so it needs no subscription or account.
 
 Import the factory from the `anyagent/opencode` subpath and hand it to `create`:
 
@@ -19,9 +19,11 @@ const result = await agent.run("summarize this repo", {
 
 ## Detection
 
-Detection looks for an `opencode` binary on `PATH` and reads the version from `opencode --version`.
+Detection looks for an `opencode` binary on `PATH` and reads the version from `opencode --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
 
 ## Capabilities
+
+The adapter declares three options as unsupported, `mcp`, `systemPrompt`, and the `read` permission level:
 
 | Capability         | Value                        |
 | ------------------ | ---------------------------- |
@@ -31,33 +33,41 @@ Detection looks for an `opencode` binary on `PATH` and reads the version from `o
 | `sessionResume`    | `true`                       |
 | `mcp`              | `false`                      |
 | `systemPrompt`     | `false`                      |
-| `cwd`              | `true`                       |
 | `structuredOutput` | `false`                      |
+| `cwd`              | `true`                       |
 
-There is no `read` level. opencode's per-tool permissions live in `opencode.json` (or the `OPENCODE_PERMISSION` env var), not flags — and a config-denied action in a non-interactive run can hang waiting for an approval that never comes, so the adapter refuses to fake a sandbox it cannot guarantee. MCP servers and system prompts are also config-file concerns; reach them via opencode's own config or [`extraArgs`](/docs/escape-hatches).
+There is no `read` level. opencode’s per-tool permissions live in `opencode.json` (or the `OPENCODE_PERMISSION` env var) rather than flags, and a config-denied action in a non-interactive run can hang waiting for an approval that never comes, so the adapter refuses to fake a sandbox it cannot guarantee. MCP servers and system prompts are also config-file concerns; reach them through opencode’s own config or [`extraArgs`](/docs/escape-hatches).
 
 ## How options map to flags
 
-| Option               | Flag                                 |
-| -------------------- | ------------------------------------ |
-| `permission: "edit"` | none — opencode's own defaults apply |
-| `permission: "auto"` | `--auto`                             |
-| `model`              | `--model <provider/model>`           |
-| `resume`             | `--session <sessionId>`              |
+Every run executes `opencode run --format json` with the prompt piped over stdin, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
 
-`edit` is opencode's default behavior: the CLI creates and modifies files, with whatever permission config the user has set still applying. `auto` adds `--auto`, which approves everything not explicitly denied.
+| Option               | Flag                                |
+| -------------------- | ----------------------------------- |
+| `permission: "edit"` | none, opencode’s own defaults apply |
+| `permission: "auto"` | `--auto`                            |
+| `model`              | `--model <provider/model>`          |
+| `resume`             | `--session <sessionId>`             |
+
+`edit` is opencode’s default behavior: the CLI creates and modifies files, with whatever permission config the user has set still applying. `auto` adds `--auto`, which approves everything not explicitly denied.
+
+`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
 
 ## What the stream produces
 
-Text arrives when a message part completes. Tool parts arrive in a terminal state — input and output together — so one raw `tool_use` event produces both the `tool-call` and its `tool-result`. Each `step_finish` yields a `usage` event with that step's tokens and cost; `result.usage` carries the summed run totals.
+Text arrives when a message part completes, so the answer is never double-counted against its in-progress updates. Tool parts arrive in a terminal state, input and output together, so one raw `tool_use` event produces both the `tool-call` and its `tool-result`.
+
+## Usage reporting
+
+Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens`, `outputTokens`, and `costUsd`. opencode reports tokens and cost per step, so each `step_finish` yields a `usage` event carrying that step’s share, and `result.usage` carries the totals summed across the run.
 
 ## Errors
 
-A typed `error` event in the stream (a bad model, a provider failure) throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and opencode's own message. A nonzero exit throws the same code.
+A typed `error` event in the stream (a bad model, a provider failure) throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and opencode’s own message. A nonzero exit or a spawn failure throws the same code.
 
 ## Resume a session
 
-The session id rides on `result.raw`:
+opencode has no single final payload, so the adapter composes one carrying the session id. Read `sessionId` from `result.raw` and pass it back as `resume`:
 
 ```ts
 const first = await agent.run("start reviewing this repo");
@@ -65,3 +75,9 @@ const { sessionId } = first.raw as { sessionId?: string };
 
 const followUp = await agent.run("continue with src/", { resume: sessionId });
 ```
+
+## Next steps
+
+- [Permissions](/docs/permissions): what `edit` and `auto` mean before they map to flags
+- [Escape hatches](/docs/escape-hatches): reach opencode’s config-file capabilities through `extraArgs` or `agent.raw`
+- [Kilo Code](/docs/adapters/kilo-code): the opencode fork that shares this adapter’s implementation

@@ -33,7 +33,7 @@ export type AnyAgentErrorCode =
  * }
  * ```
  *
- * `raw` preserves the underlying cause (a native error, or the harness's own
+ * `raw` preserves the underlying cause (a native error, or the CLI's own
  * error payload); `argv` and `stderr` are attached when a process was
  * involved.
  */
@@ -56,6 +56,12 @@ export class AnyAgentError extends Error {
     this.stderr = opts?.stderr;
   }
 
+  /**
+   * Coerce any thrown value into an `AnyAgentError` under the given `code`
+   * (default `"Invocation"`), keeping the original on `raw`. An
+   * `AnyAgentError` passes through untouched, so wrapping never masks a more
+   * specific code set earlier.
+   */
   static wrap(
     err: unknown,
     code: AnyAgentErrorCode = "Invocation"

@@ -13,7 +13,6 @@ const MODEL = process.env.ANYAGENT_GOOSE_MODEL;
 
 test("live: goose answers a trivial prompt", async () => {
   if (!(await liveEnabled("goose"))) {
-    // biome-ignore lint/suspicious/noConsole: test skip notice.
     console.warn("skipping live test (set ANYAGENT_LIVE=1)");
     return;
   }

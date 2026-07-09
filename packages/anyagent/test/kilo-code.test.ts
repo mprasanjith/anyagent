@@ -8,28 +8,20 @@ import type {
   RunResult,
 } from "../src/internal/types.js";
 import { kiloCode } from "../src/kilo-code/index.js";
+import { sourceFromBody } from "./fake-adapter.js";
 
 // Kilo shares the opencode-family implementation; the shared mapping logic is
 // exercised in depth by opencode.test.ts. These tests pin kilo's own identity
 // and verify the shared parser against kilo's *own* recorded output, so a
 // fork-side format drift cannot hide behind the opencode fixtures.
 
-const fixtureSource = (name: string): OutputSource => {
-  const body = readFileSync(
-    path.join(import.meta.dir, "fixtures/kilo-code", name),
-    "utf-8"
+const fixtureSource = (name: string): OutputSource =>
+  sourceFromBody(
+    readFileSync(
+      path.join(import.meta.dir, "fixtures/kilo-code", name),
+      "utf-8"
+    )
   );
-  return {
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  };
-};
 
 const collect = async (
   name: string,

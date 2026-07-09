@@ -4,32 +4,30 @@ import { lucideIconsPlugin } from "fumadocs-core/source/lucide-icons";
 
 import { docsContentRoute, docsImageRoute, docsRoute } from "./shared";
 
-// See https://fumadocs.dev/docs/headless/source-api for more info
 export const source = loader({
   baseUrl: docsRoute,
   plugins: [lucideIconsPlugin()],
   source: docs.toFumadocsSource(),
 });
 
-export const getPageImage = (page: (typeof source)["$inferPage"]) => {
-  const segments = [...page.slugs, "image.png"];
+type Page = (typeof source)["$inferPage"];
+
+const pageAsset = (page: Page, route: string, file: string) => {
+  const segments = [...page.slugs, file];
 
   return {
     segments,
-    url: `${docsImageRoute}/${segments.join("/")}`,
+    url: `${route}/${segments.join("/")}`,
   };
 };
 
-export const getPageMarkdownUrl = (page: (typeof source)["$inferPage"]) => {
-  const segments = [...page.slugs, "content.md"];
+export const getPageImage = (page: Page) =>
+  pageAsset(page, docsImageRoute, "image.png");
 
-  return {
-    segments,
-    url: `${docsContentRoute}/${segments.join("/")}`,
-  };
-};
+export const getPageMarkdownUrl = (page: Page) =>
+  pageAsset(page, docsContentRoute, "content.md");
 
-export const getLLMText = async (page: (typeof source)["$inferPage"]) => {
+export const getLLMText = async (page: Page) => {
   const processed = await page.data.getText("processed");
 
   return `# ${page.data.title} (${page.url})

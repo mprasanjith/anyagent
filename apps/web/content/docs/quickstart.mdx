@@ -5,14 +5,16 @@ description: Install AnyAgent, detect an installed agent, and run your first pro
 
 import { Card, Cards } from "fumadocs-ui/components/card";
 
-This page takes you from install to a working script: detect an installed coding agent, run a read-only prompt on it, then upgrade the same script to stream live progress.
+This page takes you from install to a working script: detect a coding agent installed on your machine and run a read-only prompt on it.
 
 ## Prerequisites
 
 You need:
 
-- Node.js 18 or later, or Bun
-- At least one [supported agent CLI](/docs/adapters) installed and signed in
+- Node.js 22.18 or later, or Bun, to run the TypeScript example directly
+- At least one [supported agent](/docs/adapters) installed and signed in
+
+AnyAgent itself runs on Node.js 18 or later; the newer version only matters for running a `.ts` file without a build step.
 
 ## Install
 
@@ -22,32 +24,33 @@ Add the package with your package manager:
 npm i anyagent
 ```
 
-## Detect and run a prompt
+## Write the script
 
 Create a file named `run-agent.ts`:
 
 ```ts
 import { create, detect } from "anyagent";
 
-// scans the user's `PATH` and returns every supported agent it finds.
 const installed = await detect();
-if (installed.length === 0) {
+const [first] = installed;
+if (!first) {
   throw new Error("No supported coding agent found.");
 }
 
-// wraps the first result in a runnable handle.
-const agent = create(installed[0]);
-
-// sends the prompt with `read` permission, so the agent inspects files but changes nothing
+const agent = create(first);
 const result = await agent.run(
-  "List the top-level scripts in package.json and what each one does.",
+  "List the scripts in package.json and what each one does.",
   { permission: "read" }
 );
 
 console.log(result.text);
 ```
 
-Run the script:
+`detect()` scans your `PATH` and returns every supported agent it finds, and `create()` wraps the first result in a runnable handle. The prompt runs with `read` permission, so the agent inspects files without changing anything.
+
+## Run the script
+
+Run it from a project directory, since the prompt asks about that project’s `package.json`:
 
 ```bash tab="Node.js"
 node run-agent.ts
@@ -57,21 +60,29 @@ node run-agent.ts
 bun run-agent.ts
 ```
 
-The agent’s answer prints to your terminal.
+When the run finishes, the agent’s answer prints, worded by whichever agent you have installed:
+
+```txt
+package.json defines three scripts:
+
+- build: compiles src/ to dist/ with tsc
+- test: runs the unit test suite
+- lint: checks the source with eslint
+```
 
 ## Next steps
 
 <Cards>
-  <Card href="/docs/detecting-agents" title="Detecting agents">
+  <Card href="/docs/detecting-agents" title="Detect installed agents">
     Find installs, let the user choose, and fall back.
   </Card>
-  <Card href="/docs/running-prompts" title="Running prompts">
+  <Card href="/docs/running-prompts" title="Run a prompt">
     Configure a run and execute it against an installed agent.
   </Card>
-  <Card href="/docs/streaming" title="Streaming progress">
+  <Card href="/docs/streaming" title="Stream progress">
     Render an agent’s events as it works, and cancel a run.
   </Card>
-  <Card href="/docs/production" title="Production flow">
+  <Card href="/docs/production" title="Ship to production">
     The recommended end-to-end setup for a shipped tool.
   </Card>
 </Cards>

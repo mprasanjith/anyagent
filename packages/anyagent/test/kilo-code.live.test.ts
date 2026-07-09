@@ -12,7 +12,6 @@ const MODEL = process.env.ANYAGENT_KILO_MODEL;
 
 test("live: kilo answers a trivial prompt", async () => {
   if (!(await liveEnabled("kilo"))) {
-    // biome-ignore lint/suspicious/noConsole: test skip notice.
     console.warn("skipping live test (set ANYAGENT_LIVE=1)");
     return;
   }

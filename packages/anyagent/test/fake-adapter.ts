@@ -17,19 +17,22 @@ const allCaps: CapabilityTable = {
   systemPrompt: true,
 };
 
-// A canned OutputSource so agent tests never spawn a process.
+// A canned OutputSource so parser and agent tests never spawn a process.
+export const sourceFromBody = (body: string): OutputSource => ({
+  exitCode: Promise.resolve(0),
+  async *lines() {
+    for (const l of body.split("\n")) {
+      yield l;
+    }
+  },
+  stderr: () => Promise.resolve(""),
+  text: () => Promise.resolve(body),
+});
+
 export const runnerFromFixture =
   (body: string) =>
-  (_inv: Invocation): OutputSource => ({
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  });
+  (_inv: Invocation): OutputSource =>
+    sourceFromBody(body);
 
 // oxlint-disable-next-line typescript/no-explicit-any -- toy fixture schema.
 type Toy = any;

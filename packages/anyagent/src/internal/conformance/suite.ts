@@ -1,5 +1,10 @@
 import { AgentImpl } from "../agent.js";
-import type { Adapter, AgentEvent, PermissionLevel } from "../types.js";
+import type {
+  Adapter,
+  AgentEvent,
+  PermissionLevel,
+  RunOptions,
+} from "../types.js";
 import { fixedRunner } from "./scenarios.js";
 
 const ALL_LEVELS: PermissionLevel[] = ["read", "edit", "auto"];
@@ -10,6 +15,7 @@ const assert = (cond: boolean, msg: string): void => {
   }
 };
 
+/** What {@link runConformance} needs from an adapter's test suite. */
 export interface ConformanceOptions {
   /** Map of scenario name to the raw stdout an adapter's CLI would emit. */
   fixtures: Record<string, string>;
@@ -26,7 +32,9 @@ const checkStreamInvariants = async (
     events.push(ev);
   }
 
-  const dones = events.filter((e) => e.type === "done");
+  const dones = events.filter(
+    (e): e is Extract<AgentEvent, { type: "done" }> => e.type === "done"
+  );
   assert(
     dones.length === 1,
     `[${name}] expected exactly one done event, got ${dones.length}`
@@ -36,8 +44,7 @@ const checkStreamInvariants = async (
     `[${name}] done must be the final event`
   );
 
-  const [done] = dones;
-  const result = done?.type === "done" ? done.result : undefined;
+  const result = dones[0]?.result;
   assert(result !== undefined, `[${name}] done event must carry a result`);
 
   const deltas = events.filter(
@@ -78,13 +85,17 @@ export const runConformance = async (
   adapter: Adapter,
   opts: ConformanceOptions
 ): Promise<void> => {
+  const caps = adapter.capabilities;
+  const runWith = (runOpts: RunOptions) => () =>
+    new AgentImpl(adapter, fixedRunner("")).run("x", runOpts);
+
   await Promise.all(
     Object.entries(opts.fixtures).map(([name, body]) =>
       checkStreamInvariants(adapter, name, body)
     )
   );
 
-  for (const level of adapter.capabilities.permissionLevels) {
+  for (const level of caps.permissionLevels) {
     const inv = adapter.buildInvocation("x", { permission: level });
     assert(
       inv.command.length > 0 && Array.isArray(inv.args),
@@ -93,41 +104,23 @@ export const runConformance = async (
   }
 
   const undeclared = ALL_LEVELS.filter(
-    (l) => !adapter.capabilities.permissionLevels.includes(l)
+    (l) => !caps.permissionLevels.includes(l)
   );
   await Promise.all(
     undeclared.map(async (level) => {
-      const agent = new AgentImpl(adapter, fixedRunner(""));
       assert(
-        await throwsUnsupported(() => agent.run("x", { permission: level })),
+        await throwsUnsupported(runWith({ permission: level })),
         `undeclared permission "${level}" must throw UnsupportedCapability`
       );
     })
   );
 
-  const caps = adapter.capabilities;
   const probes: [boolean, () => Promise<unknown>][] = [
-    [
-      caps.modelSelection,
-      () => new AgentImpl(adapter, fixedRunner("")).run("x", { model: "m" }),
-    ],
-    [
-      caps.sessionResume,
-      () => new AgentImpl(adapter, fixedRunner("")).run("x", { resume: "s" }),
-    ],
-    [
-      caps.systemPrompt,
-      () =>
-        new AgentImpl(adapter, fixedRunner("")).run("x", { systemPrompt: "s" }),
-    ],
-    [
-      caps.mcp,
-      () => new AgentImpl(adapter, fixedRunner("")).run("x", { mcp: {} }),
-    ],
-    [
-      caps.cwd,
-      () => new AgentImpl(adapter, fixedRunner("")).run("x", { cwd: "/tmp" }),
-    ],
+    [caps.modelSelection, runWith({ model: "m" })],
+    [caps.sessionResume, runWith({ resume: "s" })],
+    [caps.systemPrompt, runWith({ systemPrompt: "s" })],
+    [caps.mcp, runWith({ mcp: {} })],
+    [caps.cwd, runWith({ cwd: "/tmp" })],
   ];
   await Promise.all(
     probes.map(async ([supported, call]) => {

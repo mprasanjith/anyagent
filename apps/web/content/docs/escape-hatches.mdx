@@ -3,11 +3,11 @@ title: Escape hatches
 description: Reach native CLI capabilities the unified surface does not model, from adding one flag to owning the whole process.
 ---
 
-The unified surface covers what most harnesses share, which means every CLI can do things it does not model: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI’s native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
+The unified surface models what most agent CLIs share, so every CLI can do things it leaves out: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI’s native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
 
-## extraArgs: add native flags, keep normalized events
+## Add native flags with extraArgs
 
-`extraArgs` appends native CLI flags to the argv while everything else stays the same. You keep the normalized event stream and the lifecycle management, so this is the smallest step down. Reach for it when the surface almost fits and one flag closes the gap.
+`RunOptions.extraArgs` appends native CLI flags to the argv while everything else stays the same: you keep the normalized event stream and the lifecycle management. Reach for it when the surface almost fits and one flag closes the gap.
 
 ```ts
 import { create } from "anyagent";
@@ -19,36 +19,45 @@ const result = await agent.run("Generate API docs from the source.", {
 });
 ```
 
-Here a docs-generation feature blocks the agent from running shell commands with a flag native to the CLI it targets, one the surface does not model. Two caveats apply: the flags are adapter-specific, so you own their correctness for the CLI you target, and they are appended after the flags AnyAgent builds, without validation, so a later flag can override what `permission` set. Prefer a typed option whenever one exists; the [adapter page](/docs/adapters) and the CLI’s own docs are the reference for the rest.
+Here a docs-generation feature blocks the agent from running shell commands with a flag native to Claude Code, one the surface does not model.
 
-## agent.raw.buildInvocation: get the exact argv
+Two caveats apply: the flags are adapter-specific, so you own their correctness for the CLI you target, and they are appended after the flags AnyAgent builds, without validation, so a flag here can override what `permission` set. Prefer a typed option whenever one exists; the [adapter pages](/docs/adapters) and the CLI’s own docs cover the rest.
 
-When you want the command without running it, `agent.raw.buildInvocation` returns the exact `Invocation` AnyAgent would spawn: `command`, `args`, `env`, `cwd`, and the `input` piped to stdin. Use it for logging, dry runs, or running the command somewhere else.
+## Get the exact command with agent.raw.buildInvocation
+
+When you want the command without running it, `agent.raw.buildInvocation` returns the exact `Invocation` AnyAgent would spawn: `command`, `args`, `env`, `cwd`, and the `input` piped to stdin. Nothing spawns. Use it for logging, dry runs, or running the command somewhere else.
 
 ```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
 const inv = agent.raw.buildInvocation("Fix the build.", { permission: "edit" });
+
 console.log(inv.command, inv.args.join(" "));
 // claude -p --output-format stream-json --verbose --permission-mode acceptEdits
 ```
 
-Nothing spawns; you get back only the resolved command.
+Unlike `run` and `runStream`, both `raw` calls skip capability validation: an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`. Check `agent.capabilities` yourself when it matters.
 
-Unlike `run` and `runStream`, the `raw` calls skip capability validation: an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`. Check `agent.capabilities` yourself when it matters.
+## Own the process with agent.raw.spawn
 
-## agent.raw.spawn: own the ChildProcess
-
-When you need to drive the process yourself, `agent.raw.spawn` launches the invocation and returns the Node `ChildProcess` with the prompt already wired to stdin. This is the most control and the most work: you read stdout, you handle exit, and you get no normalized events and no lifecycle management.
+When you need to drive the CLI yourself, `agent.raw.spawn` launches the invocation and returns the Node `ChildProcess`, with the prompt already written to stdin. This is the most control and the most work: you read stdout, you handle exit, and you get no normalized events and no lifecycle management. Of the run options, `signal` still applies; aborting it terminates the process.
 
 ```ts
-const child = agent.raw.spawn("Explain the auth flow.", {
-  permission: "read",
-});
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const child = agent.raw.spawn("Explain the auth flow.", { permission: "read" });
+
 child.stdout?.pipe(process.stdout);
+child.on("exit", (code) => console.log(`agent exited with ${code}`));
 ```
 
-Reach for this when you need bidirectional interaction or custom parsing the normalized stream cannot give you. Because AnyAgent no longer manages the process, terminating it and reading its exit are yours to handle.
+Reach for this when you need bidirectional interaction or custom parsing the normalized stream cannot give you.
 
-## Which one to reach for
+## Pick the smallest hatch
 
 Pick the smallest hatch that solves your problem:
 
@@ -63,5 +72,5 @@ Before you rebuild event parsing on top of `spawn` for a supported CLI, check th
 ## Next steps
 
 - [How AnyAgent works](/docs/how-it-works): why the surface leaves native capabilities out
-- [Permissions](/docs/permissions): how `permission` maps before `extraArgs` can override it
+- [Permissions](/docs/permissions): what `permission` sets before `extraArgs` can override it
 - [API reference](/docs/api): the `RunOptions`, `Invocation`, and `RawHandle` types

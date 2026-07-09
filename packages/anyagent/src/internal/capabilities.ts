@@ -1,48 +1,50 @@
 import { AnyAgentError } from "./errors.js";
-import type { Adapter, PermissionLevel, RunOptions } from "./types.js";
+import type {
+  Adapter,
+  CapabilityTable,
+  PermissionLevel,
+  RunOptions,
+} from "./types.js";
 
-export const DEFAULT_PERMISSION: PermissionLevel = "edit";
+const DEFAULT_PERMISSION: PermissionLevel = "edit";
 
+/** The permission level a run will use: the caller's choice, or `"edit"`. */
 export const resolvePermission = (opts: RunOptions): PermissionLevel =>
   opts.permission ?? DEFAULT_PERMISSION;
 
-const requireCap = (
-  agent: string,
-  requested: boolean,
-  cap: boolean,
-  name: string
-): void => {
-  if (requested && !cap) {
-    throw new AnyAgentError(
-      "UnsupportedCapability",
-      `${agent} does not support ${name}`
-    );
-  }
-};
+type GuardedCap = keyof Pick<
+  CapabilityTable,
+  "cwd" | "mcp" | "modelSelection" | "sessionResume" | "systemPrompt"
+>;
 
+const GUARDED_OPTIONS: readonly (readonly [
+  keyof RunOptions,
+  GuardedCap,
+  string,
+])[] = [
+  ["model", "modelSelection", "model selection"],
+  ["systemPrompt", "systemPrompt", "a system prompt"],
+  ["resume", "sessionResume", "session resume"],
+  ["mcp", "mcp", "MCP config"],
+  ["cwd", "cwd", "a working directory"],
+];
+
+/**
+ * Throw `AnyAgentError` (`code: "UnsupportedCapability"`) when `opts` asks
+ * for anything the adapter's capability table does not declare. Runs before
+ * any process spawns, so a wrong assumption fails fast.
+ */
 export const validateOptions = (adapter: Adapter, opts: RunOptions): void => {
   const agent = adapter.meta.id;
   const caps = adapter.capabilities;
-  requireCap(
-    agent,
-    opts.model !== undefined,
-    caps.modelSelection,
-    "model selection"
-  );
-  requireCap(
-    agent,
-    opts.systemPrompt !== undefined,
-    caps.systemPrompt,
-    "a system prompt"
-  );
-  requireCap(
-    agent,
-    opts.resume !== undefined,
-    caps.sessionResume,
-    "session resume"
-  );
-  requireCap(agent, opts.mcp !== undefined, caps.mcp, "MCP config");
-  requireCap(agent, opts.cwd !== undefined, caps.cwd, "a working directory");
+  for (const [option, cap, label] of GUARDED_OPTIONS) {
+    if (opts[option] !== undefined && !caps[cap]) {
+      throw new AnyAgentError(
+        "UnsupportedCapability",
+        `${agent} does not support ${label}`
+      );
+    }
+  }
 
   const level = resolvePermission(opts);
   if (!caps.permissionLevels.includes(level)) {

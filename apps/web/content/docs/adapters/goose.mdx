@@ -1,11 +1,11 @@
 ---
 title: goose
-description: How the goose adapter detects, invokes, and parses Block's goose CLI, and how named-session resume works.
+description: How the goose adapter detects, invokes, and parses Block’s goose CLI, and what each run option maps to.
 ---
 
-The `goose` adapter drives `goose run --output-format stream-json --quiet` with the prompt piped over stdin via `-i -`. goose is Apache-2.0 open source (Block, now under the Agentic AI Foundation) and BYOK: pick the backend with `GOOSE_PROVIDER` plus the provider's key env var, or goose's own config — no subscription required.
+The `goose` adapter drives `goose run --output-format stream-json --quiet` with the prompt piped over stdin via `-i -`, mapping goose’s message and tool stream onto AnyAgent’s normalized events. goose is Apache-2.0 open source (Block, now under the Agentic AI Foundation) and BYOK: pick the backend with `GOOSE_PROVIDER` plus the provider’s key env var, or goose’s own config, so it needs no subscription.
 
-Import the factory from the `anyagent/goose` subpath:
+Import the factory from the `anyagent/goose` subpath and hand it to `create`:
 
 ```ts
 import { create } from "anyagent";
@@ -20,44 +20,52 @@ const result = await agent.run("summarize this repo", {
 
 ## Detection
 
-Detection looks for a `goose` binary on `PATH` and reads the version from `goose --version`.
+Detection looks for a `goose` binary on `PATH` and reads the version from `goose --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
 
 ## Capabilities
+
+The adapter declares two options as unsupported, `mcp` and the `read` permission level:
 
 | Capability         | Value                               |
 | ------------------ | ----------------------------------- |
 | `streaming`        | `true`, token-level deltas          |
 | `permissionLevels` | `edit`, `auto`                      |
-| `modelSelection`   | `true`, in the provider's naming    |
+| `modelSelection`   | `true`, in the provider’s naming    |
 | `sessionResume`    | `true`, by session name (see below) |
 | `mcp`              | `false`                             |
 | `systemPrompt`     | `true`, appended via `--system`     |
-| `cwd`              | `true`                              |
 | `structuredOutput` | `false`                             |
+| `cwd`              | `true`                              |
 
-There is no `read` level: goose's chat mode disables tools entirely (the agent could not even read files) and its approval modes can hang a non-interactive run, so neither honestly maps. goose can attach MCP servers via `--with-extension`, but that surface is unverified against real output — reach it through [`extraArgs`](/docs/escape-hatches).
+There is no `read` level: goose’s chat mode disables tools entirely, so the agent could not even read files, and its approval modes can hang a non-interactive run, so neither honestly maps. goose can attach MCP servers via `--with-extension`, but that surface is unverified against real output; reach it through [`extraArgs`](/docs/escape-hatches).
 
 ## How options map to flags
 
-Every run executes `goose run --output-format stream-json --quiet -i -`. `--quiet` matters: without it goose prints a banner to stdout that would corrupt the NDJSON stream.
+Every run executes `goose run --output-format stream-json --quiet -i -`. `--quiet` matters: without it goose prints a banner to stdout that would corrupt the NDJSON stream. The prompt is piped over stdin via `-i -`, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
 
-| Option               | Flag                                   |
-| -------------------- | -------------------------------------- |
-| `permission: "edit"` | none — goose's own mode config applies |
-| `permission: "auto"` | env `GOOSE_MODE=auto`                  |
-| `model`              | `--model <model>`                      |
-| `systemPrompt`       | `--system <text>`                      |
-| `resume`             | `--name <name> --resume`               |
+| Option               | Flag                                  |
+| -------------------- | ------------------------------------- |
+| `permission: "edit"` | none, goose’s own mode config applies |
+| `permission: "auto"` | env `GOOSE_MODE=auto`                 |
+| `model`              | `--model <model>`                     |
+| `systemPrompt`       | `--system <text>`                     |
+| `resume`             | `--name <name> --resume`              |
 
-The provider is not a run option: set it with `GOOSE_PROVIDER` (the `env` run option works) or goose's config, and pass `model` in that provider's naming.
+The provider is not a run option: set it with `GOOSE_PROVIDER` (the `env` run option works) or goose’s config, and pass `model` in that provider’s naming.
+
+`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
 
 ## What the stream produces
 
-Assistant text arrives as token-level `text-delta` events. `toolRequest` blocks map to `tool-call`, and the matching `toolResponse` (a user-role message) maps to `tool-result`, named via the request's id. The final `complete` event yields a `usage` event with token counts; goose reports no cost.
+Assistant text arrives as token-level `text-delta` events. A `toolRequest` block maps to `tool-call`, and the matching `toolResponse`, a user-role message, maps to `tool-result` named via the request’s id.
+
+## Usage reporting
+
+Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens` and `outputTokens`. goose reports no cost, so `costUsd` is `undefined`. The final `complete` event yields the `usage` event; a failed run ends with `complete` but null token counts, and then `usage` stays `undefined`.
 
 ## Errors
 
-goose reports provider failures as ordinary assistant text ("Ran into this error: …") followed by a `complete` event with null token counts — the run does not throw, and `usage` stays `undefined`. A nonzero exit or spawn failure throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"`.
+goose reports provider failures as ordinary assistant text (“Ran into this error: …”) followed by a `complete` event with null token counts, so the run returns that text rather than throwing. A nonzero exit or a spawn failure throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"`.
 
 ## Resume a session
 
@@ -70,3 +78,9 @@ const first = await agent.run("start reviewing this repo", {
 
 const followUp = await agent.run("continue with src/", { resume: "review-1" });
 ```
+
+## Next steps
+
+- [Permissions](/docs/permissions): what `edit` and `auto` mean before they map to flags
+- [Escape hatches](/docs/escape-hatches): reach goose’s extensions and native flags through `extraArgs` or `agent.raw`
+- [Cline](/docs/adapters/cline): the same sections for another BYOK CLI

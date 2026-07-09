@@ -1,13 +1,13 @@
 ---
 title: Supported agents
-description: Every coding-agent CLI AnyAgent detects and drives, with a page per adapter documenting its mappings and quirks.
+description: Every coding-agent CLI AnyAgent detects and drives, with a page per adapter covering its capabilities, permission mapping, and quirks.
 ---
 
 import { getPageTreePeers } from "fumadocs-core/page-tree";
 import { Card, Cards } from "fumadocs-ui/components/card";
 import { source } from "@/lib/source";
 
-These are the agent CLIs AnyAgent supports. `detect()` scans for all of them, and each has its own subpath export for targeting it directly. Everything harness-specific lives on the agent’s adapter page: how detection finds it, the capability table it declares, how each run option maps to a native flag, what its stream produces, and where its session id lives on `raw`.
+These are the agent CLIs AnyAgent supports. `detect()` scans for all of them, and each has its own subpath export for targeting it directly. Everything CLI-specific lives on the adapter’s page: how detection finds the CLI, the capability table it declares, the native flag behind each run option, what its stream produces, and where its session id lives on `raw`.
 
 <Cards>
   {getPageTreePeers(source.getPageTree(), "/docs/adapters").map((peer) => (
@@ -17,4 +17,10 @@ These are the agent CLIs AnyAgent supports. `detect()` scans for all of them, an
   ))}
 </Cards>
 
-An adapter ships only against a verified audit and recorded real CLI output, never a guessed schema. To bring another CLI into this list, see [Adding an adapter](/docs/adding-an-adapter).
+The adapter pages share one section order, so a fact about one agent sits in the same place on every other. An adapter ships only against a verified audit and recorded real CLI output, never a guessed schema.
+
+## Next steps
+
+- [Detect installed agents](/docs/detecting-agents): scan the machine and choose among the agents installed on it
+- [Escape hatches](/docs/escape-hatches): reach native capabilities a CLI has but the unified surface does not model
+- [Adding an adapter](/docs/adding-an-adapter): bring another CLI into this list

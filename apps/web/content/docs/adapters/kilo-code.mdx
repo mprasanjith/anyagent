@@ -1,11 +1,11 @@
 ---
 title: Kilo Code
-description: How the kilo-code adapter drives the Kilo CLI through the opencode-compatible surface it forked.
+description: How the kilo-code adapter detects, invokes, and parses the Kilo CLI, which shares the opencode surface it forked.
 ---
 
-The `kilo-code` adapter drives `kilo run --format json`. Kilo Code's CLI is an opencode fork and exposes the identical headless surface — same flags, same step/text/tool event stream — so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode). The sharing is earned, not assumed: every mapping is verified against real `kilo` output and recorded kilo fixtures, so a fork-side drift shows up in kilo's own tests.
+The `kilo-code` adapter drives `kilo run --format json` with the prompt piped over stdin, mapping Kilo’s step, text, and tool event stream onto AnyAgent’s normalized events. Kilo Code’s CLI is an opencode fork and exposes the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode). The sharing is verified, not assumed: every mapping is checked against recorded `kilo` output, so a fork-side drift shows up in Kilo’s own tests. Kilo is BYOK with standard provider env vars like opencode, or works through a Kilo account (`kilo auth login`) whose free tier includes starter credits; neither changes a flag on this adapter.
 
-Import the factory from the `anyagent/kilo-code` subpath:
+Import the factory from the `anyagent/kilo-code` subpath and hand it to `create`:
 
 ```ts
 import { create } from "anyagent";
@@ -19,10 +19,65 @@ const result = await agent.run("summarize this repo", {
 
 ## Detection
 
-Detection looks for `kilo`, then `kilocode`, on `PATH` — the first found wins.
+Detection looks for `kilo`, then `kilocode`, on `PATH`, and the first found wins. It reads the version from `kilo --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
 
-## Everything else
+## Capabilities
 
-Capabilities, flag mappings, stream behavior, errors, and resume are identical to [opencode](/docs/adapters/opencode): `edit`/`auto` permission levels (no `read`), models as `provider/model`, `--auto` for full autonomy, `--session <sessionId>` for resume with the id on `result.raw.sessionId`, and per-step `usage` events summed into the final result.
+The adapter declares three options as unsupported, `mcp`, `systemPrompt`, and the `read` permission level:
 
-Auth differs: Kilo works BYOK with standard provider env vars like opencode, or through a Kilo account (`kilo auth login`) whose free tier includes starter credits and free models — either way, no flag changes on this adapter.
+| Capability         | Value                        |
+| ------------------ | ---------------------------- |
+| `streaming`        | `true`, a live NDJSON stream |
+| `permissionLevels` | `edit`, `auto`               |
+| `modelSelection`   | `true`, as `provider/model`  |
+| `sessionResume`    | `true`                       |
+| `mcp`              | `false`                      |
+| `systemPrompt`     | `false`                      |
+| `structuredOutput` | `false`                      |
+| `cwd`              | `true`                       |
+
+There is no `read` level. Like opencode, Kilo’s per-tool permissions are config-file driven, and a config-denied action in a non-interactive run can hang waiting for an approval that never comes. MCP servers and system prompts are also config-file concerns; reach them through Kilo’s own config or [`extraArgs`](/docs/escape-hatches).
+
+## How options map to flags
+
+Every run executes `kilo run --format json` with the prompt piped over stdin, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
+
+| Option               | Flag                            |
+| -------------------- | ------------------------------- |
+| `permission: "edit"` | none, Kilo’s own defaults apply |
+| `permission: "auto"` | `--auto`                        |
+| `model`              | `--model <provider/model>`      |
+| `resume`             | `--session <sessionId>`         |
+
+`edit` is Kilo’s default behavior, with whatever permission config the user has set still applying. `auto` adds `--auto`, which approves everything not explicitly denied.
+
+`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
+
+## What the stream produces
+
+Text arrives when a message part completes, so the answer is never double-counted against its in-progress updates. Tool parts arrive in a terminal state, input and output together, so one raw `tool_use` event produces both the `tool-call` and its `tool-result`.
+
+## Usage reporting
+
+Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens`, `outputTokens`, and `costUsd`. Kilo reports tokens and cost per step, so each `step_finish` yields a `usage` event carrying that step’s share, and `result.usage` carries the totals summed across the run.
+
+## Errors
+
+A typed `error` event in the stream (a bad model, a provider failure) throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Kilo’s own message. A nonzero exit or a spawn failure throws the same code.
+
+## Resume a session
+
+Kilo has no single final payload, so the adapter composes one carrying the session id. Read `sessionId` from `result.raw` and pass it back as `resume`:
+
+```ts
+const first = await agent.run("start reviewing this repo");
+const { sessionId } = first.raw as { sessionId?: string };
+
+const followUp = await agent.run("continue with src/", { resume: sessionId });
+```
+
+## Next steps
+
+- [Permissions](/docs/permissions): what `edit` and `auto` mean before they map to flags
+- [Escape hatches](/docs/escape-hatches): reach Kilo’s config-file capabilities through `extraArgs` or `agent.raw`
+- [opencode](/docs/adapters/opencode): the CLI Kilo forked, which shares this adapter’s implementation

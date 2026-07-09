@@ -10,22 +10,15 @@ import type {
   PermissionLevel,
   RunResult,
 } from "../src/internal/types.js";
+import { sourceFromBody } from "./fake-adapter.js";
 
-const bodySource = (lines: unknown[]): OutputSource => {
-  const body = lines
-    .map((l) => (typeof l === "string" ? l : JSON.stringify(l)))
-    .join("\n");
-  return {
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  };
-};
+const bodySource = (lines: unknown[]): OutputSource =>
+  sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
+
+const fixtureSource = (name: string): OutputSource =>
+  sourceFromBody(
+    readFileSync(path.join(import.meta.dir, "fixtures/codex", name), "utf-8")
+  );
 
 const collectSource = async (
   src: OutputSource,
@@ -39,36 +32,11 @@ const collectSource = async (
   return { events, result: done?.type === "done" ? done.result : undefined };
 };
 
-const fixtureSource = (name: string): OutputSource => {
-  const body = readFileSync(
-    path.join(import.meta.dir, "fixtures/codex", name),
-    "utf-8"
-  );
-  return {
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  };
-};
-
 const collect = async (
   name: string
 ): Promise<{ events: AgentEvent[]; result: RunResult }> => {
-  const events: AgentEvent[] = [];
-  for await (const ev of codex().parse(fixtureSource(name), {
-    strict: false,
-  })) {
-    events.push(ev);
-  }
-  const done = events.find((e) => e.type === "done");
-  const result =
-    done?.type === "done" ? done.result : { events: [], raw: null, text: "" };
-  return { events, result };
+  const { events, result } = await collectSource(fixtureSource(name));
+  return { events, result: result ?? { events: [], raw: null, text: "" } };
 };
 
 const sandboxOf = (p: PermissionLevel): string | undefined => {
@@ -177,46 +145,40 @@ test("parses file_change into tool-call then tool-result", async () => {
   expect(result.text.endsWith("done")).toBe(true);
 });
 
-const drainStrict = async (name: string): Promise<void> => {
-  for await (const _ of codex().parse(fixtureSource(name), {
-    strict: true,
-  })) {
-    // drain; a strict-mode Parse error would reject here
-  }
-};
-
 test("strict mode tolerates every recorded real shape", async () => {
   await expect(
-    Promise.all(["simple.jsonl", "tools.jsonl", "edit.jsonl"].map(drainStrict))
+    Promise.all(
+      ["simple.jsonl", "tools.jsonl", "edit.jsonl"].map((f) =>
+        collectSource(fixtureSource(f), true)
+      )
+    )
   ).resolves.toHaveLength(3);
 });
 
 test("turn.failed throws Invocation with the native message", async () => {
-  const consume = async () => {
-    await collectSource(
+  await expect(
+    collectSource(
       bodySource([
         { thread_id: "t", type: "thread.started" },
         { type: "turn.started" },
         { error: { message: "model not supported" }, type: "turn.failed" },
       ])
-    );
-  };
-  await expect(consume()).rejects.toMatchObject({
+    )
+  ).rejects.toMatchObject({
     code: "Invocation",
     message: expect.stringContaining("model not supported"),
   });
 });
 
 test("a top-level error event throws Invocation", async () => {
-  const consume = async () => {
-    await collectSource(
+  await expect(
+    collectSource(
       bodySource([
         { thread_id: "t", type: "thread.started" },
         { message: "stream disconnected", type: "error" },
       ])
-    );
-  };
-  await expect(consume()).rejects.toMatchObject({
+    )
+  ).rejects.toMatchObject({
     code: "Invocation",
     message: expect.stringContaining("stream disconnected"),
   });
@@ -307,10 +269,7 @@ test("nonzero exit after valid output fails loud instead of returning it", async
     args: ["-c", `printf '%s\\n' '${line}'; exit 1`],
     command: "sh",
   });
-  const consume = async (): Promise<void> => {
-    for await (const _ of codex().parse(src, { strict: false })) {
-      // drain until the nonzero exit rejects
-    }
-  };
-  await expect(consume()).rejects.toMatchObject({ code: "Invocation" });
+  await expect(collectSource(src)).rejects.toMatchObject({
+    code: "Invocation",
+  });
 });

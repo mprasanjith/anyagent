@@ -23,7 +23,7 @@ const adapterWith = (caps: CapabilityTable, id = "demo"): Adapter =>
     meta: { bin: [id], id, name: id },
   }) as Adapter;
 
-const fullAgent = adapterWith(full);
+const fullAdapter = adapterWith(full);
 const limited = adapterWith(
   {
     ...full,
@@ -39,9 +39,9 @@ test("default permission is edit", () => {
   expect(resolvePermission({ permission: "auto" })).toBe("auto");
 });
 
-test("passes when all requested caps supported", () => {
+test("validateOptions accepts a request the adapter fully supports", () => {
   expect(() =>
-    validateOptions(fullAgent, {
+    validateOptions(fullAdapter, {
       model: "x",
       permission: "read",
       resume: "s",
@@ -49,7 +49,7 @@ test("passes when all requested caps supported", () => {
   ).not.toThrow();
 });
 
-test("throws UnsupportedCapability naming the adapter", () => {
+test("unsupported model selection throws UnsupportedCapability naming the adapter", () => {
   expect(() => validateOptions(limited, { model: "x" })).toThrow(
     expect.objectContaining({
       code: "UnsupportedCapability",

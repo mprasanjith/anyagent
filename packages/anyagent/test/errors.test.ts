@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { AnyAgentError } from "../src/internal/errors.js";
 
-test("carries code and options", () => {
+test("AnyAgentError carries its code plus argv/stderr context", () => {
   const e = new AnyAgentError("Invocation", "boom", {
     argv: ["claude", "-p"],
     stderr: "bad",
@@ -14,7 +14,7 @@ test("carries code and options", () => {
   expect(e.stderr).toBe("bad");
 });
 
-test("wrap passes through and wraps", () => {
+test("wrap returns an AnyAgentError as-is and wraps a native error with the given code", () => {
   const orig = new AnyAgentError("Parse", "x");
   expect(AnyAgentError.wrap(orig)).toBe(orig);
   const wrapped = AnyAgentError.wrap(new Error("native"), "Invocation");

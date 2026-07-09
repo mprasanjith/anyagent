@@ -13,7 +13,6 @@ const MODEL = process.env.ANYAGENT_CLINE_MODEL;
 
 test("live: cline answers a trivial prompt", async () => {
   if (!(await liveEnabled("cline"))) {
-    // biome-ignore lint/suspicious/noConsole: test skip notice.
     console.warn("skipping live test (set ANYAGENT_LIVE=1)");
     return;
   }

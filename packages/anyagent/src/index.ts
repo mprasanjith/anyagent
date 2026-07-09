@@ -1,5 +1,6 @@
 export { AnyAgentError, type AnyAgentErrorCode } from "./internal/errors.js";
 export { create } from "./internal/agent.js";
+export { ndjsonParser, type NdjsonSpec } from "./internal/ndjson.js";
 export { detect, type DetectOptions } from "./internal/registry.js";
 export type {
   Adapter,
@@ -8,6 +9,7 @@ export type {
   AgentEvent,
   AgentId,
   CapabilityTable,
+  Detection,
   DetectionSpec,
   DetectResult,
   Invocation,

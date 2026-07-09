@@ -3,17 +3,10 @@ import { expect, test } from "bun:test";
 import { AnyAgentError } from "../src/internal/errors.js";
 import { ndjsonParser } from "../src/internal/ndjson.js";
 import type { AgentEvent, OutputSource } from "../src/internal/types.js";
+import { sourceFromBody } from "./fake-adapter.js";
 
-const sourceFromLines = (lines: string[], exitCode = 0): OutputSource => ({
-  exitCode: Promise.resolve(exitCode),
-  async *lines() {
-    for (const l of lines) {
-      yield l;
-    }
-  },
-  stderr: () => Promise.resolve(""),
-  text: () => Promise.resolve(lines.join("\n")),
-});
+const sourceFromLines = (lines: string[]): OutputSource =>
+  sourceFromBody(lines.join("\n"));
 
 // oxlint-disable-next-line typescript/no-explicit-any -- toy schema.
 type Toy = any;

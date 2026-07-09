@@ -101,6 +101,11 @@ test("raw.buildInvocation exposes native argv", () => {
   expect(agent.raw.buildInvocation("hi").args).toEqual(["-p", "hi"]);
 });
 
+test("raw returns the same handle across accesses", () => {
+  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(""));
+  expect(agent.raw).toBe(agent.raw);
+});
+
 test("extraArgs escape hatch appends native flags to the argv", () => {
   const agent = new AgentImpl(fakeStreaming, runnerFromFixture(""));
   const inv = agent.raw.buildInvocation("hi", { extraArgs: ["--native", "x"] });

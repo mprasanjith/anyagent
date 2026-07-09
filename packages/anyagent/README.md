@@ -1,35 +1,41 @@
 # AnyAgent
 
-Detect the coding-agent CLI your end user already has installed and drive it through one unified interface. Prompts run on their agent, their login, their subscription: no API keys to collect, no inference bill to eat.
+Detect the coding-agent CLI your end user already has installed and drive it through one unified interface. Prompts run on their agent, their login, their subscription: no API keys to collect, no inference bill to pay.
+
+## Install
+
+```sh
+npm i anyagent
+```
+
+Zero runtime dependencies. Node.js 18+ or Bun, ESM only. Built-in adapters cover Claude Code, Codex, opencode, Kilo Code, Pi, goose, and Cline, each importable from its own subpath (`anyagent/claude-code`, `anyagent/codex`, …).
+
+## Use
 
 ```ts
 import { create, detect } from "anyagent";
-import { claudeCode } from "anyagent/claude-code";
 
-const installed = await detect(); // every supported agent present, unordered
-const agent = create(installed[0] ?? claudeCode());
-
-const result = await agent.run("summarize the README", { permission: "edit" });
-console.log(result.text);
-
-for await (const ev of agent.runStream("refactor foo.ts")) {
-  if (ev.type === "text-delta") {
-    process.stdout.write(ev.text);
-  }
+const installed = await detect();
+const [first] = installed;
+if (!first) {
+  throw new Error("No supported coding agent found.");
 }
+
+const agent = create(first);
+const result = await agent.run(
+  "Summarize this repository for a new contributor.",
+  {
+    permission: "read",
+  }
+);
+
+console.log(result.text);
 ```
 
-Zero runtime dependencies. Node 18+ or Bun, ESM. Built-in adapters: `anyagent/claude-code`, `anyagent/codex`, `anyagent/opencode`, `anyagent/kilo-code`, `anyagent/pi`, `anyagent/goose`, `anyagent/cline`.
+`detect()` scans `PATH` for every supported agent, and `create()` wraps one in a runnable handle. Use `agent.runStream()` instead of `run()` to render normalized events as the agent works.
 
-Capabilities differ per agent: check `agent.capabilities`. An unsupported request throws `AnyAgentError` (`code: "UnsupportedCapability"`) before anything spawns.
+Capabilities differ per agent: check `agent.capabilities` before asking for an option. An unsupported request throws `AnyAgentError` (`code: "UnsupportedCapability"`) before anything spawns.
 
 ## Documentation
 
-The docs site (`apps/web` in this repo) covers the full surface: a quickstart, guides for detection, streaming, and error handling, the recommended production flow, and an API reference generated from the source.
-
-## Escape hatches
-
-The unified surface is the feature subset most agents share. To reach a native capability it doesn't model:
-
-- **`extraArgs`**: append native CLI flags while keeping normalized events: `agent.run(prompt, { extraArgs: ["--some-native-flag"] })`
-- **`agent.raw`**: full manual control. `raw.buildInvocation(prompt, opts)` returns the exact argv; `raw.spawn(prompt, opts)` returns a Node `ChildProcess` you drive yourself
+The docs site (`apps/web` in this repository) covers the rest: a quickstart, guides for detecting agents, running prompts, streaming progress, and handling errors, the recommended production flow, escape hatches down to each CLI’s native surface, and a full API reference.

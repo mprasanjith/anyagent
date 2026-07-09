@@ -12,7 +12,6 @@ const MODEL = process.env.ANYAGENT_PI_MODEL;
 
 test("live: pi answers a trivial prompt", async () => {
   if (!(await liveEnabled("pi"))) {
-    // biome-ignore lint/suspicious/noConsole: test skip notice.
     console.warn("skipping live test (set ANYAGENT_LIVE=1)");
     return;
   }

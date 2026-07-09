@@ -1,11 +1,11 @@
 ---
 title: Pi
-description: How the pi adapter detects, invokes, and parses the Pi coding agent, including its exit-code quirk.
+description: How the pi adapter detects, invokes, and parses the Pi coding agent, and what each run option maps to.
 ---
 
-The `pi` adapter drives `pi --mode json -p`, mapping Pi's session/turn/message NDJSON stream onto AnyAgent's normalized events. Pi streams token-level deltas, so `text-delta` events are fine-grained rather than whole messages. Pi is MIT-licensed and pure BYOK: it reads provider keys from ~20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …), so no subscription or account is required.
+The `pi` adapter drives `pi --mode json -p`, mapping Pi’s session, turn, and message NDJSON stream onto AnyAgent’s normalized events. Pi streams token-level deltas, so `text-delta` events are fine-grained rather than whole messages. Pi is MIT-licensed and pure BYOK: it reads provider keys from around 20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …), so it needs no subscription or account.
 
-Import the factory from the `anyagent/pi` subpath:
+Import the factory from the `anyagent/pi` subpath and hand it to `create`:
 
 ```ts
 import { create } from "anyagent";
@@ -19,47 +19,57 @@ const result = await agent.run("summarize this repo", {
 
 ## Detection
 
-Detection looks for a `pi` binary on `PATH` and reads the version from `pi --version`.
+Detection looks for a `pi` binary on `PATH` and reads the version from `pi --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
 
 ## Capabilities
+
+The adapter declares one option as unsupported, `mcp`:
 
 | Capability         | Value                                         |
 | ------------------ | --------------------------------------------- |
 | `streaming`        | `true`, token-level deltas                    |
 | `permissionLevels` | `read`, `edit`, `auto`                        |
-| `modelSelection`   | `true`, as Pi's `provider/model` pattern      |
+| `modelSelection`   | `true`, as Pi’s `provider/model` pattern      |
 | `sessionResume`    | `true`                                        |
-| `mcp`              | `false` — Pi extends via its own extensions   |
+| `mcp`              | `false`                                       |
 | `systemPrompt`     | `true`, appended via `--append-system-prompt` |
-| `cwd`              | `true`                                        |
 | `structuredOutput` | `false`                                       |
+| `cwd`              | `true`                                        |
+
+Pi extends through its own extension system rather than MCP, so `mcp` requesting throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns.
 
 ## How options map to flags
+
+Every run executes `pi --mode json -p`. Pi takes the prompt as a positional argument and has no stdin form, so a prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches). Your [run options](/docs/api#runoptions) append further flags:
 
 | Option               | Flag                            |
 | -------------------- | ------------------------------- |
 | `permission: "read"` | `--tools read`                  |
-| `permission: "edit"` | none — the default toolset      |
-| `permission: "auto"` | none — same as `edit`           |
+| `permission: "edit"` | none, the default toolset       |
+| `permission: "auto"` | none, same as `edit`            |
 | `model`              | `--model <pattern>`             |
 | `systemPrompt`       | `--append-system-prompt <text>` |
 | `resume`             | `--session-id <id>`             |
 
-Pi has no approval prompts at all — it always runs autonomously — so `edit` and `auto` are the same thing, and `read` works by restricting the toolset to the `read` tool rather than by sandboxing.
+Pi has no approval prompts at all and always runs autonomously, so `edit` and `auto` are the same thing. `read` restricts the toolset to the `read` tool rather than sandboxing.
 
-The prompt is a positional argument; Pi has no stdin form. A prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches).
+`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
 
 ## What the stream produces
 
-`text-delta` events carry individual tokens from `message_update` events. Tool calls surface when their arguments are complete, and tool results arrive as their own messages carrying the tool's name. Each `turn_end` yields a `usage` event; `result.usage` sums tokens and cost across turns.
+`text-delta` events carry individual tokens from Pi’s message-update events. Tool calls surface when their arguments are complete, and each tool result arrives as its own message carrying the tool’s name.
 
-## Errors and the exit-code quirk
+## Usage reporting
 
-Pi exits 0 even when a turn fails. The adapter never trusts the exit code: a turn ending with `stopReason: "error"` throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Pi's own error message.
+Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens`, `outputTokens`, and `costUsd`. Pi reports usage per turn, so each `turn_end` yields a `usage` event carrying that turn’s share, and `result.usage` carries the totals summed across the run.
+
+## Errors
+
+Pi exits 0 even when a turn fails, so the adapter never trusts the exit code: a turn ending with `stopReason: "error"`, or a top-level `error` event, throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Pi’s own message. A nonzero exit or a spawn failure throws the same code.
 
 ## Resume a session
 
-The session id rides on `result.raw`:
+Pi has no single final payload, so the adapter composes one carrying the session id. Read `sessionId` from `result.raw` and pass it back as `resume`:
 
 ```ts
 const first = await agent.run("start reviewing this repo");
@@ -67,3 +77,9 @@ const { sessionId } = first.raw as { sessionId?: string };
 
 const followUp = await agent.run("continue with src/", { resume: sessionId });
 ```
+
+## Next steps
+
+- [Permissions](/docs/permissions): what `read`, `edit`, and `auto` mean before they map to flags
+- [Escape hatches](/docs/escape-hatches): reach Pi’s extensions and native flags through `extraArgs` or `agent.raw`
+- [opencode](/docs/adapters/opencode): the same sections for another BYOK CLI

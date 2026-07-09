@@ -10,22 +10,18 @@ import type {
   PermissionLevel,
   RunResult,
 } from "../src/internal/types.js";
+import { sourceFromBody } from "./fake-adapter.js";
 
-const bodySource = (lines: unknown[]): OutputSource => {
-  const body = lines
-    .map((l) => (typeof l === "string" ? l : JSON.stringify(l)))
-    .join("\n");
-  return {
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  };
-};
+const bodySource = (lines: unknown[]): OutputSource =>
+  sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
+
+const fixtureSource = (name: string): OutputSource =>
+  sourceFromBody(
+    readFileSync(
+      path.join(import.meta.dir, "fixtures/claude-code", name),
+      "utf-8"
+    )
+  );
 
 const collectSource = async (
   src: OutputSource,
@@ -39,36 +35,11 @@ const collectSource = async (
   return { events, result: done?.type === "done" ? done.result : undefined };
 };
 
-const fixtureSource = (name: string): OutputSource => {
-  const body = readFileSync(
-    path.join(import.meta.dir, "fixtures/claude-code", name),
-    "utf-8"
-  );
-  return {
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  };
-};
-
 const collect = async (
   name: string
 ): Promise<{ events: AgentEvent[]; result: RunResult }> => {
-  const events: AgentEvent[] = [];
-  for await (const ev of claudeCode().parse(fixtureSource(name), {
-    strict: false,
-  })) {
-    events.push(ev);
-  }
-  const done = events.find((e) => e.type === "done");
-  const result =
-    done?.type === "done" ? done.result : { events: [], raw: null, text: "" };
-  return { events, result };
+  const { events, result } = await collectSource(fixtureSource(name));
+  return { events, result: result ?? { events: [], raw: null, text: "" } };
 };
 
 const modeOf = (p: PermissionLevel): string | undefined => {
@@ -115,46 +86,26 @@ test("parses tool_use + tool_result and names the result via its tool_use id", a
   );
 });
 
-const drainStrict = async (name: string): Promise<void> => {
-  for await (const _ of claudeCode().parse(fixtureSource(name), {
-    strict: true,
-  })) {
-    // drain; a strict-mode Parse error would reject here
-  }
-};
-
 test("agent-level error (is_error) throws instead of returning success", async () => {
-  const body = [
-    JSON.stringify({
-      message: {
-        content: [{ text: "partial", type: "text" }],
-        role: "assistant",
-      },
-      type: "assistant",
-    }),
-    JSON.stringify({
-      is_error: true,
-      result: "Reached max turns.",
-      subtype: "error_max_turns",
-      type: "result",
-    }),
-  ].join("\n");
-  const source: OutputSource = {
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  };
-  const consume = async () => {
-    for await (const _ of claudeCode().parse(source, { strict: false })) {
-      // drain until the result event throws
-    }
-  };
-  await expect(consume()).rejects.toMatchObject({
+  await expect(
+    collectSource(
+      bodySource([
+        {
+          message: {
+            content: [{ text: "partial", type: "text" }],
+            role: "assistant",
+          },
+          type: "assistant",
+        },
+        {
+          is_error: true,
+          result: "Reached max turns.",
+          subtype: "error_max_turns",
+          type: "result",
+        },
+      ])
+    )
+  ).rejects.toMatchObject({
     code: "Invocation",
     message: expect.stringContaining("Reached max turns"),
   });
@@ -162,7 +113,11 @@ test("agent-level error (is_error) throws instead of returning success", async (
 
 test("strict mode tolerates real system/thinking/rate_limit shapes", async () => {
   await expect(
-    Promise.all(["simple.jsonl", "tools.jsonl"].map(drainStrict))
+    Promise.all(
+      ["simple.jsonl", "tools.jsonl"].map((f) =>
+        collectSource(fixtureSource(f), true)
+      )
+    )
   ).resolves.toHaveLength(2);
 });
 
@@ -319,10 +274,7 @@ test("nonzero exit after valid output fails loud instead of returning it", async
     args: ["-c", `printf '%s\\n' '${line}'; exit 1`],
     command: "sh",
   });
-  const consume = async (): Promise<void> => {
-    for await (const _ of claudeCode().parse(src, { strict: false })) {
-      // drain until the nonzero exit rejects
-    }
-  };
-  await expect(consume()).rejects.toMatchObject({ code: "Invocation" });
+  await expect(collectSource(src)).rejects.toMatchObject({
+    code: "Invocation",
+  });
 });

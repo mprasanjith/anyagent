@@ -9,22 +9,15 @@ import type {
   OutputSource,
   RunResult,
 } from "../src/internal/types.js";
+import { sourceFromBody } from "./fake-adapter.js";
 
-const bodySource = (lines: unknown[]): OutputSource => {
-  const body = lines
-    .map((l) => (typeof l === "string" ? l : JSON.stringify(l)))
-    .join("\n");
-  return {
-    exitCode: Promise.resolve(0),
-    async *lines() {
-      for (const l of body.split("\n")) {
-        yield l;
-      }
-    },
-    stderr: () => Promise.resolve(""),
-    text: () => Promise.resolve(body),
-  };
-};
+const bodySource = (lines: unknown[]): OutputSource =>
+  sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
+
+const fixtureSource = (name: string): OutputSource =>
+  sourceFromBody(
+    readFileSync(path.join(import.meta.dir, "fixtures/cline", name), "utf-8")
+  );
 
 const collectSource = async (
   src: OutputSource,
@@ -37,14 +30,6 @@ const collectSource = async (
   const done = events.find((e) => e.type === "done");
   return { events, result: done?.type === "done" ? done.result : undefined };
 };
-
-const fixtureSource = (name: string): OutputSource =>
-  bodySource(
-    readFileSync(
-      path.join(import.meta.dir, "fixtures/cline", name),
-      "utf-8"
-    ).split("\n")
-  );
 
 const collect = (name: string) => collectSource(fixtureSource(name));
 
@@ -129,21 +114,19 @@ test("the edit fixture surfaces a file-writing tool", async () => {
   expect(names.length).toBeGreaterThan(0);
 });
 
-const drainStrict = async (name: string): Promise<void> => {
-  for await (const _ of cline().parse(fixtureSource(name), { strict: true })) {
-    // drain; a strict-mode Parse error would reject here
-  }
-};
-
 test("strict mode tolerates every recorded real shape", async () => {
   await expect(
-    Promise.all(["simple.jsonl", "tools.jsonl", "edit.jsonl"].map(drainStrict))
+    Promise.all(
+      ["simple.jsonl", "tools.jsonl", "edit.jsonl"].map((f) =>
+        collectSource(fixtureSource(f), true)
+      )
+    )
   ).resolves.toHaveLength(3);
 });
 
 test("a run_result with finishReason error throws with cline's message", async () => {
-  const consume = async () => {
-    await collectSource(
+  await expect(
+    collectSource(
       bodySource([
         {
           finishReason: "error",
@@ -151,9 +134,8 @@ test("a run_result with finishReason error throws with cline's message", async (
           type: "run_result",
         },
       ])
-    );
-  };
-  await expect(consume()).rejects.toMatchObject({
+    )
+  ).rejects.toMatchObject({
     code: "Invocation",
     message: expect.stringContaining("not a valid model ID"),
   });
@@ -213,10 +195,7 @@ test("nonzero exit after valid output fails loud instead of returning it", async
     args: ["-c", `printf '%s\\n' '${line}'; exit 1`],
     command: "sh",
   });
-  const consume = async (): Promise<void> => {
-    for await (const _ of cline().parse(src, { strict: false })) {
-      // drain until the nonzero exit rejects
-    }
-  };
-  await expect(consume()).rejects.toMatchObject({ code: "Invocation" });
+  await expect(collectSource(src)).rejects.toMatchObject({
+    code: "Invocation",
+  });
 });

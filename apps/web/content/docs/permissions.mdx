@@ -1,11 +1,11 @@
 ---
 title: Permissions
-description: The three autonomy levels, what each means for the user’s machine, and how AnyAgent maps them onto each CLI.
+description: Set how much autonomy a run gets with the three permission levels, and check what an agent supports.
 ---
 
-Every run carries one of three permission levels that bound how much the agent can do to the working directory: `read`, `edit` (the default), and `auto`. The enum never widens and never silently up- or downgrades your request.
+Every run carries one permission level that bounds what the agent can do to the working directory: `read`, `edit` (the default), or `auto`. This page shows how to set a level, pick the right one for your feature, and check what an agent offers.
 
-## The three levels
+## Set a level on a run
 
 Each level draws a different boundary around what the agent may touch:
 
@@ -13,10 +13,14 @@ Each level draws a different boundary around what the agent may touch:
 - **`edit`** (the default): the agent creates and modifies files, while the CLI’s own guardrails still gate riskier actions like shell commands
 - **`auto`**: every prompt is auto-approved and the agent runs unattended
 
-You set the level per run through `RunOptions.permission`:
+Set the level per run through `RunOptions.permission`:
 
 ```ts
-await agent.run("Fix the failing test in test/parser.test.ts", {
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+await agent.run("Fix the failing test in test/parser.test.ts.", {
   permission: "edit",
 });
 ```
@@ -28,7 +32,7 @@ This run lets the agent edit files to fix the test, while its CLI still prompts 
   every action itself. Reserve it for sandboxed or disposable environments.
 </Callout>
 
-## Choosing a level for a shipped tool
+## Pick the level for your feature
 
 Match the level to what your feature does:
 
@@ -36,20 +40,38 @@ Match the level to what your feature does:
 - **Features that inspect and report**, a repo analysis or a review summary: `read`, so the agent cannot alter the user’s project.
 - **Sandboxed or disposable environments only**: `auto`, where auto-approving every action is safe.
 
+## Check what an agent supports
+
+Asking for a level the agent does not offer throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns; a run never silently gets more or less freedom than you asked for. Read `capabilities.permissionLevels` to see what an agent offers before you ask:
+
+```ts
+import { create, detect } from "anyagent";
+
+const [found] = await detect();
+if (!found) {
+  throw new Error("No supported coding agent found.");
+}
+
+if (found.capabilities.permissionLevels.includes("read")) {
+  const agent = create(found);
+  await agent.run("Audit the dependency tree for unused packages.", {
+    permission: "read",
+  });
+}
+```
+
+Claude Code, Codex, and Pi offer all three levels; opencode, Kilo Code, goose, and Cline offer only `edit` and `auto`, so the guard matters whenever you target an agent that might lack the level you want. See [Handle errors](/docs/errors) for the catch side.
+
 ## How the levels map onto CLIs
 
-Native permission surfaces differ across harnesses: some CLIs take a three-way level flag, some a single autonomy switch, some a per-tool allowlist, and some grade autonomy finer than three levels. Each adapter translates your level onto whichever its CLI uses, and the mapping never lands on something stronger or weaker than you asked for. The exact flag behind each level is documented on the agent’s [adapter page](/docs/adapters).
+Native permission surfaces differ across CLIs: some take a three-way level flag, some a single autonomy switch, and some a per-tool allowlist. Each adapter translates your level onto whichever its CLI uses (Claude Code’s `--permission-mode`, for example), and the mapping never lands on something stronger or weaker than you asked for. The exact flag behind each level is documented on the agent’s [adapter page](/docs/adapters).
 
 AnyAgent always passes the level explicitly rather than relying on a CLI’s default, since a CLI whose own default is weaker or stronger than `edit` would otherwise silently change what runs.
 
-## Why the enum stays fixed
-
-Three levels are the whole surface, and AnyAgent never widens the enum for one harness. If a CLI cannot honor the level you ask for, the run throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns; check `agent.capabilities.permissionLevels` to see what an agent offers. A CLI with only a single autonomy switch, for example, cannot honor `read`.
-
-Some CLIs have finer-grained native permission systems underneath, such as allow-listing individual tools. Those stay reachable through [escape hatches](/docs/escape-hatches), while the three-level enum remains the whole unified surface.
+Three levels are the whole surface. A CLI with a finer-grained native permission system underneath, such as allow-listing individual tools, stays reachable through [escape hatches](/docs/escape-hatches); [How AnyAgent works](/docs/how-it-works) explains why the surface stays this small.
 
 ## Next steps
 
 - [How AnyAgent works](/docs/how-it-works): why the surface stays a fixed common denominator
 - [Escape hatches](/docs/escape-hatches): reach a CLI’s native permission flags directly
-- [Errors](/docs/errors): handle `UnsupportedCapability` and the other codes
+- [Handle errors](/docs/errors): handle `UnsupportedCapability` and the other codes

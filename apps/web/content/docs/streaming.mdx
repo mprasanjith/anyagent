@@ -3,13 +3,21 @@ title: Stream progress
 description: Render an agent’s events as it works, and cancel a run cleanly.
 ---
 
-This page shows how to stream an agent’s activity with `runStream` and cancel a run with an `AbortSignal`. A long run with no output looks hung to the end user, so showing what the agent is doing is a product requirement.
+This page shows how to render an agent’s activity live with `agent.runStream` and cancel a run with an `AbortSignal`. A run can take minutes, and one that prints nothing looks hung, so anything interactive should show what the agent is doing.
+
+Each example creates its agent from the `claude-code` adapter so the block runs as pasted. An `Agent` built from a detection result behaves the same; see [Detect installed agents](/docs/detecting-agents).
 
 ## Loop over events
 
 `agent.runStream(prompt, opts)` is an async generator that yields an `AgentEvent` each time the agent produces one. Loop over it to build a live display in a CLI:
 
 ```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const prompt = "Fix the failing test in test/parser.test.ts.";
+
 for await (const event of agent.runStream(prompt, { permission: "edit" })) {
   if (event.type === "text-delta") {
     process.stdout.write(event.text);
@@ -21,11 +29,19 @@ for await (const event of agent.runStream(prompt, { permission: "edit" })) {
 }
 ```
 
-That prints the agent’s answer as it streams and logs a line each time the agent invokes a tool.
+The answer prints as it streams, with a line for each tool the agent invokes:
+
+```txt
+I'll look at the failing test first.
+[running Read]
+[running Edit]
+The test expected a trailing newline; parse() now preserves it.
+Done.
+```
 
 ## The five event types
 
-Every event has a `type` plus fields for its kind. All but `done` also carry `raw`: the harness’s untouched native payload for that event.
+Every event has a `type` plus fields for its kind. All but `done` also carry `raw`: the CLI’s untouched native payload for that event.
 
 | Type          | Fields           | Meaning                                    |
 | ------------- | ---------------- | ------------------------------------------ |
@@ -35,20 +51,25 @@ Every event has a `type` plus fields for its kind. All but `done` also carry `ra
 | `usage`       | `usage`          | Token and cost accounting became available |
 | `done`        | `result`         | The run finished; carries the `RunResult`  |
 
-How much text one `text-delta` carries depends on the harness: a token, a chunk, or a whole assistant message. Each [adapter page](/docs/adapters) states its granularity. What holds across every adapter, enforced by the conformance suite, is that concatenating every delta’s `text` reproduces `RunResult.text` exactly.
+How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Each [adapter page](/docs/adapters) states its granularity. What holds across every adapter is that concatenating every delta’s `text` reproduces `RunResult.text` exactly.
 
 ## Get the final result
 
 The `done` event carries the final `RunResult` on `event.result`. It is the same object `agent.run` resolves with: `text`, `events`, `usage`, and `raw`. If you drive the generator by hand instead of looping, `runStream`’s return value is that same result:
 
 ```ts
-const stream = agent.runStream(prompt);
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const stream = agent.runStream("Summarize the open TODOs in this repo.");
+
 let next = await stream.next();
 while (!next.done) {
-  // handle next.value, an AgentEvent
+  // render next.value, an AgentEvent
   next = await stream.next();
 }
-const result = next.value; // the RunResult
+console.log(next.value.text); // next.value is the RunResult
 ```
 
 ## Agents without a live stream
@@ -60,7 +81,11 @@ When an agent’s `capabilities.streaming` is `false`, the CLI prints a single f
 Pass an `AbortSignal` to cancel a run. Aborting terminates the underlying process, and the run throws `AnyAgentError` with `code: "Aborted"`. Wire it to Ctrl+C so the end user can stop a run and exit cleanly:
 
 ```ts
-import { AnyAgentError } from "anyagent";
+import { AnyAgentError, create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const prompt = "Migrate the config files in config/ to TypeScript.";
 
 const controller = new AbortController();
 process.on("SIGINT", () => controller.abort());
@@ -88,4 +113,4 @@ Breaking out of the loop early also stops the run: AnyAgent kills the underlying
 
 - [Run a prompt](/docs/running-prompts): the one-shot `run` call and every run option
 - [Handle errors](/docs/errors): branch on `AnyAgentError.code`, including `Aborted`
-- [Production flow](/docs/production): assemble streaming, choice, and error handling end to end
+- [Ship to production](/docs/production): assemble streaming, choice, and error handling end to end

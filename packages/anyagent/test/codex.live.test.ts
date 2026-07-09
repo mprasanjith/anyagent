@@ -9,7 +9,6 @@ const PROMPT = "Reply with exactly the word: pong";
 
 test("live: codex answers a trivial prompt", async () => {
   if (!(await liveEnabled("codex"))) {
-    // biome-ignore lint/suspicious/noConsole: test skip notice.
     console.warn("skipping live test (set ANYAGENT_LIVE=1)");
     return;
   }

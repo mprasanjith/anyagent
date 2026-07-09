@@ -5,7 +5,7 @@ import type { Adapter } from "../internal/types.js";
  * The adapter for opencode. Drives `opencode run --format json` with the
  * prompt piped over stdin, mapping the `step_start`/`text`/`tool_use`/
  * `step_finish` event stream onto normalized events. `edit` runs the CLI's
- * default behavior (its own permission config applies); `full-auto` adds
+ * default behavior (its own permission config applies); `auto` adds
  * `--auto`. `resume` runs `opencode run --session <sessionId>`, where the
  * session id comes from `RunResult.raw.sessionId` of a prior run.
  *
