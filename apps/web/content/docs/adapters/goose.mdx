@@ -24,20 +24,20 @@ Detection looks for a `goose` binary on `PATH` and reads the version from `goose
 
 ## Capabilities
 
-The adapter declares two options as unsupported, `mcp` and the `read` permission level:
+The adapter declares two options as unsupported, `mcp` and the `read` permission level. Each field is a [`CapabilitySupport`](/docs/api#capabilitysupport): `native` when goose has its own flag, `emulated` when the core supplies the behavior.
 
-| Capability         | Value                               |
-| ------------------ | ----------------------------------- |
-| `streaming`        | `true`, token-level deltas          |
-| `permissionLevels` | `edit`, `auto`                      |
-| `modelSelection`   | `true`, in the provider’s naming    |
-| `sessionResume`    | `true`, by session name (see below) |
-| `mcp`              | `false`                             |
-| `systemPrompt`     | `true`, appended via `--system`     |
-| `structuredOutput` | `false`                             |
-| `cwd`              | `true`                              |
+| Capability         | Value                                 |
+| ------------------ | ------------------------------------- |
+| `streaming`        | `native`, token-level deltas          |
+| `permissionLevels` | `edit`, `auto`                        |
+| `modelSelection`   | `native`, in the provider’s naming    |
+| `sessionResume`    | `native`, by session name (see below) |
+| `mcp`              | `false`                               |
+| `systemPrompt`     | `native`, appended via `--system`     |
+| `structuredOutput` | `emulated`                            |
+| `cwd`              | `native`                              |
 
-There is no `read` level: goose’s chat mode disables tools entirely, so the agent could not even read files, and its approval modes can hang a non-interactive run, so neither honestly maps. goose can attach MCP servers via `--with-extension`, but that surface is unverified against real output; reach it through [`extraArgs`](/docs/escape-hatches).
+There is no `read` level: goose’s chat mode disables tools entirely, so the agent could not even read files, and its approval modes can hang a non-interactive run, so neither honestly maps. goose can attach MCP servers via `--with-extension`, but that surface is unverified against real output; reach it through [`extraArgs`](/docs/escape-hatches). Structured output is `emulated`: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
 ## How options map to flags
 

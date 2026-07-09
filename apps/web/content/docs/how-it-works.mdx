@@ -11,7 +11,7 @@ The unified surface models the feature subset coding-agent CLIs have in common: 
 
 This has a direct consequence for your code. Anything written against the surface runs on every supported agent unchanged. When you ask for something a CLI cannot do, the call throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
 
-Each CLI still has native capabilities outside the surface, such as structured output schemas or finer permission flags. Those stay reachable through [escape hatches](/docs/escape-hatches) instead of widening the surface.
+Each CLI still has native capabilities outside the surface, such as bidirectional sessions or finer permission flags. Those stay reachable through [escape hatches](/docs/escape-hatches) instead of widening the surface. Where a common feature is missing from one CLI’s flags, AnyAgent’s core can supply it uniformly rather than dropping it, which the next section calls emulation.
 
 ## Capability tables describe each agent
 
@@ -22,7 +22,24 @@ const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
 const result = await agent.run(prompt, opts);
 ```
 
-This code sets `model` only when the agent supports choosing one, so the same call works across agents. Most fields guard the matching `RunOptions` field: requesting an option the table does not declare throws `UnsupportedCapability` before anything spawns. Two fields, `streaming` and `structuredOutput`, are informational; they describe behavior rather than guarding an option, so `runStream` works regardless of `streaming`, and structured output is reached through [escape hatches](/docs/escape-hatches). The table each CLI declares is on its [adapter page](/docs/adapters).
+This code sets `model` only when the agent supports choosing one, so the same call works across agents. Most fields guard the matching `RunOptions` field: requesting an option the table does not declare throws `UnsupportedCapability` before anything spawns. `streaming` is the one informational field, describing whether output arrives progressively rather than guarding an option, so `runStream` works either way. The table each CLI declares is on its [adapter page](/docs/adapters).
+
+Every guarding field is one of three values, which the reference calls [`CapabilitySupport`](/docs/api#capabilitysupport):
+
+- `"native"`: the CLI has its own flag, and the adapter maps your request onto it.
+- `"emulated"`: the CLI has no such flag, so the core provides the behavior itself, identically on every agent that declares it. A system prompt folded into the prompt text on a CLI without an append-system flag is emulated; on Claude Code the same request is native.
+- `false`: unavailable, and requesting it throws `UnsupportedCapability`.
+
+Both `"native"` and `"emulated"` are truthy, so `capabilities.systemPrompt` reads the same way regardless of how the feature is provided:
+
+```ts
+const opts = agent.capabilities.systemPrompt
+  ? { systemPrompt: "Follow the conventions in docs/conventions.md." }
+  : {};
+await agent.run(prompt, opts);
+```
+
+You ask for an emulated capability exactly as you ask for a native one, and the result is uniform across agents. Structured output and system prompts are both emulated on the CLIs whose flags lack them.
 
 ## Detection observes, never chooses
 

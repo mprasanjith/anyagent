@@ -23,24 +23,35 @@ Detection looks for a `cline` binary on `PATH` and reads the version from `cline
 
 ## Capabilities
 
-The adapter declares four options as unsupported, `mcp`, `systemPrompt`, `sessionResume`, and the `read` permission level:
+The adapter declares `mcp`, `sessionResume`, and the `read` permission level as unsupported, and provides `systemPrompt` and `structuredOutput` through core [emulation](/docs/api#capabilitysupport):
 
-| Capability         | Value                        |
-| ------------------ | ---------------------------- |
-| `streaming`        | `true`, a live NDJSON stream |
-| `permissionLevels` | `edit`, `auto`               |
-| `modelSelection`   | `true`                       |
-| `sessionResume`    | `false`, broken upstream     |
-| `mcp`              | `false`                      |
-| `systemPrompt`     | `false`, replace-only        |
-| `structuredOutput` | `false`                      |
-| `cwd`              | `true`                       |
+| Capability         | Value                          |
+| ------------------ | ------------------------------ |
+| `streaming`        | `native`, a live NDJSON stream |
+| `permissionLevels` | `edit`, `auto`                 |
+| `modelSelection`   | `native`                       |
+| `sessionResume`    | `false`, broken upstream       |
+| `mcp`              | `false`                        |
+| `systemPrompt`     | `emulated`                     |
+| `structuredOutput` | `emulated`                     |
+| `cwd`              | `native`                       |
 
-Three capabilities stay undeclared for honesty rather than convenience:
+Two capabilities stay undeclared for honesty rather than convenience:
 
 - **No `read`.** Cline’s plan mode still executes shell commands, verified writing a file through `run_commands`, so it cannot stand in for a read-only sandbox.
 - **No `resume`.** `--id` is broken in Cline’s headless JSON mode: the prompt is never accepted alongside it, in any argument order.
-- **No `systemPrompt`.** Cline’s `-s` replaces the system prompt entirely, while `RunOptions.systemPrompt` promises append semantics. Reach `-s` via [`extraArgs`](/docs/escape-hatches) if replacement is what you want.
+
+Cline’s own `-s` replaces the system prompt entirely, which would break the append semantics `RunOptions.systemPrompt` promises. So a `systemPrompt` is `emulated` instead: the core folds it into the prompt text ahead of your prompt, preserving the append behavior on every agent. Reach `-s` via [`extraArgs`](/docs/escape-hatches) if full replacement is what you want.
+
+```txt
+<system-instructions>
+{your system prompt}
+</system-instructions>
+
+{your prompt}
+```
+
+Structured output is `emulated` too: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
 ## How options map to flags
 

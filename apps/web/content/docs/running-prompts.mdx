@@ -3,7 +3,7 @@ title: Run a prompt
 description: Send one prompt to an agent, tune the run with RunOptions, and read the RunResult.
 ---
 
-This page shows how to send one prompt to an agent, tune the run with `RunOptions`, and read the `RunResult`. AnyAgent checks each capability-gated option (`permission`, `cwd`, `model`, `systemPrompt`, `resume`, `mcp`) against the agent’s capability table before any process spawns, so an unsupported request throws at the call site rather than mid-run.
+This page shows how to send one prompt to an agent, tune the run with `RunOptions`, and read the `RunResult`. AnyAgent checks each capability-gated option (`permission`, `cwd`, `model`, `systemPrompt`, `resume`, `mcp`, `schema`) against the agent’s capability table before any process spawns, so an unsupported request throws at the call site rather than mid-run.
 
 Each example creates its agent from the `claude-code` adapter so the block runs as pasted. An `Agent` built from a detection result behaves the same; see [Detect installed agents](/docs/detecting-agents).
 
@@ -148,5 +148,6 @@ When a CLI routes MCP through its own config instead, its adapter page says so; 
 ## Next steps
 
 - [Stream progress](/docs/streaming): show the end user what the agent is doing during a run
+- [Get structured output](/docs/structured-output): pass a `schema` and read the parsed reply
 - [Permissions](/docs/permissions): the three autonomy levels and how each maps to a CLI
 - [Handle errors](/docs/errors): branch on `AnyAgentError.code` when a run fails

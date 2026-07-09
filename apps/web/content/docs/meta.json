@@ -6,6 +6,8 @@
     "detecting-agents",
     "running-prompts",
     "streaming",
+    "structured-output",
+    "skills",
     "errors",
     "production",
     "---Concepts---",

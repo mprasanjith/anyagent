@@ -82,7 +82,9 @@ An `Agent` is a ready-to-run handle on one installed CLI. `run` resolves with th
 
 ## RunOptions
 
-Everything you can tune about a single run. All fields are optional. `permission`, `cwd`, `model`, `systemPrompt`, `resume`, and `mcp` are validated against the agent’s [`CapabilityTable`](#capabilitytable) before any process spawns, so requesting something the CLI cannot do throws [`AnyAgentError`](#anyagenterror) with `code: "UnsupportedCapability"` up front. `env`, `signal`, and `extraArgs` work on every agent.
+Everything you can tune about a single run. All fields are optional. `permission`, `cwd`, `model`, `systemPrompt`, `resume`, `mcp`, and `schema` are validated against the agent’s [`CapabilityTable`](#capabilitytable) before any process spawns, so requesting something the CLI cannot do throws [`AnyAgentError`](#anyagenterror) with `code: "UnsupportedCapability"` up front. `env`, `signal`, and `extraArgs` work on every agent.
+
+`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed and validated against it, landing on [`RunResult.json`](#runresult); [Get structured output](/docs/structured-output) covers the parsing, validation, and retry path.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/internal/types.ts"
@@ -133,9 +135,25 @@ Token and cost accounting for a run, normalized across CLIs. Every field is opti
   name="Usage"
 />
 
+## CapabilitySupport
+
+How a capability is provided. Every [`CapabilityTable`](#capabilitytable) field except `permissionLevels` is a `CapabilitySupport`:
+
+```ts
+type CapabilitySupport = "native" | "emulated" | false;
+```
+
+| Value        | Meaning                                                                                               |
+| ------------ | ----------------------------------------------------------------------------------------------------- |
+| `"native"`   | the CLI implements it, and the adapter maps your request onto the CLI’s own flags                     |
+| `"emulated"` | the CLI has no such flag, so AnyAgent’s core provides the behavior itself, identically on every agent |
+| `false`      | unavailable; requesting it throws `UnsupportedCapability` before anything spawns                      |
+
+Both `"native"` and `"emulated"` are truthy, so a `caps.systemPrompt ? … : …` check still reads as “is this available”. [How AnyAgent works](/docs/how-it-works) explains the native-versus-emulated split.
+
 ## CapabilityTable
 
-What one agent CLI can do. Read it from `agent.capabilities` or a [`DetectResult`](#detectresult) to find out what you can ask for before you ask. Most fields guard the matching [`RunOptions`](#runoptions) field, so requesting an option the table does not declare throws `UnsupportedCapability`. The exceptions are `streaming` and `structuredOutput`, which are informational only.
+What one agent CLI can do. Read it from `agent.capabilities` or a [`DetectResult`](#detectresult) to find out what you can ask for before you ask. Every field except `permissionLevels` is a [`CapabilitySupport`](#capabilitysupport). Most fields guard the matching [`RunOptions`](#runoptions) field, so requesting an option the table declares as `false` throws `UnsupportedCapability`. `streaming` is the exception: it is informational, describing whether the agent emits progressive output rather than guarding an option.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/internal/types.ts"
