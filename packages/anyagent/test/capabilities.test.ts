@@ -7,14 +7,14 @@ import {
 import type { Adapter, CapabilityTable } from "../src/internal/types.js";
 
 const full: CapabilityTable = {
-  cwd: true,
-  mcp: true,
-  modelSelection: true,
+  cwd: "native",
+  mcp: "native",
+  modelSelection: "native",
   permissionLevels: ["read", "edit", "auto"],
-  sessionResume: true,
-  streaming: true,
-  structuredOutput: true,
-  systemPrompt: true,
+  sessionResume: "native",
+  streaming: "native",
+  structuredOutput: "native",
+  systemPrompt: "native",
 };
 
 const adapterWith = (caps: CapabilityTable, id = "demo"): Adapter =>
@@ -71,7 +71,7 @@ const bare = adapterWith(
     modelSelection: false,
     permissionLevels: ["edit"],
     sessionResume: false,
-    streaming: true,
+    streaming: "native",
     structuredOutput: false,
     systemPrompt: false,
   },

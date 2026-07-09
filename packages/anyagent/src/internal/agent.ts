@@ -1,8 +1,10 @@
 import type { ChildProcess } from "node:child_process";
 
 import { resolvePermission, validateOptions } from "./capabilities.js";
+import { applyEmulations } from "./emulate.js";
 import { AnyAgentError } from "./errors.js";
 import { spawnAndStream, spawnChild } from "./runtime/spawn.js";
+import { extractJson, validateAgainstSchema } from "./structured.js";
 import type {
   Adapter,
   Agent,
@@ -16,6 +18,29 @@ import type {
 } from "./types.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
+
+type Parsed = { json: unknown } | { errors: string[] };
+
+/** Extract and validate a reply against a schema, in one pass. */
+const evaluate = (text: string, schema: Record<string, unknown>): Parsed => {
+  let value: unknown;
+  try {
+    value = extractJson(text);
+  } catch (error) {
+    return { errors: [error instanceof Error ? error.message : String(error)] };
+  }
+  const errors = validateAgainstSchema(value, schema);
+  return errors.length ? { errors } : { json: value };
+};
+
+const correctionPrompt = (
+  prompt: string,
+  previous: string,
+  errors: string[]
+): string =>
+  `${prompt}\n\nYour previous reply could not be used:\n\n<previous-reply>\n${previous}\n</previous-reply>\n\nIt failed these checks:\n${errors
+    .map((e) => `- ${e}`)
+    .join("\n")}\n\nReply again with only a corrected JSON value.`;
 
 /**
  * The concrete {@link Agent}: validates options against the adapter's
@@ -55,7 +80,11 @@ export class AgentImpl implements Agent {
     opts: RunOptions = {}
   ): AsyncGenerator<AgentEvent, RunResult> {
     validateOptions(this.adapter, opts);
-    const source = this.runner(this.build(prompt, opts), opts.signal);
+    // Emulated capabilities are folded into the prompt (and stripped from the
+    // opts) here, never in the raw path — raw is the native surface.
+    const emulated = applyEmulations(this.adapter, prompt, opts);
+    const invocation = this.build(emulated.prompt, emulated.opts);
+    const source = this.runner(invocation, opts.signal);
     try {
       return yield* this.adapter.parse(source, { strict: false });
     } finally {
@@ -65,13 +94,41 @@ export class AgentImpl implements Agent {
     }
   }
 
-  async run(prompt: string, opts: RunOptions = {}): Promise<RunResult> {
+  private async collect(prompt: string, opts: RunOptions): Promise<RunResult> {
     for await (const ev of this.runStream(prompt, opts)) {
       if (ev.type === "done") {
         return ev.result;
       }
     }
     throw new AnyAgentError("Parse", "adapter produced no terminal done event");
+  }
+
+  async run(prompt: string, opts: RunOptions = {}): Promise<RunResult> {
+    const result = await this.collect(prompt, opts);
+    if (opts.schema === undefined) {
+      return result;
+    }
+
+    const first = evaluate(result.text, opts.schema);
+    if ("json" in first) {
+      return { ...result, json: first.json };
+    }
+
+    // One fixed retry: re-ask with the failed reply and errors quoted, letting
+    // the same emulation pipeline re-append the schema instructions.
+    const retry = await this.collect(
+      correctionPrompt(prompt, result.text, first.errors),
+      opts
+    );
+    const second = evaluate(retry.text, opts.schema);
+    if ("json" in second) {
+      return { ...retry, json: second.json };
+    }
+    throw new AnyAgentError(
+      "Parse",
+      `reply did not match schema: ${second.errors.join("; ")}`,
+      { raw: retry.text }
+    );
   }
 }
 

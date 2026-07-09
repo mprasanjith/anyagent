@@ -11,14 +11,17 @@ import type {
 } from "../internal/types.js";
 
 const CAPS: CapabilityTable = {
-  cwd: true,
-  mcp: true,
-  modelSelection: true,
+  cwd: "native",
+  mcp: "native",
+  modelSelection: "native",
   permissionLevels: ["read", "edit", "auto"],
-  sessionResume: true,
-  streaming: true,
-  structuredOutput: true,
-  systemPrompt: true,
+  sessionResume: "native",
+  streaming: "native",
+  // A native structured-output path exists but is unverified against recorded
+  // real output, so core emulation applies until fixtures exist; flipping to
+  // "native" is a recorded-fixture follow-up.
+  structuredOutput: "emulated",
+  systemPrompt: "native",
 };
 
 const PERMISSION_MODE: Record<PermissionLevel, string> = {

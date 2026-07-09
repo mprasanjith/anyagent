@@ -10,12 +10,12 @@ import type {
 } from "../src/internal/types.js";
 
 const caps: CapabilityTable = {
-  cwd: true,
+  cwd: "native",
   mcp: false,
-  modelSelection: true,
+  modelSelection: "native",
   permissionLevels: ["edit"],
   sessionResume: false,
-  streaming: true,
+  streaming: "native",
   structuredOutput: false,
   systemPrompt: false,
 };

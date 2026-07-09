@@ -7,14 +7,14 @@ import type {
 } from "../src/internal/types.js";
 
 const allCaps: CapabilityTable = {
-  cwd: true,
-  mcp: true,
-  modelSelection: true,
+  cwd: "native",
+  mcp: "native",
+  modelSelection: "native",
   permissionLevels: ["read", "edit", "auto"],
-  sessionResume: true,
-  streaming: true,
-  structuredOutput: true,
-  systemPrompt: true,
+  sessionResume: "native",
+  streaming: "native",
+  structuredOutput: "native",
+  systemPrompt: "native",
 };
 
 // A canned OutputSource so parser and agent tests never spawn a process.

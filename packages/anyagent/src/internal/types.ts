@@ -22,6 +22,23 @@ import type { ChildProcess } from "node:child_process";
 export type PermissionLevel = "read" | "edit" | "auto";
 
 /**
+ * How a capability is provided, for each field of {@link CapabilityTable}:
+ *
+ * - `"native"` — the CLI itself implements it, and the adapter maps your
+ *   request onto the CLI's own flags.
+ * - `"emulated"` — the CLI has no such flag, so AnyAgent's core provides the
+ *   behavior itself, identically on every agent that declares it (for example,
+ *   folding a system prompt into the prompt text). You ask for it the same way
+ *   regardless; the result is uniform across agents.
+ * - `false` — unavailable. Requesting it throws `AnyAgentError`
+ *   (`code: "UnsupportedCapability"`) before anything spawns.
+ *
+ * Both `"native"` and `"emulated"` are truthy, so a `caps.x ? … : …` check
+ * still reads as "is this available".
+ */
+export type CapabilitySupport = "native" | "emulated" | false;
+
+/**
  * What one agent CLI can do. Read it from {@link Agent.capabilities} (or a
  * {@link DetectResult}) to find out what you can ask for before you ask:
  *
@@ -31,20 +48,19 @@ export type PermissionLevel = "read" | "edit" | "auto";
  * ```
  *
  * Most fields guard the matching {@link RunOptions} field — requesting an
- * option the table does not declare throws `AnyAgentError`
- * (`code: "UnsupportedCapability"`) before anything spawns. The two
- * exceptions, `streaming` and `structuredOutput`, are purely informational;
- * see their docs.
+ * option the table declares as `false` throws `AnyAgentError`
+ * (`code: "UnsupportedCapability"`) before anything spawns. Each field is a
+ * {@link CapabilitySupport}: `"native"`, `"emulated"`, or `false`.
  */
 export interface CapabilityTable {
   /**
-   * Whether the agent streams its work as it goes. When `true`, `runStream`
+   * Whether the agent streams its work as it goes. When truthy, `runStream`
    * relays the agent's own live events. When `false`, the CLI only prints a
    * final answer, so you get it all at once — one `text-delta` with the whole
    * reply, then `done`. Either way `runStream` works; this just tells you
    * whether to expect progressive output.
    */
-  streaming: boolean;
+  streaming: CapabilitySupport;
   /**
    * The {@link PermissionLevel}s this agent supports. Asking for one that
    * isn't listed fails fast, rather than quietly giving the agent more or less
@@ -52,31 +68,33 @@ export interface CapabilityTable {
    */
   permissionLevels: PermissionLevel[];
   /**
-   * Whether the agent can return output shaped to a schema. AnyAgent doesn't
-   * model this yet, so it's informational: to use it, pass the CLI's own flag
-   * via {@link RunOptions.extraArgs} or drive the process through
-   * {@link RawHandle}.
+   * Whether the agent can return output shaped to a schema, guarding
+   * {@link RunOptions.schema}. `"emulated"` (the built-in agents) means the
+   * core appends the schema to the prompt and parses the reply itself;
+   * `"native"` means the CLI has its own structured-output flag; `false` means
+   * requesting a schema throws `UnsupportedCapability`.
    */
-  structuredOutput: boolean;
+  structuredOutput: CapabilitySupport;
   /** Whether you can pick the model for a run. See {@link RunOptions.model}. */
-  modelSelection: boolean;
+  modelSelection: CapabilitySupport;
   /**
    * Whether the agent can pick up an earlier conversation. See
    * {@link RunOptions.resume}.
    */
-  sessionResume: boolean;
+  sessionResume: CapabilitySupport;
   /** Whether you can attach MCP servers to a run. See {@link RunOptions.mcp}. */
-  mcp: boolean;
+  mcp: CapabilitySupport;
   /**
    * Whether you can add to the agent's system prompt. See
-   * {@link RunOptions.systemPrompt}.
+   * {@link RunOptions.systemPrompt}. `"emulated"` means the core folds the
+   * system prompt into the prompt text for CLIs with no append-system flag.
    */
-  systemPrompt: boolean;
+  systemPrompt: CapabilitySupport;
   /**
    * Whether you can choose the directory the agent works in. See
    * {@link RunOptions.cwd}.
    */
-  cwd: boolean;
+  cwd: CapabilitySupport;
 }
 
 /**
@@ -139,6 +157,15 @@ export interface RunOptions {
   systemPrompt?: string;
   /** A session id from a previous run, to continue that conversation. */
   resume?: string;
+  /**
+   * A plain JSON Schema object describing the shape you want the reply in.
+   * Works on every adapter (guarded by
+   * {@link CapabilityTable.structuredOutput}). With {@link Agent.run}, the
+   * reply is parsed and validated against the schema and the parsed value
+   * lands on {@link RunResult.json}. With {@link Agent.runStream}, the schema
+   * still shapes the prompt, but you get raw text events and no parsing.
+   */
+  schema?: Record<string, unknown>;
   /** MCP servers to attach for this run. */
   mcp?: McpConfig;
   /** Aborting terminates the process; the run throws `code: "Aborted"`. */
@@ -200,6 +227,13 @@ export interface RunResult {
    */
   events: AgentEvent[];
   usage?: Usage;
+  /**
+   * The reply parsed as JSON, present only when a {@link RunOptions.schema}
+   * was passed to {@link Agent.run}. It has been validated against that schema
+   * before landing here; a reply that could not be parsed or validated (even
+   * after one retry) throws `AnyAgentError` (`code: "Parse"`) instead.
+   */
+  json?: unknown;
   raw: unknown;
 }
 
