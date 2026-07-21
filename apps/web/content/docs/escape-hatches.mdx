@@ -3,7 +3,7 @@ title: Escape hatches
 description: Reach native CLI capabilities the unified surface does not model, from adding one flag to owning the whole process.
 ---
 
-The unified surface models what most agent CLIs share, so every CLI can do things it leaves out: structured output schemas, bidirectional sessions, per-tool allow lists. AnyAgent gives you three ways down to a CLI’s native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
+The unified surface models what most agent CLIs share, so every CLI can do things it leaves out: bidirectional sessions, per-tool allow lists, finer permission flags. AnyAgent gives you three ways down to a CLI’s native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
 
 ## Add native flags with extraArgs
 
@@ -38,7 +38,7 @@ console.log(inv.command, inv.args.join(" "));
 // claude -p --output-format stream-json --verbose --permission-mode acceptEdits
 ```
 
-Unlike `run` and `runStream`, both `raw` calls skip capability validation: an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`. Check `agent.capabilities` yourself when it matters.
+Unlike `run` and `runStream`, both `raw` calls skip capability validation and [emulation](/docs/how-it-works): an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`, and an emulated option such as a system prompt on a CLI without the flag is not folded into the prompt for you. Check `agent.capabilities` yourself when it matters.
 
 ## Own the process with agent.raw.spawn
 
@@ -72,5 +72,5 @@ Before you rebuild event parsing on top of `spawn` for a supported CLI, check th
 ## Next steps
 
 - [How AnyAgent works](/docs/how-it-works): why the surface leaves native capabilities out
-- [Permissions](/docs/permissions): what `permission` sets before `extraArgs` can override it
+- [Run agents](/docs/run-agents#set-a-permission-level): what `permission` sets before `extraArgs` can override it
 - [API reference](/docs/api): the `RunOptions`, `Invocation`, and `RawHandle` types

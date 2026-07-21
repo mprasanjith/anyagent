@@ -1,9 +1,9 @@
 ---
 title: Pi
-description: How the pi adapter detects, invokes, and parses the Pi coding agent, and what each run option maps to.
+description: How the pi adapter detects and invokes the Pi CLI’s pi binary, and what each run option maps to.
 ---
 
-The `pi` adapter drives `pi --mode json -p`, mapping Pi’s session, turn, and message NDJSON stream onto AnyAgent’s normalized events. Pi streams token-level deltas, so `text-delta` events are fine-grained rather than whole messages. Pi is MIT-licensed and pure BYOK: it reads provider keys from around 20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …), so it needs no subscription or account.
+The `pi` adapter drives the Pi CLI as `pi --mode json -p`, mapping Pi’s session, turn, and message NDJSON stream onto AnyAgent’s normalized events. Pi streams token-level deltas, so `text-delta` events are fine-grained rather than whole messages, and Pi extends through its own extension system rather than MCP, so the `mcp` option is unsupported. Pi is MIT-licensed and pure bring-your-own-key (BYOK): it reads provider keys from around 20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …), so it needs no subscription or account. The full capability table is on the [support matrix](/docs/adapters).
 
 Import the factory from the `anyagent/pi` subpath and hand it to `create`:
 
@@ -13,30 +13,11 @@ import { pi } from "anyagent/pi";
 
 const agent = create(pi());
 const result = await agent.run("summarize this repo", {
-  model: "openrouter/openai/gpt-4o-mini",
+  model: "openrouter/openai/gpt-5.2",
 });
 ```
 
-## Detection
-
-Detection looks for a `pi` binary on `PATH` and reads the version from `pi --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
-
-## Capabilities
-
-The adapter declares one option as unsupported, `mcp`. Each field is a [`CapabilitySupport`](/docs/api#capabilitysupport): `native` when Pi has its own flag, `emulated` when the core supplies the behavior.
-
-| Capability         | Value                                           |
-| ------------------ | ----------------------------------------------- |
-| `streaming`        | `native`, token-level deltas                    |
-| `permissionLevels` | `read`, `edit`, `auto`                          |
-| `modelSelection`   | `native`, as Pi’s `provider/model` pattern      |
-| `sessionResume`    | `native`                                        |
-| `mcp`              | `false`                                         |
-| `systemPrompt`     | `native`, appended via `--append-system-prompt` |
-| `structuredOutput` | `emulated`                                      |
-| `cwd`              | `native`                                        |
-
-Pi extends through its own extension system rather than MCP, so requesting `mcp` throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns. Structured output is `emulated`: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
+Detection looks for a `pi` binary on `PATH` and reads the version from `pi --version`.
 
 ## How options map to flags
 
@@ -59,27 +40,18 @@ Pi has no approval prompts at all and always runs autonomously, so `edit` and `a
 
 `text-delta` events carry individual tokens from Pi’s message-update events. Tool calls surface when their arguments are complete, and each tool result arrives as its own message carrying the tool’s name.
 
+Pi has no single final payload, so the adapter composes one carrying the session id: read `sessionId` from `result.raw` and pass it back as `resume`; see [Resume a session](/docs/run-agents#resume-a-session).
+
 ## Usage reporting
 
-Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens`, `outputTokens`, and `costUsd`. Pi reports usage per turn, so each `turn_end` yields a `usage` event carrying that turn’s share, and `result.usage` carries the totals summed across the run.
+Pi reports `inputTokens`, `outputTokens`, and `costUsd` per turn: each `turn_end` yields a `usage` event carrying that turn’s share, and `result.usage` carries the totals summed across the run.
 
 ## Errors
 
-Pi exits 0 even when a turn fails, so the adapter never trusts the exit code: a turn ending with `stopReason: "error"`, or a top-level `error` event, throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Pi’s own message. A nonzero exit or a spawn failure throws the same code.
-
-## Resume a session
-
-Pi has no single final payload, so the adapter composes one carrying the session id. Read `sessionId` from `result.raw` and pass it back as `resume`:
-
-```ts
-const first = await agent.run("start reviewing this repo");
-const { sessionId } = first.raw as { sessionId?: string };
-
-const followUp = await agent.run("continue with src/", { resume: sessionId });
-```
+Pi exits 0 even when a turn fails, so the adapter never trusts the exit code: a turn ending with `stopReason: "error"`, or a top-level `error` event, throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Pi’s own message.
 
 ## Next steps
 
-- [Permissions](/docs/permissions): what `read`, `edit`, and `auto` mean before they map to flags
+- [Supported agents](/docs/adapters): every adapter’s capabilities side by side
 - [Escape hatches](/docs/escape-hatches): reach Pi’s extensions and native flags through `extraArgs` or `agent.raw`
-- [opencode](/docs/adapters/opencode): the same sections for another BYOK CLI
+- [goose](/docs/adapters/goose): the same sections for another BYOK CLI

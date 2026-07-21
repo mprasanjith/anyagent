@@ -3,7 +3,7 @@ title: Use Agent Skills with any agent
 description: Let the CLI pick up an Agent Skill from the repo, stage one for a single run, and fall back to the system prompt where skills are unsupported.
 ---
 
-[Agent Skills](https://agentskills.io) are folders holding a `SKILL.md` file that a coding agent loads when a task calls for it. The CLIs discover them from the filesystem themselves, so AnyAgent adds no API for skills: place a skill in the repo the agent works on and set [`cwd`](/docs/running-prompts#set-the-working-directory), and the CLI finds it. This page shows the discovery paths, how to stage a skill for one run, and what to do on an agent that has no skills support.
+[Agent Skills](https://agentskills.io) are folders holding a `SKILL.md` file that a coding agent loads when a task calls for it. The CLIs discover them from the filesystem themselves, so AnyAgent adds no API for skills: place a skill in the repo the agent works on and set [`cwd`](/docs/run-agents#tune-the-run), and the CLI finds it. This page shows the discovery paths, how to stage a skill for one run, and what to do on an agent that has no skills support.
 
 ## Where each agent looks for skills
 
@@ -100,6 +100,6 @@ Branch on `found.id` to stage a skill when the agent supports one and fall back 
 
 ## Next steps
 
-- [Run a prompt](/docs/running-prompts): `cwd`, `systemPrompt`, and the other run options
+- [Run agents](/docs/run-agents): `cwd`, `systemPrompt`, permission levels, and the other run options
 - [Escape hatches](/docs/escape-hatches): pass Pi’s `--skill` flag through `extraArgs`
-- [Permissions](/docs/permissions): why `auto` needs the `.git/info/exclude` guard
+- [Supported agents](/docs/adapters): what each CLI declares, side by side

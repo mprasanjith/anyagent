@@ -258,7 +258,7 @@ const Page = () => (
       <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
         <Link
           className={buttonVariants({ variant: "link" })}
-          href="/docs/permissions"
+          href="/docs/run-agents#set-a-permission-level"
         >
           How permissions work →
         </Link>

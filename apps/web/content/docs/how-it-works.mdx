@@ -43,9 +43,9 @@ You ask for an emulated capability exactly as you ask for a native one, and the 
 
 ## Detection observes, never chooses
 
-`detect()` checks the machine’s `PATH` for each supported CLI and returns one result per install, carrying the binary’s path, the reported version, and the agent’s capability table. The order of results carries no ranking, so picking an agent is your product decision; [Detect installed agents](/docs/detecting-agents) covers the patterns.
+`detect()` checks the machine’s `PATH` for each supported CLI and returns one result per install, carrying the binary’s path, the reported version, and the agent’s capability table. The order of results carries no ranking, so picking an agent is your product decision; [Run agents](/docs/run-agents) covers the patterns.
 
-The version is for display only. AnyAgent targets current CLIs and never changes behavior based on the version it reads, and an agent whose version probe fails still works, with `version` set to `null`.
+The version is for display only. AnyAgent targets current CLIs and never changes behavior based on the version it reads, and an agent whose version probe fails still works, with `version` left absent.
 
 ## One process per prompt
 
@@ -74,6 +74,6 @@ Each adapter page documents its raw shape, including the key its session id live
 
 ## Next steps
 
-- [Permissions](/docs/permissions): the three autonomy levels and how they map per CLI
+- [Run agents](/docs/run-agents): the workflow this model backs, from detection to a finished run
 - [Escape hatches](/docs/escape-hatches): reach native capabilities the surface does not model
 - [API reference](/docs/api): every type and option
