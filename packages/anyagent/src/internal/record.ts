@@ -2,8 +2,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { BUILTINS } from "../internal/registry.js";
-import { spawnAndStream } from "../internal/runtime/spawn.js";
+import { BUILTINS } from "./builtins.js";
+import { spawnAndStream } from "./runtime/spawn.js";
 
 const main = async (): Promise<void> => {
   const [id, scenario, ...promptParts] = process.argv.slice(2);

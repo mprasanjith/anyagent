@@ -1,20 +1,19 @@
 import { expect, test } from "bun:test";
 
-import { AnyAgentError } from "../src/internal/errors.js";
-import { ndjsonParser } from "../src/internal/ndjson.js";
-import type { AgentEvent, OutputSource } from "../src/internal/types.js";
+import { AnyAgentError } from "../src/errors.js";
+import { ndjsonParser } from "../src/ndjson.js";
+import type { AgentEvent, OutputSource } from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const sourceFromLines = (lines: string[]): OutputSource =>
   sourceFromBody(lines.join("\n"));
 
-// oxlint-disable-next-line typescript/no-explicit-any -- toy schema.
 type Toy = any;
 
 const parse = ndjsonParser<{ text: string[] }>({
   finalize: (ctx) => ({
     events: [],
-    raw: null,
+    raw: undefined,
     text: ctx.text.join(""),
   }),
   init: () => ({ text: [] }),
@@ -25,12 +24,11 @@ const parse = ndjsonParser<{ text: string[] }>({
       return { text: obj.v, type: "text-delta" };
     }
     if (obj.t === "end") {
-      return null;
+      return;
     }
     if (strict) {
       throw new AnyAgentError("Parse", `unknown type ${obj.t}`);
     }
-    return null;
   },
 });
 

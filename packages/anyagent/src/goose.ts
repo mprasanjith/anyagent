@@ -1,5 +1,5 @@
-import { AnyAgentError } from "../internal/errors.js";
-import { ndjsonParser } from "../internal/ndjson.js";
+import { AnyAgentError } from "./errors.js";
+import { ndjsonParser } from "./ndjson.js";
 import type {
   Adapter,
   AgentEvent,
@@ -7,7 +7,7 @@ import type {
   Invocation,
   PermissionLevel,
   RunOptions,
-} from "../internal/types.js";
+} from "./types.js";
 
 const CAPS: CapabilityTable = {
   cwd: "native",
@@ -27,12 +27,12 @@ const CAPS: CapabilityTable = {
 };
 
 interface Ctx {
+  complete?: unknown;
   text: string[];
   toolNames: Map<string, string>;
-  complete?: unknown;
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 const mapContent = (
@@ -40,7 +40,7 @@ const mapContent = (
   raw: Json,
   ctx: Ctx,
   strict: boolean
-): AgentEvent | null => {
+): AgentEvent | undefined => {
   switch (block.type) {
     case "text": {
       ctx.text.push(block.text);
@@ -68,7 +68,7 @@ const mapContent = (
       if (strict) {
         throw new AnyAgentError("Parse", `unknown content block ${block.type}`);
       }
-      return null;
+      return;
     }
   }
 };
@@ -114,7 +114,7 @@ const parse = ndjsonParser<Ctx>({
         const input = obj.input_tokens;
         const output = obj.output_tokens;
         if (typeof input !== "number" && typeof output !== "number") {
-          return null;
+          return;
         }
         return {
           raw: obj,
@@ -129,7 +129,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return;
       }
     }
   },
@@ -168,11 +168,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for goose (Block's open-source agent, now under the Agentic AI
- * Foundation). Drives `goose run --output-format stream-json --quiet` with
- * the prompt piped over stdin via `-i -`. Goose is BYOK: pick the backend
+ * The adapter for the goose CLI (`goose`). Goose is BYOK: pick the backend
  * with `GOOSE_PROVIDER` plus the provider's key env var (or goose's own
- * config), and pass `model` in the provider's naming.
+ * config),
+ * and pass `model` in the provider's naming.
  *
  * ```ts
  * import { create } from "anyagent";
@@ -184,9 +183,8 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * Sessions are resumed by name: name the first run yourself via
  * `extraArgs: ["--name", "my-session"]`, then pass that same name as
  * `resume` — goose's headless stream carries no session id to hand back on
- * `raw`. Goose reports errors as ordinary assistant text with a final
- * `complete` event of null token counts, so a failed turn returns that text
- * rather than throwing.
+ * `raw`. Goose reports errors as ordinary assistant text, so a failed turn
+ * returns that text as the reply rather than throwing.
  */
 export const goose = (): Adapter => ({
   buildInvocation,

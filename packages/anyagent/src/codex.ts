@@ -1,5 +1,5 @@
-import { AnyAgentError } from "../internal/errors.js";
-import { ndjsonParser } from "../internal/ndjson.js";
+import { AnyAgentError } from "./errors.js";
+import { ndjsonParser } from "./ndjson.js";
 import type {
   Adapter,
   AgentEvent,
@@ -8,7 +8,7 @@ import type {
   PermissionLevel,
   RunOptions,
   Usage,
-} from "../internal/types.js";
+} from "./types.js";
 
 const CAPS: CapabilityTable = {
   cwd: "native",
@@ -41,13 +41,13 @@ interface Ctx {
   usage?: Usage;
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 const usageFrom = (obj: Json): Usage | undefined => {
   const u = obj.usage;
   if (!u) {
-    return undefined;
+    return;
   }
   // Codex's input_tokens folds cache reads in; subtract to report uncached
   // input like the other adapters. Exact native accounting stays on raw.
@@ -60,7 +60,7 @@ const usageFrom = (obj: Json): Usage | undefined => {
   };
 };
 
-const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | null => {
+const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | undefined => {
   const item = obj.item ?? {};
   switch (item.type) {
     case "command_execution": {
@@ -84,13 +84,13 @@ const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | null => {
     case "agent_message":
     case "reasoning":
     case "error": {
-      return null;
+      return;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown item type ${item.type}`);
       }
-      return null;
+      return;
     }
   }
 };
@@ -99,7 +99,7 @@ const mapItemCompleted = (
   obj: Json,
   ctx: Ctx,
   strict: boolean
-): AgentEvent | null => {
+): AgentEvent | undefined => {
   const item = obj.item ?? {};
   switch (item.type) {
     case "agent_message": {
@@ -126,13 +126,13 @@ const mapItemCompleted = (
     // fatal failures arrive as top-level `error`/`turn.failed` instead.
     case "reasoning":
     case "error": {
-      return null;
+      return;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown item type ${item.type}`);
       }
-      return null;
+      return;
     }
   }
 };
@@ -152,11 +152,11 @@ const parse = ndjsonParser<Ctx>({
     switch (obj.type) {
       case "thread.started": {
         ctx.threadId = obj.thread_id;
-        return null;
+        return;
       }
       case "turn.started":
       case "item.updated": {
-        return null;
+        return;
       }
       case "item.started": {
         return mapItemStarted(obj, strict);
@@ -167,7 +167,9 @@ const parse = ndjsonParser<Ctx>({
       case "turn.completed": {
         ctx.usage = usageFrom(obj);
         ctx.turn = obj;
-        return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : null;
+        return ctx.usage
+          ? { raw: obj, type: "usage", usage: ctx.usage }
+          : undefined;
       }
       case "turn.failed": {
         throw new AnyAgentError(
@@ -187,7 +189,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return;
       }
     }
   },
@@ -232,12 +234,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for OpenAI's Codex CLI. Drives `codex exec --json` with the
- * prompt piped over stdin, mapping the thread→turn→item event stream onto
- * normalized events. Permission levels map onto `--sandbox`
- * (`read-only` / `workspace-write` / `danger-full-access`); `resume` runs
- * `codex exec resume <threadId>`, where the thread id comes from
- * `RunResult.raw.threadId` of a prior run.
+ * The adapter for the Codex CLI (`codex`). Permission levels map onto
+ * Codex's sandbox levels (`read-only` / `workspace-write` /
+ * `danger-full-access`); `resume` continues a prior thread, whose id comes
+ * from `RunResult.raw.threadId` of a prior run.
  *
  * ```ts
  * import { create } from "anyagent";
@@ -246,9 +246,9 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * const result = await create(codex()).run("summarize this repo");
  * ```
  *
- * MCP servers are not supported on `codex exec`; Codex's `-c` config overrides
- * can reach them via `extraArgs` or `agent.raw`. System prompts have no native
- * flag, so the core emulates them by folding them into the prompt.
+ * MCP servers are not supported on headless Codex; Codex's `-c` config
+ * overrides can reach them via `extraArgs` or `agent.raw`. System prompts
+ * have no native flag and are emulated.
  */
 export const codex = (): Adapter => ({
   buildInvocation,

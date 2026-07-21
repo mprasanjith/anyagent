@@ -1,10 +1,10 @@
-import { ndjsonParser } from "../src/internal/ndjson.js";
+import { ndjsonParser } from "../src/ndjson.js";
 import type {
   Adapter,
   CapabilityTable,
   Invocation,
   OutputSource,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 
 const allCaps: CapabilityTable = {
   cwd: "native",
@@ -20,6 +20,7 @@ const allCaps: CapabilityTable = {
 // A canned OutputSource so parser and agent tests never spawn a process.
 export const sourceFromBody = (body: string): OutputSource => ({
   exitCode: Promise.resolve(0),
+  // biome-ignore lint/suspicious/useAwait: replays in-memory data through the async OutputSource interface.
   async *lines() {
     for (const l of body.split("\n")) {
       yield l;
@@ -34,13 +35,13 @@ export const runnerFromFixture =
   (_inv: Invocation): OutputSource =>
     sourceFromBody(body);
 
-// oxlint-disable-next-line typescript/no-explicit-any -- toy fixture schema.
+// biome-ignore lint/suspicious/noExplicitAny: toy fixture schema.
 type Toy = any;
 
 const streamParse = ndjsonParser<{ text: string[] }>({
   finalize: (ctx) => ({
     events: [],
-    raw: null,
+    raw: undefined,
     text: ctx.text.join(""),
   }),
   init: () => ({ text: [] }),
@@ -54,12 +55,11 @@ const streamParse = ndjsonParser<{ text: string[] }>({
       return { input: o.input, name: o.name, type: "tool-call" };
     }
     if (o.t === "end") {
-      return null;
+      return;
     }
     if (strict) {
       throw new Error(`unknown ${o.t}`);
     }
-    return null;
   },
 });
 

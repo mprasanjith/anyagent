@@ -3,7 +3,7 @@
 import { GrainGradient } from "@paper-design/shaders-react";
 import { useEffect, useState } from "react";
 
-/** Hex mirrors of the tokens in tokens.css — WebGL uniforms can't read CSS
+/** Hex mirrors of the tokens in theme.css — WebGL uniforms can't read CSS
  * custom properties. Keep in sync: paper, deep violets, brass, coral. */
 const COLOR_BACK = "#14111d";
 const COLORS = ["#241b3a", "#4d3a6e", "#e0a15c", "#d96f5e"];
@@ -24,7 +24,7 @@ export const HeroCanvas = () => {
   return (
     <GrainGradient
       aria-hidden="true"
-      className="hm-hero-canvas"
+      className="absolute inset-0"
       colorBack={COLOR_BACK}
       colors={COLORS}
       fit="contain"

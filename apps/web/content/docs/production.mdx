@@ -22,7 +22,7 @@ Each result carries `id`, `name`, `version` (display only), `path`, `capabilitie
 Before running anything, state which agent you will use. The prompt executes on the user’s machine, under their login, and may make model calls they pay for, so nothing should run by surprise.
 
 ```ts
-import type { DetectResult } from "anyagent";
+import type { DetectResult } from "anyagent/types";
 
 const announce = (chosen: DetectResult): void => {
   console.log(`acme init will use ${chosen.name} (${chosen.path}).`);
@@ -36,7 +36,7 @@ When `detect()` returns more than one agent, ask which to use rather than pickin
 
 ```ts
 import { create } from "anyagent";
-import type { Agent, DetectResult } from "anyagent";
+import type { Agent, DetectResult } from "anyagent/types";
 import { createInterface } from "node:readline/promises";
 
 const pickAgent = async (found: DetectResult[]): Promise<Agent | null> => {
@@ -65,7 +65,7 @@ If the agent is a hard requirement, the empty case should name a [supported agen
 Stream the run so the user sees work as it happens, and scope the prompt so the agent stays local. `runStream` yields `text-delta` events to render live and ends with a `done` event carrying the final `RunResult`.
 
 ```ts
-import type { Agent } from "anyagent";
+import type { Agent } from "anyagent/types";
 
 const runInit = async (agent: Agent): Promise<string> => {
   const prompt = [
@@ -95,8 +95,8 @@ The prompt does the guardrail work: it names the exact files the agent may touch
 Every failure throws `AnyAgentError` with one of four codes. Branch on `.code` and give a message a stranger could act on. Cancellation through an `AbortSignal` is not a failure, so return quietly on `"Aborted"`. `runInit` here is the streaming runner from the previous step.
 
 ```ts
-import { AnyAgentError } from "anyagent";
-import type { Agent } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
+import type { Agent } from "anyagent/types";
 
 const runWithHandling = async (agent: Agent): Promise<void> => {
   try {

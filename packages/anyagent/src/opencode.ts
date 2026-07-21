@@ -1,13 +1,11 @@
-import { opencodeFamilyAdapter } from "../internal/opencode-family.js";
-import type { Adapter } from "../internal/types.js";
+import { opencodeFamilyAdapter } from "./internal/opencode-family.js";
+import type { Adapter } from "./types.js";
 
 /**
- * The adapter for opencode. Drives `opencode run --format json` with the
- * prompt piped over stdin, mapping the `step_start`/`text`/`tool_use`/
- * `step_finish` event stream onto normalized events. `edit` runs the CLI's
- * default behavior (its own permission config applies); `auto` adds
- * `--auto`. `resume` runs `opencode run --session <sessionId>`, where the
- * session id comes from `RunResult.raw.sessionId` of a prior run.
+ * The adapter for opencode (`opencode`). `edit` runs the CLI's default
+ * behavior (its own permission config applies); `auto` auto-approves.
+ * `resume` continues a session, whose id comes from
+ * `RunResult.raw.sessionId` of a prior run.
  *
  * ```ts
  * import { create } from "anyagent";

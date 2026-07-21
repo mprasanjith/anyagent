@@ -1,11 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { AgentImpl } from "../src/internal/agent.js";
-import type {
-  Adapter,
-  Invocation,
-  OutputSource,
-} from "../src/internal/types.js";
+import type { Adapter, Invocation, OutputSource } from "../src/types.js";
 import { fakeStreaming, sourceFromBody } from "./fake-adapter.js";
 
 // A streaming adapter that emulates structured output, carrying the (possibly

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { AnyAgentError } from "../src/internal/errors.js";
+import { AnyAgentError } from "../src/errors.js";
 
 test("AnyAgentError carries its code plus argv/stderr context", () => {
   const e = new AnyAgentError("Invocation", "boom", {

@@ -1,27 +1,24 @@
 import type { ChildProcess } from "node:child_process";
-
-import { resolvePermission, validateOptions } from "./capabilities.js";
-import { applyEmulations } from "./emulate.js";
-import { AnyAgentError } from "./errors.js";
-import { spawnAndStream, spawnChild } from "./runtime/spawn.js";
-import { extractJson, validateAgainstSchema } from "./structured.js";
+import { AnyAgentError } from "../errors.js";
 import type {
   Adapter,
   Agent,
   AgentEvent,
-  DetectResult,
   Invocation,
   OutputSource,
   RawHandle,
   RunOptions,
   RunResult,
-} from "./types.js";
+} from "../types.js";
+import { resolvePermission, validateOptions } from "./capabilities.js";
+import { applyEmulations } from "./emulate.js";
+import { spawnAndStream, spawnChild } from "./runtime/spawn.js";
+import { extractJson, validateAgainstSchema } from "./structured.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
 type Parsed = { json: unknown } | { errors: string[] };
 
-/** Extract and validate a reply against a schema, in one pass. */
 const evaluate = (text: string, schema: Record<string, unknown>): Parsed => {
   let value: unknown;
   try {
@@ -42,12 +39,10 @@ const correctionPrompt = (
     .map((e) => `- ${e}`)
     .join("\n")}\n\nReply again with only a corrected JSON value.`;
 
-/**
- * The concrete {@link Agent}: validates options against the adapter's
- * capability table, spawns via the injected runner (real process spawn by
- * default; tests inject fixture-backed runners), and delegates output
- * parsing to the adapter.
- */
+// The concrete {@link Agent}: validates options against the adapter's
+// capability table, spawns via the injected runner (real process spawn by
+// default; tests inject fixture-backed runners), and delegates output
+// parsing to the adapter.
 export class AgentImpl implements Agent {
   readonly adapter: Adapter;
   private readonly runner: Runner;
@@ -131,11 +126,3 @@ export class AgentImpl implements Agent {
     );
   }
 }
-
-/**
- * Build a runnable {@link Agent}. Accepts either an adapter directly —
- * `create(claudeCode())` when you know which CLI you want — or one of
- * `detect()`'s results when you want whatever is installed.
- */
-export const create = (source: Adapter | DetectResult): Agent =>
-  new AgentImpl("adapter" in source ? source.adapter : source);

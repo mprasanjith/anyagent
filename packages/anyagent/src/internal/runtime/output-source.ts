@@ -1,23 +1,21 @@
 import type { ChildProcess } from "node:child_process";
 
-import { AnyAgentError } from "../errors.js";
-import type { Invocation, OutputSource } from "../types.js";
+import { AnyAgentError } from "../../errors.js";
+import type { Invocation, OutputSource } from "../../types.js";
 
 const STDERR_SNIPPET_LEN = 200;
 
 const isAbort = (err: Error & { code?: string }): boolean =>
   err.name === "AbortError" || err.code === "ABORT_ERR";
 
-/**
- * Wrap a spawned child in an {@link OutputSource}: line-buffered stdout,
- * captured stderr, and an `exitCode` that rejects with a descriptive
- * `Invocation` (or `Aborted`) error on any failure.
- */
+// Wrap a spawned child in an {@link OutputSource}: line-buffered stdout,
+// captured stderr, and an `exitCode` that rejects with a descriptive
+// `Invocation` (or `Aborted`) error on any failure.
 export const outputSourceFromChild = (
   child: ChildProcess,
   invocation: Invocation
 ): OutputSource => {
-  let spawnError: Error | null = null;
+  let spawnError: Error | undefined;
   let stderrBuf = "";
 
   child.stderr?.on("data", (c) => {
@@ -33,7 +31,6 @@ export const outputSourceFromChild = (
     extra?: { raw?: unknown; stderr?: string }
   ) => new AnyAgentError("Invocation", message, { argv, ...extra });
 
-  // oxlint-disable-next-line promise/avoid-new -- child_process lifecycle events need callback interop.
   const exitCode = new Promise<number>((resolve, reject) => {
     child.on("error", (err) =>
       reject(
@@ -66,7 +63,7 @@ export const outputSourceFromChild = (
     });
   });
   // Fire-and-forget guard so an unawaited exitCode never becomes an unhandled rejection.
-  // oxlint-disable-next-line promise/prefer-await-to-then, no-empty-function -- deliberate detached guard.
+  // biome-ignore lint/suspicious/noEmptyBlockStatements: deliberate detached rejection guard.
   exitCode.catch(() => {});
 
   // A stdout read error is almost always a downstream symptom of the process

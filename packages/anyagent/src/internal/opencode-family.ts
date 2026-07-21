@@ -1,5 +1,5 @@
-import { AnyAgentError } from "./errors.js";
-import { ndjsonParser } from "./ndjson.js";
+import { AnyAgentError } from "../errors.js";
+import { ndjsonParser } from "../ndjson.js";
 import type {
   Adapter,
   AdapterMeta,
@@ -8,15 +8,13 @@ import type {
   Invocation,
   RunOptions,
   Usage,
-} from "./types.js";
+} from "../types.js";
 
-/**
- * Shared implementation for opencode and its fork Kilo Code. Both CLIs expose
- * the same `run --format json` surface and emit the same
- * `step_start`/`text`/`tool_use`/`step_finish` event stream — verified
- * separately against real output of each. Only the binary name and identity
- * differ, so each adapter passes its own meta here.
- */
+// Shared implementation for opencode and its fork Kilo Code. Both CLIs expose
+// the same `run --format json` surface and emit the same
+// `step_start`/`text`/`tool_use`/`step_finish` event stream — verified
+// separately against real output of each. Only the binary name and identity
+// differ, so each adapter passes its own meta here.
 
 const CAPS: CapabilityTable = {
   cwd: "native",
@@ -38,16 +36,16 @@ const CAPS: CapabilityTable = {
 };
 
 interface Ctx {
-  text: string[];
   sessionId?: string;
   stepFinish?: unknown;
+  text: string[];
   usage: { input: number; output: number; cost: number; seen: boolean };
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
-const mapToolUse = (obj: Json, strict: boolean): AgentEvent[] | null => {
+const mapToolUse = (obj: Json, strict: boolean): AgentEvent[] | undefined => {
   const part = obj.part ?? {};
   const state = part.state ?? {};
   switch (state.status) {
@@ -74,17 +72,17 @@ const mapToolUse = (obj: Json, strict: boolean): AgentEvent[] | null => {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown tool state ${state.status}`);
       }
-      return null;
+      return;
     }
   }
 };
 
-const mapStepFinish = (obj: Json, ctx: Ctx): AgentEvent | null => {
+const mapStepFinish = (obj: Json, ctx: Ctx): AgentEvent | undefined => {
   ctx.sessionId ??= obj.sessionID;
   ctx.stepFinish = obj;
   const tokens = obj.part?.tokens;
   if (!tokens) {
-    return null;
+    return;
   }
   ctx.usage.seen = true;
   ctx.usage.input += tokens.input ?? 0;
@@ -125,7 +123,7 @@ const makeParse = (id: string) =>
       switch (obj.type) {
         case "step_start": {
           ctx.sessionId ??= obj.sessionID;
-          return null;
+          return;
         }
         case "text": {
           const text = obj.part?.text ?? "";
@@ -149,7 +147,7 @@ const makeParse = (id: string) =>
           if (strict) {
             throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
           }
-          return null;
+          return;
         }
       }
     },

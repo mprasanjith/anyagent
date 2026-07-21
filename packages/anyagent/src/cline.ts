@@ -1,5 +1,5 @@
-import { AnyAgentError } from "../internal/errors.js";
-import { ndjsonParser } from "../internal/ndjson.js";
+import { AnyAgentError } from "./errors.js";
+import { ndjsonParser } from "./ndjson.js";
 import type {
   Adapter,
   AgentEvent,
@@ -7,7 +7,7 @@ import type {
   Invocation,
   OutputSource,
   RunOptions,
-} from "../internal/types.js";
+} from "./types.js";
 
 const CAPS: CapabilityTable = {
   cwd: "native",
@@ -31,18 +31,18 @@ const CAPS: CapabilityTable = {
 };
 
 interface Ctx {
-  text: string[];
   raw?: unknown;
+  text: string[];
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 const mapAgentEvent = (
   obj: Json,
   ctx: Ctx,
   strict: boolean
-): AgentEvent | null => {
+): AgentEvent | undefined => {
   const ev = obj.event ?? {};
   switch (ev.type) {
     // Partial deltas and lifecycle markers carry no normalized event; text is
@@ -55,7 +55,7 @@ const mapAgentEvent = (
     case "usage":
     case "done":
     case "error": {
-      return null;
+      return;
     }
     case "content_start": {
       if (ev.contentType === "tool") {
@@ -67,7 +67,7 @@ const mapAgentEvent = (
         };
       }
       if (ev.contentType === "text") {
-        return null;
+        return;
       }
       if (strict) {
         throw new AnyAgentError(
@@ -75,7 +75,7 @@ const mapAgentEvent = (
           `unknown content type ${ev.contentType}`
         );
       }
-      return null;
+      return;
     }
     case "content_end": {
       if (ev.contentType === "tool") {
@@ -96,13 +96,13 @@ const mapAgentEvent = (
           `unknown content type ${ev.contentType}`
         );
       }
-      return null;
+      return;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown agent event ${ev.type}`);
       }
-      return null;
+      return;
     }
   }
 };
@@ -129,7 +129,7 @@ const innerParse = ndjsonParser<Ctx>({
     const obj = raw as Json;
     switch (obj.type) {
       case "hook_event": {
-        return null;
+        return;
       }
       case "agent_event": {
         return mapAgentEvent(obj, ctx, strict);
@@ -154,13 +154,13 @@ const innerParse = ndjsonParser<Ctx>({
                 outputTokens: u.outputTokens,
               },
             }
-          : null;
+          : undefined;
       }
       default: {
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return;
       }
     }
   },
@@ -213,9 +213,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for Cline's CLI. Drives `cline --json --auto-approve true`,
- * mapping the `hook_event`/`agent_event`/`run_result` NDJSON stream onto
- * normalized events. Cline is BYOK: configure a provider once via
+ * The adapter for Cline's CLI (`cline`). Cline is BYOK: configure a provider once via
  * `cline auth -p <provider> -k <key>` (e.g. openrouter), or pass `-P`/`-k`
  * per run through `extraArgs`.
  *
@@ -229,9 +227,8 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * Headless cline auto-approves every tool, so `edit` and `auto` are
  * equivalent and there is no `read` level (plan mode still executes
  * shell commands). Session resume is undeclared: `--id` is broken in headless
- * JSON mode upstream. System prompts have no append flag (`-s` replaces), so
- * the core emulates them by folding into the prompt. A failed run throws
- * `AnyAgentError` with cline's own message from `run_result`.
+ * JSON mode upstream. System prompts have no append flag (`-s` replaces) and
+ * are emulated. A failed run throws `AnyAgentError` with cline's own message.
  */
 export const cline = (): Adapter => ({
   buildInvocation,

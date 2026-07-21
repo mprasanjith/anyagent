@@ -2,14 +2,14 @@ import { test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { claudeCode } from "../src/claude-code/index.js";
-import { cline } from "../src/cline/index.js";
-import { codex } from "../src/codex/index.js";
-import { goose } from "../src/goose/index.js";
-import { runConformance } from "../src/internal/conformance/suite.js";
-import { kiloCode } from "../src/kilo-code/index.js";
-import { opencode } from "../src/opencode/index.js";
-import { pi } from "../src/pi/index.js";
+import { claudeCode } from "../src/claude-code.js";
+import { cline } from "../src/cline.js";
+import { codex } from "../src/codex.js";
+import { runConformance } from "../src/conformance.js";
+import { goose } from "../src/goose.js";
+import { kiloCode } from "../src/kilo-code.js";
+import { opencode } from "../src/opencode.js";
+import { pi } from "../src/pi.js";
 import { fakeStreaming, fakeText } from "./fake-adapter.js";
 
 const read = (p: string) =>

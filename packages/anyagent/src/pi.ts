@@ -1,5 +1,5 @@
-import { AnyAgentError } from "../internal/errors.js";
-import { ndjsonParser } from "../internal/ndjson.js";
+import { AnyAgentError } from "./errors.js";
+import { ndjsonParser } from "./ndjson.js";
 import type {
   Adapter,
   AgentEvent,
@@ -7,7 +7,7 @@ import type {
   Invocation,
   RunOptions,
   Usage,
-} from "../internal/types.js";
+} from "./types.js";
 
 const CAPS: CapabilityTable = {
   cwd: "native",
@@ -25,13 +25,13 @@ const CAPS: CapabilityTable = {
 };
 
 interface Ctx {
-  text: string[];
   sessionId?: string;
+  text: string[];
   turnEnd?: unknown;
   usage: { input: number; output: number; cost: number; seen: boolean };
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 // Known assistantMessageEvent types; only text_delta becomes an event.
@@ -47,7 +47,11 @@ const UPDATE_TYPES = new Set([
   "toolcall_end",
 ]);
 
-const mapUpdate = (obj: Json, ctx: Ctx, strict: boolean): AgentEvent | null => {
+const mapUpdate = (
+  obj: Json,
+  ctx: Ctx,
+  strict: boolean
+): AgentEvent | undefined => {
   const ev = obj.assistantMessageEvent ?? {};
   if (ev.type === "text_delta") {
     ctx.text.push(ev.delta);
@@ -56,10 +60,12 @@ const mapUpdate = (obj: Json, ctx: Ctx, strict: boolean): AgentEvent | null => {
   if (strict && !UPDATE_TYPES.has(ev.type)) {
     throw new AnyAgentError("Parse", `unknown update type ${ev.type}`);
   }
-  return null;
 };
 
-const mapMessageEnd = (obj: Json, strict: boolean): AgentEvent[] | null => {
+const mapMessageEnd = (
+  obj: Json,
+  strict: boolean
+): AgentEvent[] | undefined => {
   const message = obj.message ?? {};
   switch (message.role) {
     // Text deltas were already streamed from message_update; only tool calls
@@ -98,7 +104,7 @@ const mapMessageEnd = (obj: Json, strict: boolean): AgentEvent[] | null => {
       ];
     }
     case "user": {
-      return null;
+      return;
     }
     default: {
       if (strict) {
@@ -107,12 +113,12 @@ const mapMessageEnd = (obj: Json, strict: boolean): AgentEvent[] | null => {
           `unknown message role ${message.role}`
         );
       }
-      return null;
+      return;
     }
   }
 };
 
-const mapTurnEnd = (obj: Json, ctx: Ctx): AgentEvent | null => {
+const mapTurnEnd = (obj: Json, ctx: Ctx): AgentEvent | undefined => {
   ctx.turnEnd = obj;
   const message = obj.message ?? {};
   // Pi keeps exit code 0 even when a turn fails, so the error must be read
@@ -126,7 +132,7 @@ const mapTurnEnd = (obj: Json, ctx: Ctx): AgentEvent | null => {
   }
   const u = message.usage;
   if (!u) {
-    return null;
+    return;
   }
   ctx.usage.seen = true;
   ctx.usage.input += u.input ?? 0;
@@ -164,7 +170,7 @@ const parse = ndjsonParser<Ctx>({
     switch (obj.type) {
       case "session": {
         ctx.sessionId = obj.id;
-        return null;
+        return;
       }
       case "agent_start":
       case "turn_start":
@@ -172,7 +178,7 @@ const parse = ndjsonParser<Ctx>({
       case "tool_execution_start":
       case "tool_execution_end":
       case "agent_end": {
-        return null;
+        return;
       }
       case "message_update": {
         return mapUpdate(obj, ctx, strict);
@@ -194,7 +200,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return;
       }
     }
   },
@@ -228,9 +234,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for Pi (`@earendil-works/pi-coding-agent`). Drives
- * `pi --mode json -p`, mapping the `session`/`turn_*`/`message_*` NDJSON
- * stream onto normalized events — Pi streams token-level text deltas, so
+ * The adapter for the Pi CLI (`pi`). Pi streams token-level text deltas, so
  * `text-delta` events are fine-grained. Pi is BYOK: pick the backend with
  * provider env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …) and pass
  * `model` as Pi's `provider/model` pattern (e.g.
@@ -243,11 +247,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * const result = await create(pi()).run("summarize this repo");
  * ```
  *
- * Pi never prompts for approval, so `edit` and `auto` are equivalent
- * (the default toolset); `read` maps to `--tools read`. `resume` runs
- * `--session-id <id>`, where the id comes from `RunResult.raw.sessionId`.
- * Pi exits 0 even when a turn fails, so the adapter turns a `stopReason:
- * "error"` turn into an `AnyAgentError` instead of trusting the exit code.
+ * Pi never prompts for approval, so `edit` and `auto` are equivalent (the
+ * default toolset), while `read` restricts Pi to its read tools. `resume`
+ * continues a session, whose id comes from `RunResult.raw.sessionId`. A
+ * failed turn throws `AnyAgentError` even though Pi's process exits 0.
  */
 export const pi = (): Adapter => ({
   buildInvocation,

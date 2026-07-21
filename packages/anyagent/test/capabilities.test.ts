@@ -4,7 +4,7 @@ import {
   resolvePermission,
   validateOptions,
 } from "../src/internal/capabilities.js";
-import type { Adapter, CapabilityTable } from "../src/internal/types.js";
+import type { Adapter, CapabilityTable } from "../src/types.js";
 
 const full: CapabilityTable = {
   cwd: "native",

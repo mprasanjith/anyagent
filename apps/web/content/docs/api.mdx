@@ -8,11 +8,13 @@ This page documents everything the `anyagent` package exports: the two entry-poi
 
 ## Entry points
 
-Import `detect`, `create`, `AnyAgentError`, and every type from the package root. Adapter authors also reach the `ndjsonParser` helper and the `Detection` type from the root, and the conformance suite from the `anyagent/conformance` subpath. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
+Import `detect` and `create` from the package root, `AnyAgentError` from `anyagent/errors`, and every type from `anyagent/types`. Adapter authors also reach the `ndjsonParser` helper from `anyagent/ndjson` and the conformance suite from `anyagent/conformance`. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
 
 ```ts
-import { AnyAgentError, create, detect, ndjsonParser } from "anyagent";
-import type { Agent, Detection, RunOptions, RunResult } from "anyagent";
+import { create, detect } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
+import { ndjsonParser } from "anyagent/ndjson";
+import type { Agent, Detection, RunOptions, RunResult } from "anyagent/types";
 import { claudeCode } from "anyagent/claude-code";
 import { codex } from "anyagent/codex";
 import { opencode } from "anyagent/opencode";
@@ -76,7 +78,7 @@ console.log(result.text);
 An `Agent` is a ready-to-run handle on one installed CLI. `run` resolves with the final result; `runStream` yields events as the agent works and ends with a `done` event carrying that same result. Breaking out of the stream early kills the underlying process. Reach the native CLI through `raw`.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="Agent"
 />
 
@@ -87,7 +89,7 @@ Everything you can tune about a single run. All fields are optional. `permission
 `schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed and validated against it, landing on [`RunResult.json`](#runresult); [Get structured output](/docs/structured-output) covers the parsing, validation, and retry path.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="RunOptions"
 />
 
@@ -108,7 +110,7 @@ CLIs with finer-grained native levels expose them only through [`RunOptions.extr
 What a finished run gives you back. Holding a `RunResult` means the run succeeded: the CLI exited cleanly and reported no agent-level error, since every failure path throws [`AnyAgentError`](#anyagenterror) instead. `text` is the final answer with all text output concatenated. `raw` is the CLI’s own final payload, untouched.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="RunResult"
 />
 
@@ -131,7 +133,7 @@ How much text one `text-delta` carries depends on the agent: a token, a chunk, o
 Token and cost accounting for a run, normalized across CLIs. Every field is optional because each CLI reports a different subset, so check for `undefined` rather than assuming a field is present. `inputTokens` counts uncached input only, matching the provider’s own accounting. For exact cache line items, read the native payload on the event’s or result’s `raw`.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="Usage"
 />
 
@@ -156,7 +158,7 @@ Both `"native"` and `"emulated"` are truthy, so a `caps.systemPrompt ? … : …
 What one agent CLI can do. Read it from `agent.capabilities` or a [`DetectResult`](#detectresult) to find out what you can ask for before you ask. Every field except `permissionLevels` is a [`CapabilitySupport`](#capabilitysupport). Most fields guard the matching [`RunOptions`](#runoptions) field, so requesting an option the table declares as `false` throws `UnsupportedCapability`. `streaming` is the exception: it is informational, describing whether the agent emits progressive output rather than guarding an option.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="CapabilityTable"
 />
 
@@ -165,7 +167,7 @@ What one agent CLI can do. Read it from `agent.capabilities` or a [`DetectResult
 One agent CLI as found on this machine, returned by `detect` and accepted by `create`. `version` is whatever the CLI reported, kept for display only: AnyAgent never gates behavior on it, and a failed version probe leaves it `null` without blocking use.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="DetectResult"
 />
 
@@ -174,7 +176,7 @@ One agent CLI as found on this machine, returned by `detect` and accepted by `cr
 `McpConfig` is the MCP (Model Context Protocol) servers for a run, keyed by the name the agent will see each server under. Each value is an `McpServer`. Set `command`, `args`, and optionally `env` for a local stdio server, or `url` for a remote one. The adapter translates this into whatever config format its CLI expects.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="McpServer"
 />
 
@@ -207,7 +209,7 @@ type AgentId = keyof KnownAgents | (string & Record<never, never>);
 `KnownAgents` is the interface whose keys feed `AgentId`; it ships with a key for every built-in adapter (`"claude-code"`, `"codex"`, `"opencode"`, `"kilo-code"`, `"pi"`, `"goose"`, and `"cline"`). A third-party adapter teaches the type about its own id through module augmentation:
 
 ```ts
-declare module "anyagent" {
+declare module "anyagent/types" {
   interface KnownAgents {
     "acme-cli": true;
   }
@@ -254,7 +256,8 @@ type AnyAgentErrorCode =
 Branch on `code` to handle a specific failure:
 
 ```ts
-import { AnyAgentError, create } from "anyagent";
+import { create } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
 import { claudeCode } from "anyagent/claude-code";
 
 const controller = new AbortController();
@@ -286,7 +289,7 @@ The types below are for adapter authors: they describe how a CLI is invoked and 
 The contract for supporting one agent CLI. An adapter is data plus pure functions: it describes how to invoke its CLI and how to read its output, while the core does all I/O. `detect` is optional and replaces default detection entirely; most adapters omit it. `buildInvocation` is pure and must never launch a process. `parse` must end with exactly one `done` event and, under `strict`, throw `Parse` on any unrecognized shape.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="Adapter"
 />
 
@@ -295,7 +298,7 @@ The contract for supporting one agent CLI. An adapter is data plus pure function
 How an adapter identifies itself. `id` is the stable machine name such as `"claude-code"`, `name` the human-readable one, and `bin` the executable names to look for on `PATH` in priority order, where the first one found wins.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="AdapterMeta"
 />
 
@@ -304,7 +307,7 @@ How an adapter identifies itself. `id` is the stable machine name such as `"clau
 How detection reads a CLI’s version once its binary is found. An adapter sets these only when its CLI deviates from the defaults: `versionCommand` defaults to `["--version"]`, and `versionRegex` defaults to the first `x.y.z` triple in whatever the command prints.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="DetectionSpec"
 />
 
@@ -313,7 +316,7 @@ How detection reads a CLI’s version once its binary is found. An adapter sets 
 A fully-resolved command line: what `buildInvocation` returns and what the core spawns. `env` is merged over the parent process’s environment rather than replacing it. `input`, when present, is written to the child’s stdin, which is then closed; this is how prompts reach CLIs that read them from a pipe.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="Invocation"
 />
 
@@ -322,7 +325,7 @@ A fully-resolved command line: what `buildInvocation` returns and what the core 
 The process output an adapter’s `parse` reads. Consume either `lines()` for NDJSON adapters or `text()` for plain-text adapters, never both, since the underlying stdout stream is read once. `stderr()` resolves complete only once `exitCode` has settled. The core calls `close()` when a consumer abandons a stream early.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="OutputSource"
 />
 
@@ -331,7 +334,7 @@ The process output an adapter’s `parse` reads. Consume either `lines()` for ND
 The two I/O operations detection needs. `which` resolves a binary name to its path on `PATH`, or `null` when absent. `exec` runs a binary and captures its output. `detect` uses a real implementation by default; tests pass a fake via `detect({ probe })` to simulate any machine without spawning processes.
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="VersionProbe"
 />
 
@@ -340,7 +343,7 @@ The two I/O operations detection needs. `which` resolves a binary name to its pa
 Direct access to the native CLI, reached through `agent.raw`, for capabilities the unified surface does not model. `buildInvocation` returns the exact command AnyAgent would run, useful for logging or running it elsewhere. `spawn` launches it and hands you the Node `ChildProcess` to drive yourself, with the prompt already wired to stdin and no normalized events or lifecycle management. See [Escape hatches](/docs/escape-hatches).
 
 <auto-type-table
-  path="../../../../packages/anyagent/src/internal/types.ts"
+  path="../../../../packages/anyagent/src/types.ts"
   name="RawHandle"
 />
 

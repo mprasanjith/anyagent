@@ -1,5 +1,5 @@
 import { AnyAgentError } from "./errors.js";
-import type { AgentEvent, OutputSource, RunResult } from "./types.js";
+import type { Adapter, AgentEvent, OutputSource, RunResult } from "./types.js";
 
 /**
  * The three pieces an NDJSON adapter supplies to {@link ndjsonParser}:
@@ -10,30 +10,29 @@ import type { AgentEvent, OutputSource, RunResult } from "./types.js";
  * text, tool-call ids, the final raw payload.
  */
 export interface NdjsonSpec<Ctx> {
+  finalize: (ctx: Ctx) => RunResult;
   init: () => Ctx;
   /**
-   * Map one raw NDJSON object to normalized event(s), or `null` to ignore it.
-   * When `strict`, throw `AnyAgentError("Parse")` on an unrecognized event type
-   * or a missing expected field so the live drift check can detect it.
+   * Map one raw NDJSON object to normalized event(s), or `undefined` to ignore
+   * it. When `strict`, throw `AnyAgentError("Parse")` on an unrecognized event
+   * type or a missing expected field so the live drift check can detect it.
    */
   map: (
     obj: unknown,
     ctx: Ctx,
     strict: boolean
-  ) => AgentEvent | AgentEvent[] | null;
-  finalize: (ctx: Ctx) => RunResult;
+  ) => AgentEvent | AgentEvent[] | undefined;
 }
 
 /**
  * Build an `Adapter.parse` from an {@link NdjsonSpec}, so an NDJSON adapter
- * only has to write its event mapping. The parser owns everything the NDJSON
- * adapters share: decoding one JSON object per line (a malformed line throws
- * `AnyAgentError` with `code: "Parse"` and the offending text), buffering
- * events into the result, awaiting the process exit (a nonzero exit throws
- * the descriptive `Invocation` error), and emitting the single terminal
- * `done` event.
+ * only has to write its event mapping. The parser guarantees what every
+ * NDJSON adapter shares: a malformed line throws `AnyAgentError`
+ * (`code: "Parse"`) naming the offending text, a nonzero exit throws the
+ * descriptive `Invocation` error, and the stream ends with the single
+ * terminal `done` event carrying the finalized result.
  */
-export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>) =>
+export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>): Adapter["parse"] =>
   async function* parse(
     source: OutputSource,
     opts: { strict: boolean }
@@ -49,6 +48,7 @@ export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>) =>
       try {
         obj = JSON.parse(trimmed);
       } catch (error) {
+        // biome-ignore lint/style/useErrorCause: AnyAgentError carries the original on `raw`, its documented cause field.
         throw new AnyAgentError(
           "Parse",
           `invalid JSON line: ${trimmed.slice(0, 120)}`,

@@ -2,14 +2,14 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { codex } from "../src/codex/index.js";
+import { codex } from "../src/codex.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import type {
   AgentEvent,
   OutputSource,
   PermissionLevel,
   RunResult,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>
@@ -36,7 +36,7 @@ const collect = async (
   name: string
 ): Promise<{ events: AgentEvent[]; result: RunResult }> => {
   const { events, result } = await collectSource(fixtureSource(name));
-  return { events, result: result ?? { events: [], raw: null, text: "" } };
+  return { events, result: result ?? { events: [], raw: undefined, text: "" } };
 };
 
 const sandboxOf = (p: PermissionLevel): string | undefined => {
