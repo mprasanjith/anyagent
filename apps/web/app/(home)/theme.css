@@ -16,9 +16,6 @@
   --color-hm-card-emit-hover: oklch(76% 0.17 50 / 0.11);
   --color-hm-focus: oklch(76% 0.17 50);
   --color-hm-scrim: oklch(13% 0.014 265 / 0.78);
-  --font-hm-display: var(--font-teachers), ui-sans-serif, system-ui, sans-serif;
-  --font-hm-body: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
-  --font-hm-mono: var(--font-jetbrains), ui-monospace, monospace;
   --text-hm-label: 0.6875rem;
   --text-hm-sm: 0.85rem;
   --text-hm-md: 1.1875rem;
@@ -28,4 +25,10 @@
   --tracking-hm-micro: 0.1em;
   --ease-hm-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-hm-soft: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@theme inline {
+  --font-hm-display: var(--font-teachers), ui-sans-serif, system-ui, sans-serif;
+  --font-hm-body: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-hm-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
