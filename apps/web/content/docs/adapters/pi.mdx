@@ -21,7 +21,7 @@ Detection looks for a `pi` binary on `PATH` and reads the version from `pi --ver
 
 ## How options map to flags
 
-Every run executes `pi --mode json -p`. Pi takes the prompt as a positional argument and has no stdin form, so a prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches). Your [run options](/docs/api#runoptions) append further flags:
+Every run executes `pi --mode json -p`. The adapter passes the prompt as a positional argument, so a prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches). Your [run options](/docs/api#runoptions) append further flags:
 
 | Option               | Flag                            |
 | -------------------- | ------------------------------- |

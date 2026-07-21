@@ -17,7 +17,7 @@ const result = await agent.run("summarize this repo", {
 });
 ```
 
-There is no `read` permission level. opencode’s per-tool permissions live in `opencode.json` (or the `OPENCODE_PERMISSION` env var) rather than flags, and a config-denied action in a non-interactive run can hang waiting for an approval that never comes, so the adapter refuses to fake a sandbox it cannot guarantee. MCP servers are also a config-file concern; reach them through opencode’s own config or [`extraArgs`](/docs/escape-hatches).
+There is no `read` permission level yet. opencode’s per-tool permissions live in `opencode.json` (or the `OPENCODE_PERMISSION` env var) rather than flags, and the adapter does not map them. MCP servers are also a config-file concern; reach them through opencode’s own config or [`extraArgs`](/docs/escape-hatches).
 
 opencode has no per-run append-system-prompt flag, so a `systemPrompt` is emulated: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent. Structured output is emulated too: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
