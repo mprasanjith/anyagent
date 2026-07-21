@@ -3,23 +3,7 @@ title: Get structured output
 description: Pass a JSON Schema to a run, read the parsed value from RunResult.json, and handle the validation and retry path.
 ---
 
-Pass a JSON Schema to `agent.run()` and AnyAgent returns the agent’s reply parsed and validated against it, on `RunResult.json`. This page shows how to describe the shape you want, read the parsed value, and handle a reply that never matches. It works on every supported agent.
-
-## How structured output is provided
-
-Every built-in adapter declares `structuredOutput` as `"emulated"`. No CLI here has a verified native schema flag yet, so AnyAgent’s core appends your schema to the prompt and parses the reply itself. The behavior is identical on every agent, and the appendix it adds looks like this:
-
-```txt
-{your prompt}
-
-Respond with a single JSON value that matches this JSON Schema. Output only the JSON, with no prose and no code fences.
-
-<json-schema>
-{your schema, pretty-printed}
-</json-schema>
-```
-
-After the agent replies, the core extracts a JSON value from the text, whether it came back bare, in a fenced code block, or embedded in prose, then validates it before handing it to you.
+Pass a JSON Schema to `agent.run()` and AnyAgent returns the agent’s reply parsed and validated against it, on `RunResult.json`. This page shows how to describe the shape you want, read the parsed value, and handle a reply that never matches. It works identically on every supported agent: the capability is [emulated](/docs/how-it-works) everywhere today, with the core appending your schema to the prompt and extracting a JSON value from the reply, whether it comes back bare, fenced, or embedded in prose.
 
 ## Describe the shape with a JSON Schema
 
@@ -38,7 +22,7 @@ const schema = {
 
 ## Run with the schema and read the parsed value
 
-Detect an agent, create it, and pass the schema on the run. The parsed value lands on `result.json`, typed `unknown`, so cast it to the shape you asked for:
+Detect an agent, create it, and pass the schema on the run. The parsed value is set on `result.json`, typed `unknown`, so cast it to the shape you asked for:
 
 ```ts
 import { create, detect } from "anyagent";
@@ -68,22 +52,11 @@ console.log(testCommand, dependencies);
 bun test [ 'react', 'zod', 'hono' ]
 ```
 
-The cast is yours to trust. AnyAgent checks the value against the keywords below, but the TypeScript type is an assertion you write, so validate further yourself when a field carries meaning the schema cannot capture.
-
-## Which schema keywords are validated
-
-The core validates the essentials of JSON Schema and ignores the rest:
-
-- `type`, including `"integer"` and `"array"`
-- `properties` and `required`, applied recursively to nested objects
-- `items`, as a single schema applied to every array element
-- `enum`
-
-Every other JSON Schema keyword, such as `minLength`, `pattern`, or `format`, passes without a check. When a value must satisfy one of those, validate it in your own code after reading `result.json`.
+The cast is yours to trust. AnyAgent validates the essential JSON Schema keywords and ignores the rest ([the reference lists which](/docs/api#runoptions)), and the TypeScript type is an assertion you write, so validate further yourself when a field carries meaning the schema cannot capture.
 
 ## Handle a reply that never matches
 
-When the first reply fails to parse or validate, the core retries once. It re-asks the agent with the failed reply and the specific errors quoted, then validates the second reply. A successful retry returns normally, with the corrected value on `result.json`.
+When the first reply fails to parse or validate, the core retries once. It re-asks the agent with the failed reply and the specific errors quoted, then validates the second reply. A successful retry returns normally, with the corrected value on `result.json`; the result’s `usage`, `events`, and `raw` then describe the retry run only, so the first attempt’s tokens are not in the totals.
 
 <Callout type="warn">
   The retry is a second full agent run. On an agent that edits files, a run
@@ -136,6 +109,6 @@ Requesting a schema on an adapter that declares `structuredOutput: false` throws
 
 ## Next steps
 
-- [Run a prompt](/docs/running-prompts): the other `RunOptions` fields in context
+- [Run agents](/docs/run-agents): the other `RunOptions` fields in context
 - [Handle errors](/docs/errors): the `Parse` and `UnsupportedCapability` codes in full
 - [How AnyAgent works](/docs/how-it-works): native versus emulated capabilities

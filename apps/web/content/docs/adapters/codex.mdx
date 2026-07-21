@@ -1,9 +1,9 @@
 ---
 title: Codex
-description: How the codex adapter detects, invokes, and parses OpenAI’s Codex CLI, and what each run option maps to.
+description: How the codex adapter detects, invokes, and parses the Codex CLI, and what each run option maps to.
 ---
 
-The `codex` adapter drives OpenAI’s Codex CLI through `codex exec --json`, mapping its thread, turn, and item events onto AnyAgent’s normalized stream.
+The `codex` adapter drives the Codex CLI, detected as the `codex` binary on `PATH`, through its non-interactive `codex exec --json` mode, mapping its thread, turn, and item events onto AnyAgent’s normalized stream. The full capability table is on the [support matrix](/docs/adapters).
 
 Import the factory from the `anyagent/codex` subpath and hand it to `create`:
 
@@ -15,42 +15,13 @@ const agent = create(codex());
 const result = await agent.run("summarize this repo");
 ```
 
-## Detection
-
-Detection looks for a `codex` binary on `PATH` and reads the version from `codex --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
-
-## Capabilities
-
-The adapter declares one option as unsupported, `mcp`, and provides `systemPrompt` and `structuredOutput` through core [emulation](/docs/api#capabilitysupport):
-
-| Capability         | Value                          |
-| ------------------ | ------------------------------ |
-| `streaming`        | `native`, a live NDJSON stream |
-| `permissionLevels` | `read`, `edit`, `auto`         |
-| `modelSelection`   | `native`                       |
-| `sessionResume`    | `native`                       |
-| `mcp`              | `false`                        |
-| `systemPrompt`     | `emulated`                     |
-| `structuredOutput` | `emulated`                     |
-| `cwd`              | `native`                       |
-
-`codex exec` has no append-system-prompt flag, so a `systemPrompt` is `emulated`: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent.
-
-```txt
-<system-instructions>
-{your system prompt}
-</system-instructions>
-
-{your prompt}
-```
-
-Structured output is `emulated` too: Codex has a native `--output-schema` path, but until it is verified against recorded output the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
+`codex exec` has no append-system-prompt flag, so a `systemPrompt` is emulated: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent. Structured output is emulated too: Codex has a native `--output-schema` path, but until it is verified against recorded output the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
 Requesting `mcp` throws [`AnyAgentError`](/docs/errors) with `code: "UnsupportedCapability"` before anything spawns. Codex can reach MCP through its own `-c` config overrides, available via [`extraArgs` or `agent.raw`](/docs/escape-hatches).
 
 ## How options map to flags
 
-Every run executes `codex exec --json` with the prompt piped over stdin through the `-` positional, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) set the sandbox and append further flags:
+Every run executes `codex exec --json` with the prompt piped over stdin through the `-` positional, so a large prompt never exceeds the OS argv size limit. Your [run options](/docs/api#runoptions) set the sandbox and append further flags:
 
 | Option               | Flag                                                                           |
 | -------------------- | ------------------------------------------------------------------------------ |
@@ -70,27 +41,14 @@ Text arrives when a message completes, so the answer is never double-counted aga
 
 Reasoning items and advisory error items produce no normalized event; a fatal failure throws instead of streaming. To capture reasoning, drive the CLI through [`agent.raw`](/docs/escape-hatches).
 
+Codex has no single final payload, so the adapter composes one: `result.raw` carries the thread id alongside the native turn-completed event. Read `threadId` from `result.raw` and pass it back as `resume`; see [Resume a session](/docs/run-agents#resume-a-session).
+
 ## Usage reporting
 
-Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens` and `outputTokens`. Codex folds cache reads into its native `input_tokens`, so the adapter subtracts `cached_input_tokens` to report uncached input like the other adapters, and the exact native accounting stays on `raw`. Codex reports no cost, so `costUsd` is `undefined`.
-
-## Errors
-
-A top-level `error` event or a failed turn throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Codex’s own message. A nonzero exit or a spawn failure throws the same code.
-
-## Resume a session
-
-Codex has no single final payload, so the adapter composes one. `result.raw` carries the thread id alongside the native turn-completed event. Read `threadId` and pass it back as `resume`:
-
-```ts
-const first = await agent.run("start reviewing this repo");
-const { threadId } = first.raw as { threadId?: string };
-
-const followUp = await agent.run("continue with src/", { resume: threadId });
-```
+Codex folds cache reads into its native `input_tokens`, so the adapter subtracts `cached_input_tokens` to report uncached input like the other adapters, and the exact native accounting stays on `raw`. Codex reports no cost, so `costUsd` is `undefined`.
 
 ## Next steps
 
-- [Permissions](/docs/permissions): what `read`, `edit`, and `auto` mean before they map to flags
+- [Supported agents](/docs/adapters): every adapter’s capabilities side by side
 - [Escape hatches](/docs/escape-hatches): reach Codex’s `-c` config overrides through `extraArgs` or `agent.raw`
-- [Claude Code](/docs/adapters/claude-code): the same sections for Anthropic’s Claude Code CLI
+- [opencode](/docs/adapters/opencode): the same sections for the opencode CLI

@@ -43,7 +43,7 @@ Read `packages/anyagent/src/claude-code.ts` alongside this page. It is the refer
 
 `buildInvocation` maps the prompt and validated options to the exact command, args, env, and stdin input, and never launches anything. The core does the spawning, which keeps adapters testable offline with zero subprocesses.
 
-Pipe the prompt through `Invocation.input` rather than a positional argument. `input` is written to the child’s stdin, so a large prompt never hits the OS argv size limit. A positional prompt would.
+Pipe the prompt through `Invocation.input` rather than a positional argument. `input` is written to the child’s stdin, so a large prompt never exceeds the OS argv size limit. A positional prompt would.
 
 ## Map output to events in parse
 
@@ -79,12 +79,12 @@ const parse = ndjsonParser<Ctx>({
     if (strict) {
       throw new AnyAgentError("Parse", `unknown event type ${ev.type}`);
     }
-    return null;
+    return undefined;
   },
 });
 ```
 
-`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `null` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. This sketch handles one fictional `message` event and throws on everything else under strict mode; a real adapter maps its CLI’s whole event taxonomy, including tool calls and usage. `finalize` does not collect events itself: the parser buffers everything `map` emits and fills `RunResult.events` after `finalize` returns.
+`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `undefined` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. This sketch handles one fictional `message` event and throws on everything else under strict mode; a real adapter maps its CLI’s whole event taxonomy, including tool calls and usage. `finalize` does not collect events itself: the parser buffers everything `map` emits and fills `RunResult.events` after `finalize` returns.
 
 The relative imports above are what an in-repo adapter uses. An adapter published outside this repo imports the same helpers from the package: `ndjsonParser` from `anyagent/ndjson` and `AnyAgentError` from `anyagent/errors`.
 

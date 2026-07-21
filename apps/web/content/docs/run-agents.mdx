@@ -1,0 +1,213 @@
+---
+title: Run agents
+description: Detect the agents on the end user’s machine, pick one, and run a prompt with the options and permission level your feature needs.
+---
+
+This page covers the core workflow: find the agents installed on the end user’s machine, pick one, and run a prompt with the options and permission level your feature needs. Every snippet that runs a prompt assumes at least one [supported agent](/docs/adapters) is installed and signed in.
+
+## Find what is installed
+
+Call `detect()` to scan the end user’s `PATH` for every supported agent. It returns one `DetectResult` per installed agent, and an empty array when none are found:
+
+```ts
+import { detect } from "anyagent";
+
+const installed = await detect();
+for (const found of installed) {
+  console.log(`${found.name} ${found.version ?? "unknown"} at ${found.path}`);
+}
+```
+
+On a machine with Claude Code and Codex installed, this prints:
+
+```txt
+Claude Code 2.0.31 at /home/sam/.local/bin/claude
+Codex 0.48.0 at /usr/local/bin/codex
+```
+
+Each result carries the agent’s `id`, `name`, `path`, reported `version`, its capability table, and the adapter that drives it; [`DetectResult`](/docs/api#detectresult) lists the fields. The order of results carries no preference, so which agent to run is your product decision.
+
+## Choose which agent to run
+
+Before you run anything, name the agent and the task you are about to drive: the prompt runs under the end user’s login and bills their subscription, so nothing should run by surprise. When several agents are installed, ask rather than pick:
+
+```ts
+import { create, detect } from "anyagent";
+import { createInterface } from "node:readline/promises";
+
+const installed = await detect();
+const [first] = installed;
+if (!first) {
+  throw new Error("No supported coding agent found.");
+}
+
+const rl = createInterface({ input: process.stdin, output: process.stdout });
+installed.forEach((a, i) => console.log(`${i + 1}. ${a.name}`));
+const answer = await rl.question("Which agent should acme init use? ");
+rl.close();
+
+const agent = create(installed[Number(answer) - 1] ?? first);
+```
+
+`create()` accepts a `DetectResult` directly and returns a runnable `Agent`.
+
+## Handle a machine with no agent
+
+An empty array means no supported agent is installed. When the agent adds an optional feature, say so and continue with your manual path. When it is required, name the CLIs you support from the [supported agents](/docs/adapters) and how to install one:
+
+```ts
+import { detect } from "anyagent";
+
+const installed = await detect();
+if (installed.length === 0) {
+  console.error(
+    "acme init needs a coding agent. Install a supported CLI, sign in, and rerun."
+  );
+  process.exit(1);
+}
+```
+
+## Target one specific agent
+
+When your tool supports exactly one agent, skip detection and import its adapter from its own subpath, so your bundle pulls in only the adapter you use:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+```
+
+Creating an agent from an adapter never checks that the CLI is installed, so a missing binary surfaces as an [`Invocation` error](/docs/errors#invocation) on the first run.
+
+## Run a prompt and read the result
+
+`agent.run(prompt, opts)` sends one prompt and resolves with a [`RunResult`](/docs/api#runresult) when the agent finishes. Write a scoped prompt: name the files the agent should touch, state the goal, and forbid what it must leave alone, so the end user reviews a small diff instead of a surprise:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const prompt =
+  "Add the Acme SDK to this project: install the dependency, create " +
+  "acme.config.ts with sensible defaults, and wire it into the app entry " +
+  "point. Only edit files in this repo. Do not run git commit or git push.";
+
+const result = await agent.run(prompt, { permission: "edit" });
+console.log(result.text);
+```
+
+`result.text` is the agent’s final answer; `events`, `usage`, and `raw` carry the full event list, the token accounting, and the CLI’s untouched final payload. Holding a `RunResult` means the run succeeded, because every failure [throws instead](/docs/errors). For runs longer than a few seconds, show progress with [`runStream`](/docs/streaming) rather than waiting silently.
+
+## Set a permission level
+
+Every run carries one permission level bounding what the agent may do to the working directory, passed as `RunOptions.permission`:
+
+- **`read`**: the agent inspects files and answers, but changes nothing
+- **`edit`** (the default): the agent creates and modifies files, while the CLI’s own guardrails still gate riskier actions like shell commands
+- **`auto`**: every action is auto-approved and the agent runs unattended
+
+Match the level to your feature: `read` for analysis and reporting, `edit` for tools that change code.
+
+<Callout type="warn">
+  `auto` disables the CLI’s own confirmation prompts, so the agent approves
+  every action itself. Reserve it for sandboxed or disposable environments.
+</Callout>
+
+Not every CLI offers every level; the [support matrix](/docs/adapters) shows who offers what. Asking for a missing level throws [`UnsupportedCapability`](/docs/errors#unsupportedcapability) before anything spawns, so guard with `capabilities.permissionLevels.includes("read")` when the agent is not known in advance. [How AnyAgent works](/docs/how-it-works) explains how three levels map onto each CLI’s native flags.
+
+## Tune the run
+
+The remaining `RunOptions` fields shape one run:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+await agent.run("Add input validation to the signup form.", {
+  cwd: "/home/sam/projects/acme-app",
+  model: "opus",
+  systemPrompt: "Follow the Acme SDK conventions in docs/conventions.md.",
+  env: { ACME_ENV: "development" },
+});
+```
+
+- **`cwd`**: the directory the agent works in; defaults to the current process’s working directory
+- **`model`**: a model name in the CLI’s own vocabulary, listed on each [adapter page](/docs/adapters)
+- **`systemPrompt`**: appended to the CLI’s own system prompt, never replacing it
+- **`env`**: extra environment variables, merged over the parent process’s environment
+
+`cwd`, `model`, `systemPrompt`, `resume`, `mcp`, and `schema` are capability-gated: AnyAgent checks each against the agent’s capability table before any process spawns. When the agent is not known in advance, guard the option:
+
+```ts
+const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
+await agent.run("Review the error handling in src/api/.", opts);
+```
+
+## Resume a session
+
+To continue a prior conversation, pass its session id as `resume`. The id lives on the previous run’s `raw` payload under a CLI-specific key, named on each adapter page:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const review = await agent.run("Review this repo for unhandled rejections.");
+const { session_id } = review.raw as { session_id?: string };
+
+if (session_id) {
+  await agent.run("Fix the issues you found.", { resume: session_id });
+}
+```
+
+The `if` matters: `resume: undefined` does not throw, it starts a fresh session.
+
+## Attach MCP servers
+
+`mcp` attaches Model Context Protocol (MCP) servers for the run, keyed by the name the agent sees them under. Each entry sets `command`, `args`, and optional `env` for a local server, or `url` for a remote one:
+
+```ts
+import { create, detect } from "anyagent";
+
+const [found] = await detect();
+if (!found) {
+  throw new Error("No supported coding agent found.");
+}
+
+const agent = create(found);
+const opts = found.capabilities.mcp
+  ? { mcp: { db: { command: "npx", args: ["acme-db-mcp"] } } }
+  : {};
+await agent.run("Describe the database schema this app expects.", opts);
+```
+
+When a CLI routes MCP through its own config instead, its adapter page says so; reach it through [escape hatches](/docs/escape-hatches).
+
+## Test without a CLI
+
+`detect()` accepts a fake probe, so your tests simulate any machine without spawning a process. The probe is two functions: `which` resolves a binary name to a path or `undefined`, and `exec` returns a command’s output:
+
+```ts
+import { detect } from "anyagent";
+
+const probe = {
+  which: async (bin: string) =>
+    bin === "claude" ? "/home/sam/.local/bin/claude" : undefined,
+  exec: async () => ({ stdout: "2.0.31", stderr: "", code: 0 }),
+};
+
+const installed = await detect({ probe });
+// One result: Claude Code 2.0.31, without touching PATH.
+```
+
+Pass `adapters` alongside `probe` to scan a subset or include a custom adapter; see [`DetectOptions`](/docs/api#detect).
+
+## Next steps
+
+- [Stream progress](/docs/streaming): render events live and cancel a run
+- [Get structured output](/docs/structured-output): pass a `schema` and read the parsed reply
+- [Handle errors](/docs/errors): what each `AnyAgentError` code means
+- [Ship to production](/docs/production): the checklist before your tool goes out

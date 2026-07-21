@@ -3,7 +3,7 @@ title: Kilo Code
 description: How the kilo-code adapter detects, invokes, and parses the Kilo CLI, which shares the opencode surface it forked.
 ---
 
-The `kilo-code` adapter drives `kilo run --format json` with the prompt piped over stdin, mapping Kilo’s step, text, and tool event stream onto AnyAgent’s normalized events. Kilo Code’s CLI is an opencode fork and exposes the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode). The sharing is verified, not assumed: every mapping is checked against recorded `kilo` output, so a fork-side drift shows up in Kilo’s own tests. Kilo is BYOK with standard provider env vars like opencode, or works through a Kilo account (`kilo auth login`) whose free tier includes starter credits; neither changes a flag on this adapter.
+The `kilo-code` adapter drives the Kilo CLI through `kilo run --format json`, mapping Kilo’s step, text, and tool event stream onto AnyAgent’s normalized events. Kilo Code’s CLI is an opencode fork and exposes the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode); the sharing is verified, not assumed, because every mapping is checked against recorded `kilo` output, so a fork-side drift shows up in Kilo’s own tests. Kilo is bring-your-own-key (BYOK) with standard provider env vars like opencode, or works through a Kilo account (`kilo auth login`) whose free tier includes starter credits; neither changes a flag on this adapter. The full capability table is on the [support matrix](/docs/adapters).
 
 Import the factory from the `anyagent/kilo-code` subpath and hand it to `create`:
 
@@ -13,46 +13,19 @@ import { kiloCode } from "anyagent/kilo-code";
 
 const agent = create(kiloCode());
 const result = await agent.run("summarize this repo", {
-  model: "openrouter/openai/gpt-4o-mini",
+  model: "openrouter/openai/gpt-5.2",
 });
 ```
 
-## Detection
+Detection looks for `kilo`, then `kilocode`, on `PATH`, and the first found wins.
 
-Detection looks for `kilo`, then `kilocode`, on `PATH`, and the first found wins. It reads the version from `kilo --version`. The version lands on [`DetectResult.version`](/docs/api#detectresult) for display only; behavior never depends on it.
+There is no `read` permission level. Like opencode, Kilo’s per-tool permissions are config-file driven, and a config-denied action in a non-interactive run can hang waiting for an approval that never comes. MCP servers are also a config-file concern; reach them through Kilo’s own config or [`extraArgs`](/docs/escape-hatches).
 
-## Capabilities
-
-The adapter declares `mcp` and the `read` permission level as unsupported, and provides `systemPrompt` and `structuredOutput` through core [emulation](/docs/api#capabilitysupport):
-
-| Capability         | Value                          |
-| ------------------ | ------------------------------ |
-| `streaming`        | `native`, a live NDJSON stream |
-| `permissionLevels` | `edit`, `auto`                 |
-| `modelSelection`   | `native`, as `provider/model`  |
-| `sessionResume`    | `native`                       |
-| `mcp`              | `false`                        |
-| `systemPrompt`     | `emulated`                     |
-| `structuredOutput` | `emulated`                     |
-| `cwd`              | `native`                       |
-
-There is no `read` level. Like opencode, Kilo’s per-tool permissions are config-file driven, and a config-denied action in a non-interactive run can hang waiting for an approval that never comes. MCP servers are also a config-file concern; reach them through Kilo’s own config or [`extraArgs`](/docs/escape-hatches).
-
-Kilo has no per-run append-system-prompt flag, so a `systemPrompt` is `emulated`: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent.
-
-```txt
-<system-instructions>
-{your system prompt}
-</system-instructions>
-
-{your prompt}
-```
-
-Structured output is `emulated` too: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
+Kilo has no per-run append-system-prompt flag, so a `systemPrompt` is emulated: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent. Structured output is emulated too: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
 
 ## How options map to flags
 
-Every run executes `kilo run --format json` with the prompt piped over stdin, so a large prompt never hits the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
+Every run executes `kilo run --format json` with the prompt piped over stdin, so a large prompt never exceeds the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
 
 | Option               | Flag                            |
 | -------------------- | ------------------------------- |
@@ -69,27 +42,14 @@ Every run executes `kilo run --format json` with the prompt piped over stdin, so
 
 Text arrives when a message part completes, so the answer is never double-counted against its in-progress updates. Tool parts arrive in a terminal state, input and output together, so one raw `tool_use` event produces both the `tool-call` and its `tool-result`.
 
+Kilo has no single final payload, so the adapter composes one carrying the session id. Read `sessionId` from `result.raw` and pass it back as `resume`; see [Resume a session](/docs/run-agents#resume-a-session).
+
 ## Usage reporting
 
-Usage lands on [`RunResult.usage`](/docs/api#usage) with `inputTokens`, `outputTokens`, and `costUsd`. Kilo reports tokens and cost per step, so each `step_finish` yields a `usage` event carrying that step’s share, and `result.usage` carries the totals summed across the run.
-
-## Errors
-
-A typed `error` event in the stream (a bad model, a provider failure) throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Kilo’s own message. A nonzero exit or a spawn failure throws the same code.
-
-## Resume a session
-
-Kilo has no single final payload, so the adapter composes one carrying the session id. Read `sessionId` from `result.raw` and pass it back as `resume`:
-
-```ts
-const first = await agent.run("start reviewing this repo");
-const { sessionId } = first.raw as { sessionId?: string };
-
-const followUp = await agent.run("continue with src/", { resume: sessionId });
-```
+Kilo reports tokens and cost per step, so each `step_finish` yields a `usage` event carrying that step’s share, and `result.usage` carries the totals summed across the run.
 
 ## Next steps
 
-- [Permissions](/docs/permissions): what `edit` and `auto` mean before they map to flags
+- [Supported agents](/docs/adapters): every adapter’s capabilities side by side
 - [Escape hatches](/docs/escape-hatches): reach Kilo’s config-file capabilities through `extraArgs` or `agent.raw`
-- [opencode](/docs/adapters/opencode): the CLI Kilo forked, which shares this adapter’s implementation
+- [Pi](/docs/adapters/pi): the same sections for the Pi CLI

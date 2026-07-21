@@ -4,7 +4,7 @@ description: "Every AnyAgent export: the detect and create functions, the run an
 full: true
 ---
 
-This page documents everything the `anyagent` package exports: the two entry-point functions, the types you pass and receive at runtime, the single error class, and the contract an adapter implements.
+This page documents everything the `anyagent` package exports: the two entry-point functions, the types you pass and receive at runtime, the single error class, the contract an adapter implements, and the conformance suite that verifies it.
 
 ## Entry points
 
@@ -41,10 +41,11 @@ Call it with no arguments to scan the built-in adapters on the real machine, the
 import { create, detect } from "anyagent";
 
 const installed = await detect();
-if (installed.length === 0) {
+const [first] = installed;
+if (!first) {
   throw new Error("No supported coding agent found.");
 }
-const agent = create(installed[0]);
+const agent = create(first);
 ```
 
 `DetectOptions` overrides the defaults:
@@ -86,7 +87,7 @@ An `Agent` is a ready-to-run handle on one installed CLI. `run` resolves with th
 
 Everything you can tune about a single run. All fields are optional. `permission`, `cwd`, `model`, `systemPrompt`, `resume`, `mcp`, and `schema` are validated against the agent’s [`CapabilityTable`](#capabilitytable) before any process spawns, so requesting something the CLI cannot do throws [`AnyAgentError`](#anyagenterror) with `code: "UnsupportedCapability"` up front. `env`, `signal`, and `extraArgs` work on every agent.
 
-`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed and validated against it, landing on [`RunResult.json`](#runresult); [Get structured output](/docs/structured-output) covers the parsing, validation, and retry path.
+`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed, validated against it, and set on [`RunResult.json`](#runresult); [Get structured output](/docs/structured-output) covers the parsing, validation, and retry path. Validation covers the essential keywords: `type` (including `"integer"`), `properties` and `required` recursively, `items` as a single schema over every element, and `enum`. Every other keyword, such as `minLength`, `pattern`, or `format`, passes without a check, so enforce those in your own code after reading `json`.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -164,7 +165,7 @@ What one agent CLI can do. Read it from `agent.capabilities` or a [`DetectResult
 
 ## DetectResult
 
-One agent CLI as found on this machine, returned by `detect` and accepted by `create`. `version` is whatever the CLI reported, kept for display only: AnyAgent never gates behavior on it, and a failed version probe leaves it `null` without blocking use.
+One agent CLI as found on this machine, returned by `detect` and accepted by `create`. `version` is whatever the CLI reported, kept for display only: AnyAgent never gates behavior on it, and a failed version probe leaves it absent (`undefined`) without blocking use.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -186,7 +187,7 @@ One agent CLI as found on this machine, returned by `detect` and accepted by `cr
 type McpConfig = Record<string, McpServer>;
 ```
 
-Pass it through [`RunOptions.mcp`](#runoptions) on an agent whose capability table declares `mcp: true`:
+Pass it through [`RunOptions.mcp`](#runoptions) on an agent whose capability table declares `mcp` as `"native"` or `"emulated"`:
 
 ```ts
 import { create } from "anyagent";
@@ -311,6 +312,15 @@ How detection reads a CLI’s version once its binary is found. An adapter sets 
   name="DetectionSpec"
 />
 
+### Detection
+
+The raw result of checking for one agent, produced by built-in detection or a custom `Adapter.detect`. Unlike [`DetectResult`](#detectresult) it also covers the not-found case: when the binary is not on `PATH`, `installed` is `false` and `path` is absent. `detect` drops those and returns only `DetectResult`s, so you meet this type only when writing an adapter with its own `detect`.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="Detection"
+/>
+
 ### Invocation
 
 A fully-resolved command line: what `buildInvocation` returns and what the core spawns. `env` is merged over the parent process’s environment rather than replacing it. `input`, when present, is written to the child’s stdin, which is then closed; this is how prompts reach CLIs that read them from a pipe.
@@ -322,16 +332,29 @@ A fully-resolved command line: what `buildInvocation` returns and what the core 
 
 ### OutputSource
 
-The process output an adapter’s `parse` reads. Consume either `lines()` for NDJSON adapters or `text()` for plain-text adapters, never both, since the underlying stdout stream is read once. `stderr()` resolves complete only once `exitCode` has settled. The core calls `close()` when a consumer abandons a stream early.
+The process output an adapter’s `parse` reads. Consume either `lines()` for newline-delimited JSON (NDJSON) adapters or `text()` for plain-text adapters, never both, since the underlying stdout stream is read once. `stderr()` resolves complete only once `exitCode` has settled. The core calls `close()` when a consumer abandons a stream early.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
   name="OutputSource"
 />
 
+### ndjsonParser and NdjsonSpec
+
+`ndjsonParser`, from `anyagent/ndjson`, builds an `Adapter.parse` from an `NdjsonSpec`, so an NDJSON adapter only writes its event mapping: `init` creates the per-run accumulator, `map` turns one raw JSON object into normalized event(s) or `undefined` to ignore it, and `finalize` builds the terminal `RunResult`. The parser supplies what every NDJSON adapter shares: a malformed line throws `Parse` naming the offending text, a nonzero exit throws the descriptive `Invocation` error, and the stream ends with exactly one `done`.
+
+```ts
+const ndjsonParser: <Ctx>(spec: NdjsonSpec<Ctx>) => Adapter["parse"];
+```
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/ndjson.ts"
+  name="NdjsonSpec"
+/>
+
 ### VersionProbe
 
-The two I/O operations detection needs. `which` resolves a binary name to its path on `PATH`, or `null` when absent. `exec` runs a binary and captures its output. `detect` uses a real implementation by default; tests pass a fake via `detect({ probe })` to simulate any machine without spawning processes.
+The two I/O operations detection needs. `which` resolves a binary name to its path on `PATH`, or `undefined` when absent. `exec` runs a binary and captures its output. `detect` uses a real implementation by default; tests pass a fake via `detect({ probe })` to simulate any machine without spawning processes, shown in [Test without a CLI](/docs/run-agents#test-without-a-cli).
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -347,9 +370,22 @@ Direct access to the native CLI, reached through `agent.raw`, for capabilities t
   name="RawHandle"
 />
 
+## Conformance suite
+
+`anyagent/conformance` is the executable half of the adapter contract, for adapter test suites. `runConformance` takes an adapter and recorded stdout fixtures and asserts the invariants every adapter must uphold: exactly one terminal `done` per stream, `result.text` equal to the concatenated deltas, a valid invocation for every declared permission level, and an `UnsupportedCapability` throw for every capability left undeclared.
+
+```ts
+const runConformance: (
+  adapter: Adapter,
+  opts: ConformanceOptions
+) => Promise<void>;
+```
+
+`ConformanceOptions.fixtures` maps a scenario name to the raw stdout its CLI would emit. Two helpers make fixtures runnable offline: `sourceFromBody(body)` wraps a recorded stdout body as an [`OutputSource`](#outputsource) with a clean zero exit, and `fixedRunner(body)` is a drop-in runner that replays it, so conformance drives adapters from fixtures, never subprocesses. [Adding an adapter](/docs/adding-an-adapter) shows the suite in a test file.
+
 ## Next steps
 
-- [Run a prompt](/docs/running-prompts): each `RunOptions` field applied in context
-- [Handle errors](/docs/errors): what to do about each `AnyAgentError` code
+- [Run agents](/docs/run-agents): each `RunOptions` field applied in context
+- [Errors](/docs/errors): what to do about each `AnyAgentError` code
 - [Escape hatches](/docs/escape-hatches): `extraArgs` and `RawHandle` in practice
 - [Adding an adapter](/docs/adding-an-adapter): implement the adapter contract for a new CLI

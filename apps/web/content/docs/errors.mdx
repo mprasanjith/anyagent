@@ -1,9 +1,9 @@
 ---
-title: Handle errors
-description: "What each AnyAgentError code means, when it fires, and how to turn it into a message your end user can act on."
+title: Errors
+description: "Every AnyAgentError code: when it fires, what it carries, and how to turn it into a message your end user can act on."
 ---
 
-Everything AnyAgent throws is one class, `AnyAgentError`, with four `code` values and no subclass tree. Find the code you hit in its section below, or read top to bottom for the full handling pattern. Results never hide failures: holding a `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story.
+Everything AnyAgent throws is one class, `AnyAgentError`, with four `code` values and no subclass tree. Find the code you hit in its section below. Results never hide failures: holding a `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story.
 
 ## Catch and branch on the code
 
@@ -33,7 +33,7 @@ try {
 
 ## UnsupportedCapability
 
-You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`) its capability table does not declare, or a permission level it does not offer. It is thrown before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
+You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`, `schema`) its capability table does not declare, or a permission level it does not offer. It fires before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
 
 The message names the agent and the missing capability, in one of two shapes:
 
@@ -42,7 +42,7 @@ codex does not support a system prompt
 some-cli does not support permission level "read" (offers: edit, auto)
 ```
 
-Drop the option, or read `agent.capabilities` first and degrade the feature when it is missing. [Run a prompt](/docs/running-prompts) shows the capability guard for each option, and each [adapter page](/docs/adapters) lists what its CLI declares.
+Drop the option, or read `agent.capabilities` first and degrade the feature when it is missing. [Run agents](/docs/run-agents#tune-the-run) shows the capability guard, and the [support matrix](/docs/adapters) shows what every CLI declares.
 
 ## Invocation
 
@@ -52,23 +52,23 @@ The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an ag
 
 ## Parse
 
-The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet. Update `anyagent`, and report the failure upstream with `argv` and `stderr` so the adapter can catch up.
+The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet. Update `anyagent`, and report the failure upstream with the message and the offending payload on `err.raw` so the adapter can catch up.
 
-`Parse` also fires when you pass a [`schema`](/docs/structured-output) and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update; [Get structured output](/docs/structured-output) covers it.
+`Parse` also fires when you pass a [`schema`](/docs/structured-output) and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
 
 ## Aborted
 
-Your `AbortSignal` fired and the underlying process was terminated. In a shipped tool that is the end user cancelling on purpose, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming) shows how to wire the signal to Ctrl+C.
+Your `AbortSignal` fired and the underlying process was terminated, whether from a user cancelling or an `AbortSignal.timeout` expiring. In a shipped tool that is usually the end user stopping a run on purpose, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming#cancel-a-run) shows how to wire the signal to Ctrl+C.
 
 ## Diagnostic fields
 
 Beyond `message` and `code`, three fields carry what ran and what the CLI said:
 
-| Name     | Type       | Description                                                           |
-| -------- | ---------- | --------------------------------------------------------------------- |
-| `raw`    | `unknown`  | the underlying cause: a native error or the CLI’s own error payload   |
-| `argv`   | `string[]` | the exact command line that ran; attached when a process was involved |
-| `stderr` | `string`   | what the CLI wrote to stderr; attached when a process was involved    |
+| Name     | Type       | Description                                                              |
+| -------- | ---------- | ------------------------------------------------------------------------ |
+| `raw`    | `unknown`  | the underlying cause: a native error, the CLI’s own error payload, or the reply that failed to parse |
+| `argv`   | `string[]` | the exact command line that ran; attached on `Invocation` errors only    |
+| `stderr` | `string`   | what the CLI wrote to stderr; attached on `Invocation` errors only       |
 
 Log all three inside the `catch` when a run fails unexpectedly, so a bug report is actionable:
 
@@ -119,7 +119,7 @@ try {
       console.error(
         "Unexpected output from the agent. Please report this to Acme."
       );
-      console.error("command:", err.argv?.join(" "));
+      console.error(err.message);
       break;
     default:
       throw err;
@@ -128,10 +128,10 @@ try {
 }
 ```
 
-Each branch gives the end user something to act on: cancellation exits quietly, a capability gap names the agent, a run failure points at install and login, and a parse failure asks for a report with the command attached.
+Each branch gives the end user something to act on: cancellation exits quietly, a capability gap names the agent, a run failure points at install and login, and a parse failure asks for a report with the validation detail attached.
 
 ## Next steps
 
-- [Run a prompt](/docs/running-prompts): guard each capability-gated option before you ask
+- [Run agents](/docs/run-agents): guard each capability-gated option before you ask
 - [Stream progress](/docs/streaming): wire an `AbortSignal` so `Aborted` means the user cancelled
-- [Ship to production](/docs/production): the full detect, run, and handle flow assembled
+- [API reference](/docs/api#anyagenterror): the `AnyAgentError` class shape

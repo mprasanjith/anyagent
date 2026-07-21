@@ -1,26 +1,18 @@
 ---
 title: Supported agents
-description: Every coding-agent CLI AnyAgent detects and drives, with a page per adapter covering its capabilities, permission mapping, and quirks.
+description: Every coding-agent CLI AnyAgent drives, with each adapter’s capabilities side by side and a page per adapter for its quirks.
 ---
 
-import { getPageTreePeers } from "fumadocs-core/page-tree";
-import { Card, Cards } from "fumadocs-ui/components/card";
-import { source } from "@/lib/source";
+These are the agent CLIs AnyAgent supports. `detect()` scans for all of them in the order below, and each has its own subpath export for targeting it directly. The table is rendered from each adapter’s own capability declaration, so it always matches what the code enforces.
 
-These are the agent CLIs AnyAgent supports. `detect()` scans for all of them, and each has its own subpath export for targeting it directly. Everything CLI-specific lives on the adapter’s page: how detection finds the CLI, the capability table it declares, the native flag behind each run option, what its stream produces, and where its session id lives on `raw`.
+<CapabilityMatrix />
 
-<Cards>
-  {getPageTreePeers(source.getPageTree(), "/docs/adapters").map((peer) => (
-    <Card href={peer.url} key={peer.url} title={peer.name}>
-      {peer.description}
-    </Card>
-  ))}
-</Cards>
+A `native` capability maps onto the CLI’s own flag; an `emulated` one is provided by AnyAgent’s core, identically on every agent that declares it; `—` means requesting it throws `UnsupportedCapability` before anything spawns. [How AnyAgent works](/docs/how-it-works) explains the split. Structured output reads `emulated` everywhere because the core appends your schema to the prompt and parses the reply itself on every CLI.
 
-The adapter pages share one section order, so a fact about one agent sits in the same place on every other. An adapter ships only against a verified audit and recorded real CLI output, never a guessed schema.
+Everything else CLI-specific lives on the adapter’s page: the native flag behind each run option, what its stream produces, where its session id lives on `raw`, and its quirks. The pages share one section order, so a fact about one agent sits in the same place on every other. An adapter ships only against recorded real CLI output, never a guessed schema.
 
 ## Next steps
 
-- [Detect installed agents](/docs/detecting-agents): scan the machine and choose among the agents installed on it
-- [Escape hatches](/docs/escape-hatches): reach native capabilities a CLI has but the unified surface does not model
+- [Run agents](/docs/run-agents): scan the machine and choose among the agents installed on it
+- [Escape hatches](/docs/escape-hatches): reach native capabilities the unified surface does not model
 - [Adding an adapter](/docs/adding-an-adapter): bring another CLI into this list
