@@ -7,7 +7,7 @@ import type {
   OutputSource,
   RunResult,
 } from "../src/types.js";
-import { kiloCode } from "../src/kilo-code/index.js";
+import { kiloCode } from "../src/kilo-code.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 // Kilo shares the opencode-family implementation; the shared mapping logic is

@@ -8,7 +8,7 @@ import type {
   OutputSource,
   RunResult,
 } from "../src/types.js";
-import { pi } from "../src/pi/index.js";
+import { pi } from "../src/pi.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>

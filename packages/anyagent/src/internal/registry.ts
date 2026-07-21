@@ -1,10 +1,10 @@
-import { claudeCode } from "../claude-code/index.js";
-import { cline } from "../cline/index.js";
-import { codex } from "../codex/index.js";
-import { goose } from "../goose/index.js";
-import { kiloCode } from "../kilo-code/index.js";
-import { opencode } from "../opencode/index.js";
-import { pi } from "../pi/index.js";
+import { claudeCode } from "../claude-code.js";
+import { cline } from "../cline.js";
+import { codex } from "../codex.js";
+import { goose } from "../goose.js";
+import { kiloCode } from "../kilo-code.js";
+import { opencode } from "../opencode.js";
+import { pi } from "../pi.js";
 import { runDetect } from "./detect.js";
 import { realProbe } from "./runtime/spawn.js";
 import type {

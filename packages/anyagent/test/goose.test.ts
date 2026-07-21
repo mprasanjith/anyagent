@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { goose } from "../src/goose/index.js";
+import { goose } from "../src/goose.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import type {
   AgentEvent,

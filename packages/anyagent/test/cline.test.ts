@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { cline } from "../src/cline/index.js";
+import { cline } from "../src/cline.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import type {
   AgentEvent,

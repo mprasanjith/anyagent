@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { cline } from "../src/cline/index.js";
+import { cline } from "../src/cline.js";
 import { create } from "../src/index.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { liveEnabled } from "./live-helper.js";

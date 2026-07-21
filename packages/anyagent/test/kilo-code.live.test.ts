@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { create } from "../src/index.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
-import { kiloCode } from "../src/kilo-code/index.js";
+import { kiloCode } from "../src/kilo-code.js";
 import { liveEnabled } from "./live-helper.js";
 
 const PROMPT = "Reply with exactly the word: pong";

@@ -32,36 +32,36 @@
       "import": "./dist/ndjson.js"
     },
     "./claude-code": {
-      "types": "./dist/claude-code/index.d.ts",
-      "import": "./dist/claude-code/index.js"
+      "types": "./dist/claude-code.d.ts",
+      "import": "./dist/claude-code.js"
     },
     "./codex": {
-      "types": "./dist/codex/index.d.ts",
-      "import": "./dist/codex/index.js"
+      "types": "./dist/codex.d.ts",
+      "import": "./dist/codex.js"
     },
     "./cline": {
-      "types": "./dist/cline/index.d.ts",
-      "import": "./dist/cline/index.js"
+      "types": "./dist/cline.d.ts",
+      "import": "./dist/cline.js"
     },
     "./conformance": {
       "types": "./dist/conformance/index.d.ts",
       "import": "./dist/conformance/index.js"
     },
     "./goose": {
-      "types": "./dist/goose/index.d.ts",
-      "import": "./dist/goose/index.js"
+      "types": "./dist/goose.d.ts",
+      "import": "./dist/goose.js"
     },
     "./kilo-code": {
-      "types": "./dist/kilo-code/index.d.ts",
-      "import": "./dist/kilo-code/index.js"
+      "types": "./dist/kilo-code.d.ts",
+      "import": "./dist/kilo-code.js"
     },
     "./opencode": {
-      "types": "./dist/opencode/index.d.ts",
-      "import": "./dist/opencode/index.js"
+      "types": "./dist/opencode.d.ts",
+      "import": "./dist/opencode.js"
     },
     "./pi": {
-      "types": "./dist/pi/index.d.ts",
-      "import": "./dist/pi/index.js"
+      "types": "./dist/pi.d.ts",
+      "import": "./dist/pi.js"
     }
   },
   "scripts": {

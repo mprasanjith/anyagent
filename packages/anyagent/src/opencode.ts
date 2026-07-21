@@ -1,5 +1,5 @@
-import { opencodeFamilyAdapter } from "../internal/opencode-family.js";
-import type { Adapter } from "../types.js";
+import { opencodeFamilyAdapter } from "./internal/opencode-family.js";
+import type { Adapter } from "./types.js";
 
 /**
  * The adapter for opencode. Drives `opencode run --format json` with the

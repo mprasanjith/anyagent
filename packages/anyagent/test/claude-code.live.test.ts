@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { claudeCode } from "../src/claude-code/index.js";
+import { claudeCode } from "../src/claude-code.js";
 import { create } from "../src/index.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { liveEnabled } from "./live-helper.js";

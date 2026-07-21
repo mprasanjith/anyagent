@@ -8,7 +8,7 @@ import type {
   OutputSource,
   RunResult,
 } from "../src/types.js";
-import { opencode } from "../src/opencode/index.js";
+import { opencode } from "../src/opencode.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>

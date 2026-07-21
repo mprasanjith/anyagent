@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { create } from "../src/index.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
-import { opencode } from "../src/opencode/index.js";
+import { opencode } from "../src/opencode.js";
 import { liveEnabled } from "./live-helper.js";
 
 const PROMPT = "Reply with exactly the word: pong";
