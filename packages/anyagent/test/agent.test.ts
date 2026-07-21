@@ -119,7 +119,7 @@ test("run() throws Parse when the adapter never yields a done event", async () =
     async *parse() {
       await Promise.resolve();
       yield { text: "x", type: "text-delta" } as AgentEvent;
-      return { events: [], raw: null, text: "" } as RunResult;
+      return { events: [], raw: undefined, text: "" } as RunResult;
     },
   };
   const agent = new AgentImpl(noDone, runnerFromFixture(""));

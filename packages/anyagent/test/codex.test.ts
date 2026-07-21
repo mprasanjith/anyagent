@@ -36,7 +36,7 @@ const collect = async (
   name: string
 ): Promise<{ events: AgentEvent[]; result: RunResult }> => {
   const { events, result } = await collectSource(fixtureSource(name));
-  return { events, result: result ?? { events: [], raw: null, text: "" } };
+  return { events, result: result ?? { events: [], raw: undefined, text: "" } };
 };
 
 const sandboxOf = (p: PermissionLevel): string | undefined => {

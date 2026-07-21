@@ -14,7 +14,7 @@ type Toy = any;
 const parse = ndjsonParser<{ text: string[] }>({
   finalize: (ctx) => ({
     events: [],
-    raw: null,
+    raw: undefined,
     text: ctx.text.join(""),
   }),
   init: () => ({ text: [] }),
@@ -25,12 +25,12 @@ const parse = ndjsonParser<{ text: string[] }>({
       return { text: obj.v, type: "text-delta" };
     }
     if (obj.t === "end") {
-      return null;
+      return undefined;
     }
     if (strict) {
       throw new AnyAgentError("Parse", `unknown type ${obj.t}`);
     }
-    return null;
+    return undefined;
   },
 });
 

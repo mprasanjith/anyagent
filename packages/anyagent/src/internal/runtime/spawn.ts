@@ -35,20 +35,22 @@ export const spawnAndStream = (
 ): OutputSource =>
   outputSourceFromChild(spawnChild(invocation, signal), invocation);
 
-const isExecutable = async (candidate: string): Promise<string | null> => {
+const isExecutable = async (candidate: string): Promise<string | undefined> => {
   try {
     await access(candidate, constants.X_OK);
     return candidate;
   } catch {
-    return null;
+    return undefined;
   }
 };
 
 /**
  * Find `bin` on the `PATH`, trying Windows executable extensions on win32.
- * Resolves to the first executable match in `PATH` order, or `null`.
+ * Resolves to the first executable match in `PATH` order, or `undefined`.
  */
-export const resolveOnPath = async (bin: string): Promise<string | null> => {
+export const resolveOnPath = async (
+  bin: string
+): Promise<string | undefined> => {
   const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   const exts =
     process.platform === "win32" ? ["", ".exe", ".cmd", ".bat"] : [""];
@@ -56,7 +58,7 @@ export const resolveOnPath = async (bin: string): Promise<string | null> => {
     exts.map((ext) => path.join(dir, bin + ext))
   );
   const results = await Promise.all(candidates.map(isExecutable));
-  return results.find((r): r is string => r !== null) ?? null;
+  return results.find((r): r is string => r !== undefined);
 };
 
 const PROBE_TIMEOUT_MS = 10_000;

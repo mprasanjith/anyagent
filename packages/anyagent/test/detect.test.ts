@@ -26,7 +26,7 @@ const noopParse = async function* noopParse(): AsyncGenerator<
   RunResult
 > {
   await Promise.resolve();
-  return { events: [], raw: null, text: "" };
+  return { events: [], raw: undefined, text: "" };
 };
 
 const adapter: Adapter = {
@@ -41,17 +41,17 @@ const adapter: Adapter = {
 };
 
 const probe = (
-  resolved: Record<string, string | null>,
+  resolved: Record<string, string | undefined>,
   versionOut: string
 ): VersionProbe => ({
   exec: () => Promise.resolve({ code: 0, stderr: "", stdout: versionOut }),
-  which: (b) => Promise.resolve(resolved[b] ?? null),
+  which: (b) => Promise.resolve(resolved[b]),
 });
 
 test("resolves the first bin alias found on PATH and parses the version", async () => {
   const r = await defaultDetect(
     adapter,
-    probe({ demo: null, "demo-cli": "/usr/bin/demo-cli" }, "Demo 1.2.3 (build)")
+    probe({ demo: undefined, "demo-cli": "/usr/bin/demo-cli" }, "Demo 1.2.3 (build)")
   );
   expect(r.installed).toBe(true);
   expect(r.path).toBe("/usr/bin/demo-cli");
@@ -63,36 +63,36 @@ test("resolves the first bin alias found on PATH and parses the version", async 
 test("not installed when no bin resolves", async () => {
   const r = await defaultDetect(
     adapter,
-    probe({ demo: null, "demo-cli": null }, "")
+    probe({ demo: undefined, "demo-cli": undefined }, "")
   );
   expect(r.installed).toBe(false);
-  expect(r.path).toBeNull();
-  expect(r.version).toBeNull();
+  expect(r.path).toBeUndefined();
+  expect(r.version).toBeUndefined();
 });
 
-test("installed but null version when regex misses (never blocks use)", async () => {
+test("installed but no version when regex misses (never blocks use)", async () => {
   const r = await defaultDetect(
     adapter,
     probe({ demo: "/x/demo" }, "no version here")
   );
   expect(r.installed).toBe(true);
-  expect(r.version).toBeNull();
+  expect(r.version).toBeUndefined();
 });
 
-test("installed but null version when the version probe throws", async () => {
+test("installed but no version when the version probe throws", async () => {
   const r = await defaultDetect(adapter, {
     exec: () => Promise.reject(new Error("probe blew up")),
     which: () => Promise.resolve("/x/demo"),
   });
   expect(r.installed).toBe(true);
-  expect(r.version).toBeNull();
+  expect(r.version).toBeUndefined();
 });
 
 test("falls back to default version command and regex (captures suffix)", async () => {
   const noSpec: Adapter = { ...adapter, detection: {} };
   const r = await defaultDetect(
     noSpec,
-    probe({ demo: "/x/demo", "demo-cli": null }, "v1.2.3-beta.1 (nightly)")
+    probe({ demo: "/x/demo", "demo-cli": undefined }, "v1.2.3-beta.1 (nightly)")
   );
   expect(r.version).toBe("1.2.3-beta.1");
 });
@@ -113,7 +113,7 @@ test("runDetect delegates to a custom adapter.detect when present", async () => 
   };
   const r = await runDetect(
     withDetect,
-    probe({ demo: null, "demo-cli": null }, "")
+    probe({ demo: undefined, "demo-cli": undefined }, "")
   );
   expect(r).toBe(custom);
   expect(r.path).toBe("/custom/demo");

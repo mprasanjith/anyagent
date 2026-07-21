@@ -17,7 +17,7 @@ export const outputSourceFromChild = (
   child: ChildProcess,
   invocation: Invocation
 ): OutputSource => {
-  let spawnError: Error | null = null;
+  let spawnError: Error | undefined;
   let stderrBuf = "";
 
   child.stderr?.on("data", (c) => {

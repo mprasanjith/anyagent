@@ -276,13 +276,13 @@ export interface OutputSource {
 
 /**
  * The two I/O operations detection needs: `which` resolves a binary name to
- * its path on `PATH` (or `null` when absent), and `exec` runs a binary and
- * captures its output. `detect()` uses a real implementation by default;
+ * its path on `PATH` (or `undefined` when absent), and `exec` runs a binary
+ * and captures its output. `detect()` uses a real implementation by default;
  * tests pass a fake via `detect({ probe })` to simulate any machine without
  * spawning processes.
  */
 export interface VersionProbe {
-  which: (bin: string) => Promise<string | null>;
+  which: (bin: string) => Promise<string | undefined>;
   exec: (
     bin: string,
     args: string[]
@@ -356,10 +356,10 @@ export interface DetectResult {
   /** The human-readable agent tool name, e.g. `"Claude Code"`. */
   name: string;
   /**
-   * The installed version, e.g. `"2.0.31"`, or `null` when the agent doesn't
+   * The installed version, e.g. `"2.0.31"`, absent when the agent doesn't
    * report one.
    */
-  version: string | null;
+  version?: string;
   /** The full path to the agent's program on disk. */
   path: string;
   /** What this agent can and can't do, so you can tailor a run to it. */
@@ -374,22 +374,22 @@ export interface DetectResult {
 /**
  * The raw result of checking for one agent, produced by built-in detection or
  * a custom {@link Adapter.detect}. Unlike {@link DetectResult} it also covers
- * the not-found case — that's why `path` can be `null`: when the agent's
- * program isn't on `PATH`, `installed` is `false` and `path` is `null`.
+ * the not-found case — that's why `path` can be absent: when the agent's
+ * program isn't on `PATH`, `installed` is `false` and `path` is missing.
  * `detect()` drops those and hands you only {@link DetectResult}s, so you
  * won't meet this type unless you're writing an adapter.
  */
 export interface Detection {
   /** Whether the agent's program was found on the user's `PATH`. */
   installed: boolean;
-  /** The full path to the program on disk, or `null` when it wasn't found. */
-  path: string | null;
+  /** The full path to the program on disk, absent when it wasn't found. */
+  path?: string;
   /** A short, stable id for the agent, e.g. `"claude-code"`. */
   id: AgentId;
   /** The agent's display name, e.g. `"Claude Code"`. */
   name: string;
-  /** The installed version, or `null` when none was reported. */
-  version: string | null;
+  /** The installed version, absent when none was reported. */
+  version?: string;
   /** What this agent can and can't do. */
   capabilities: CapabilityTable;
   /** The adapter that knows how to drive this agent. */

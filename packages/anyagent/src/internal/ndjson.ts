@@ -12,15 +12,15 @@ import type { AgentEvent, OutputSource, RunResult } from "./types.js";
 export interface NdjsonSpec<Ctx> {
   init: () => Ctx;
   /**
-   * Map one raw NDJSON object to normalized event(s), or `null` to ignore it.
-   * When `strict`, throw `AnyAgentError("Parse")` on an unrecognized event type
-   * or a missing expected field so the live drift check can detect it.
+   * Map one raw NDJSON object to normalized event(s), or `undefined` to ignore
+   * it. When `strict`, throw `AnyAgentError("Parse")` on an unrecognized event
+   * type or a missing expected field so the live drift check can detect it.
    */
   map: (
     obj: unknown,
     ctx: Ctx,
     strict: boolean
-  ) => AgentEvent | AgentEvent[] | null;
+  ) => AgentEvent | AgentEvent[] | undefined;
   finalize: (ctx: Ctx) => RunResult;
 }
 

@@ -60,7 +60,7 @@ const usageFrom = (obj: Json): Usage | undefined => {
   };
 };
 
-const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | null => {
+const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | undefined => {
   const item = obj.item ?? {};
   switch (item.type) {
     case "command_execution": {
@@ -84,13 +84,13 @@ const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | null => {
     case "agent_message":
     case "reasoning":
     case "error": {
-      return null;
+      return undefined;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown item type ${item.type}`);
       }
-      return null;
+      return undefined;
     }
   }
 };
@@ -99,7 +99,7 @@ const mapItemCompleted = (
   obj: Json,
   ctx: Ctx,
   strict: boolean
-): AgentEvent | null => {
+): AgentEvent | undefined => {
   const item = obj.item ?? {};
   switch (item.type) {
     case "agent_message": {
@@ -126,13 +126,13 @@ const mapItemCompleted = (
     // fatal failures arrive as top-level `error`/`turn.failed` instead.
     case "reasoning":
     case "error": {
-      return null;
+      return undefined;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown item type ${item.type}`);
       }
-      return null;
+      return undefined;
     }
   }
 };
@@ -152,11 +152,11 @@ const parse = ndjsonParser<Ctx>({
     switch (obj.type) {
       case "thread.started": {
         ctx.threadId = obj.thread_id;
-        return null;
+        return undefined;
       }
       case "turn.started":
       case "item.updated": {
-        return null;
+        return undefined;
       }
       case "item.started": {
         return mapItemStarted(obj, strict);
@@ -167,7 +167,7 @@ const parse = ndjsonParser<Ctx>({
       case "turn.completed": {
         ctx.usage = usageFrom(obj);
         ctx.turn = obj;
-        return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : null;
+        return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : undefined;
       }
       case "turn.failed": {
         throw new AnyAgentError(
@@ -187,7 +187,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return undefined;
       }
     }
   },

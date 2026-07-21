@@ -40,7 +40,7 @@ const mapContent = (
   raw: Json,
   ctx: Ctx,
   strict: boolean
-): AgentEvent | null => {
+): AgentEvent | undefined => {
   switch (block.type) {
     case "text": {
       ctx.text.push(block.text);
@@ -68,7 +68,7 @@ const mapContent = (
       if (strict) {
         throw new AnyAgentError("Parse", `unknown content block ${block.type}`);
       }
-      return null;
+      return undefined;
     }
   }
 };
@@ -114,7 +114,7 @@ const parse = ndjsonParser<Ctx>({
         const input = obj.input_tokens;
         const output = obj.output_tokens;
         if (typeof input !== "number" && typeof output !== "number") {
-          return null;
+          return undefined;
         }
         return {
           raw: obj,
@@ -129,7 +129,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return undefined;
       }
     }
   },

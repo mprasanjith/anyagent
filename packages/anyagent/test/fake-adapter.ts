@@ -40,7 +40,7 @@ type Toy = any;
 const streamParse = ndjsonParser<{ text: string[] }>({
   finalize: (ctx) => ({
     events: [],
-    raw: null,
+    raw: undefined,
     text: ctx.text.join(""),
   }),
   init: () => ({ text: [] }),
@@ -54,12 +54,12 @@ const streamParse = ndjsonParser<{ text: string[] }>({
       return { input: o.input, name: o.name, type: "tool-call" };
     }
     if (o.t === "end") {
-      return null;
+      return undefined;
     }
     if (strict) {
       throw new Error(`unknown ${o.t}`);
     }
-    return null;
+    return undefined;
   },
 });
 

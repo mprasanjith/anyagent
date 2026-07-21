@@ -47,7 +47,7 @@ interface Ctx {
 // oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
 type Json = any;
 
-const mapToolUse = (obj: Json, strict: boolean): AgentEvent[] | null => {
+const mapToolUse = (obj: Json, strict: boolean): AgentEvent[] | undefined => {
   const part = obj.part ?? {};
   const state = part.state ?? {};
   switch (state.status) {
@@ -74,17 +74,17 @@ const mapToolUse = (obj: Json, strict: boolean): AgentEvent[] | null => {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown tool state ${state.status}`);
       }
-      return null;
+      return undefined;
     }
   }
 };
 
-const mapStepFinish = (obj: Json, ctx: Ctx): AgentEvent | null => {
+const mapStepFinish = (obj: Json, ctx: Ctx): AgentEvent | undefined => {
   ctx.sessionId ??= obj.sessionID;
   ctx.stepFinish = obj;
   const tokens = obj.part?.tokens;
   if (!tokens) {
-    return null;
+    return undefined;
   }
   ctx.usage.seen = true;
   ctx.usage.input += tokens.input ?? 0;
@@ -125,7 +125,7 @@ const makeParse = (id: string) =>
       switch (obj.type) {
         case "step_start": {
           ctx.sessionId ??= obj.sessionID;
-          return null;
+          return undefined;
         }
         case "text": {
           const text = obj.part?.text ?? "";
@@ -149,7 +149,7 @@ const makeParse = (id: string) =>
           if (strict) {
             throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
           }
-          return null;
+          return undefined;
         }
       }
     },

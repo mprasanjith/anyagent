@@ -8,7 +8,7 @@ const DEFAULT_VERSION_REGEX = /(?<version>\d+\.\d+\.\d+\S*)/u;
  * `detect`: resolve the first of `meta.bin` on `PATH`, then read the version
  * per the adapter's {@link DetectionSpec}. A missing binary yields
  * `installed: false`; a failing version probe never blocks use — `version`
- * just stays `null`.
+ * just stays absent.
  */
 export const defaultDetect = async (
   adapter: Adapter,
@@ -25,20 +25,20 @@ export const defaultDetect = async (
   const resolved = await Promise.all(
     adapter.meta.bin.map((bin) => probe.which(bin))
   );
-  const path = resolved.find((p): p is string => Boolean(p)) ?? null;
+  const path = resolved.find((p): p is string => Boolean(p));
   if (!path) {
-    return { ...base, installed: false, path: null, version: null };
+    return { ...base, installed: false };
   }
 
   const versionArgs =
     adapter.detection.versionCommand ?? DEFAULT_VERSION_COMMAND;
   const versionRegex = adapter.detection.versionRegex ?? DEFAULT_VERSION_REGEX;
-  let version: string | null = null;
+  let version: string | undefined;
   try {
     const { stdout, stderr } = await probe.exec(path, versionArgs);
-    version = `${stdout}${stderr}`.match(versionRegex)?.[1] ?? null;
+    version = `${stdout}${stderr}`.match(versionRegex)?.[1];
   } catch {
-    // A version probe that errors doesn't block use; version stays null.
+    // A version probe that errors doesn't block use; version stays absent.
   }
   return { ...base, installed: true, path, version };
 };

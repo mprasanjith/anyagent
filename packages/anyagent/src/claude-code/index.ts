@@ -110,7 +110,7 @@ const parse = ndjsonParser<Ctx>({
       // normalized event; they are known types, so strict mode ignores them too.
       case "system":
       case "rate_limit_event": {
-        return null;
+        return undefined;
       }
       case "assistant": {
         return mapAssistant(obj, ctx, strict);
@@ -130,13 +130,13 @@ const parse = ndjsonParser<Ctx>({
             raw: obj,
           });
         }
-        return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : null;
+        return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : undefined;
       }
       default: {
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return undefined;
       }
     }
   },

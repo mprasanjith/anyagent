@@ -42,7 +42,7 @@ const mapAgentEvent = (
   obj: Json,
   ctx: Ctx,
   strict: boolean
-): AgentEvent | null => {
+): AgentEvent | undefined => {
   const ev = obj.event ?? {};
   switch (ev.type) {
     // Partial deltas and lifecycle markers carry no normalized event; text is
@@ -55,7 +55,7 @@ const mapAgentEvent = (
     case "usage":
     case "done":
     case "error": {
-      return null;
+      return undefined;
     }
     case "content_start": {
       if (ev.contentType === "tool") {
@@ -67,7 +67,7 @@ const mapAgentEvent = (
         };
       }
       if (ev.contentType === "text") {
-        return null;
+        return undefined;
       }
       if (strict) {
         throw new AnyAgentError(
@@ -75,7 +75,7 @@ const mapAgentEvent = (
           `unknown content type ${ev.contentType}`
         );
       }
-      return null;
+      return undefined;
     }
     case "content_end": {
       if (ev.contentType === "tool") {
@@ -96,13 +96,13 @@ const mapAgentEvent = (
           `unknown content type ${ev.contentType}`
         );
       }
-      return null;
+      return undefined;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown agent event ${ev.type}`);
       }
-      return null;
+      return undefined;
     }
   }
 };
@@ -129,7 +129,7 @@ const innerParse = ndjsonParser<Ctx>({
     const obj = raw as Json;
     switch (obj.type) {
       case "hook_event": {
-        return null;
+        return undefined;
       }
       case "agent_event": {
         return mapAgentEvent(obj, ctx, strict);
@@ -154,13 +154,13 @@ const innerParse = ndjsonParser<Ctx>({
                 outputTokens: u.outputTokens,
               },
             }
-          : null;
+          : undefined;
       }
       default: {
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return null;
+        return undefined;
       }
     }
   },

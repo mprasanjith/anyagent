@@ -3,15 +3,15 @@ type Schema = Record<string, any>;
 
 const FENCE = /```(?:json)?\s*\n?(?<body>[\s\S]*?)```/u;
 
-const matchingSlice = (text: string): string | null => {
+const matchingSlice = (text: string): string | undefined => {
   const start = text.search(/[{[]/u);
   if (start === -1) {
-    return null;
+    return undefined;
   }
   const open = text[start];
   const close = open === "{" ? "}" : "]";
   const end = text.lastIndexOf(close);
-  return end > start ? text.slice(start, end + 1) : null;
+  return end > start ? text.slice(start, end + 1) : undefined;
 };
 
 /**
@@ -36,7 +36,7 @@ export const extractJson = (text: string): unknown => {
     }
   }
   const sliced = matchingSlice(trimmed);
-  if (sliced !== null) {
+  if (sliced !== undefined) {
     return JSON.parse(sliced);
   }
   throw new SyntaxError("no JSON value found in reply");

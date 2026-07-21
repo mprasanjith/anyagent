@@ -5,5 +5,5 @@ export const liveEnabled = async (bin: string): Promise<boolean> => {
   if (process.env.ANYAGENT_LIVE !== "1") {
     return false;
   }
-  return (await realProbe.which(bin)) !== null;
+  return (await realProbe.which(bin)) !== undefined;
 };

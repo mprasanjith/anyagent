@@ -56,7 +56,8 @@ export const detect = async (
   const results = await Promise.all(adapters.map((a) => runDetect(a, probe)));
   return results
     .filter(
-      (d): d is Detection & { path: string } => d.installed && d.path !== null
+      (d): d is Detection & { path: string } =>
+        d.installed && d.path !== undefined
     )
     .map((d) => ({
       adapter: d.adapter,
