@@ -1,10 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-
-import { resolvePermission, validateOptions } from "./capabilities.js";
-import { applyEmulations } from "./emulate.js";
 import { AnyAgentError } from "../errors.js";
-import { spawnAndStream, spawnChild } from "./runtime/spawn.js";
-import { extractJson, validateAgainstSchema } from "./structured.js";
 import type {
   Adapter,
   Agent,
@@ -15,6 +10,10 @@ import type {
   RunOptions,
   RunResult,
 } from "../types.js";
+import { resolvePermission, validateOptions } from "./capabilities.js";
+import { applyEmulations } from "./emulate.js";
+import { spawnAndStream, spawnChild } from "./runtime/spawn.js";
+import { extractJson, validateAgainstSchema } from "./structured.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 

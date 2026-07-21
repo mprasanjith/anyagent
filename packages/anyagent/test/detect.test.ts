@@ -20,7 +20,7 @@ const caps: CapabilityTable = {
   systemPrompt: false,
 };
 
-// oxlint-disable-next-line require-yield -- stub parser; never invoked in detection tests.
+// biome-ignore lint/correctness/useYield: stub parser; never invoked in detection tests.
 const noopParse = async function* noopParse(): AsyncGenerator<
   never,
   RunResult
@@ -51,7 +51,10 @@ const probe = (
 test("resolves the first bin alias found on PATH and parses the version", async () => {
   const r = await defaultDetect(
     adapter,
-    probe({ demo: undefined, "demo-cli": "/usr/bin/demo-cli" }, "Demo 1.2.3 (build)")
+    probe(
+      { demo: undefined, "demo-cli": "/usr/bin/demo-cli" },
+      "Demo 1.2.3 (build)"
+    )
   );
   expect(r.installed).toBe(true);
   expect(r.path).toBe("/usr/bin/demo-cli");

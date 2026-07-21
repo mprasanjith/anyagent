@@ -20,6 +20,7 @@ const allCaps: CapabilityTable = {
 // A canned OutputSource so parser and agent tests never spawn a process.
 export const sourceFromBody = (body: string): OutputSource => ({
   exitCode: Promise.resolve(0),
+  // biome-ignore lint/suspicious/useAwait: replays in-memory data through the async OutputSource interface.
   async *lines() {
     for (const l of body.split("\n")) {
       yield l;
@@ -34,7 +35,7 @@ export const runnerFromFixture =
   (_inv: Invocation): OutputSource =>
     sourceFromBody(body);
 
-// oxlint-disable-next-line typescript/no-explicit-any -- toy fixture schema.
+// biome-ignore lint/suspicious/noExplicitAny: toy fixture schema.
 type Toy = any;
 
 const streamParse = ndjsonParser<{ text: string[] }>({
@@ -54,12 +55,11 @@ const streamParse = ndjsonParser<{ text: string[] }>({
       return { input: o.input, name: o.name, type: "tool-call" };
     }
     if (o.t === "end") {
-      return undefined;
+      return;
     }
     if (strict) {
       throw new Error(`unknown ${o.t}`);
     }
-    return undefined;
   },
 });
 

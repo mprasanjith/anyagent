@@ -19,9 +19,9 @@ export const GET = async (
 
   return new ImageResponse(
     <DefaultImage
-      title={page.data.title}
       description={page.data.description}
       site={appName}
+      title={page.data.title}
     />,
     {
       height: 630,

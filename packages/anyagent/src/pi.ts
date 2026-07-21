@@ -25,13 +25,13 @@ const CAPS: CapabilityTable = {
 };
 
 interface Ctx {
-  text: string[];
   sessionId?: string;
+  text: string[];
   turnEnd?: unknown;
   usage: { input: number; output: number; cost: number; seen: boolean };
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 // Known assistantMessageEvent types; only text_delta becomes an event.
@@ -47,7 +47,11 @@ const UPDATE_TYPES = new Set([
   "toolcall_end",
 ]);
 
-const mapUpdate = (obj: Json, ctx: Ctx, strict: boolean): AgentEvent | undefined => {
+const mapUpdate = (
+  obj: Json,
+  ctx: Ctx,
+  strict: boolean
+): AgentEvent | undefined => {
   const ev = obj.assistantMessageEvent ?? {};
   if (ev.type === "text_delta") {
     ctx.text.push(ev.delta);
@@ -56,10 +60,12 @@ const mapUpdate = (obj: Json, ctx: Ctx, strict: boolean): AgentEvent | undefined
   if (strict && !UPDATE_TYPES.has(ev.type)) {
     throw new AnyAgentError("Parse", `unknown update type ${ev.type}`);
   }
-  return undefined;
 };
 
-const mapMessageEnd = (obj: Json, strict: boolean): AgentEvent[] | undefined => {
+const mapMessageEnd = (
+  obj: Json,
+  strict: boolean
+): AgentEvent[] | undefined => {
   const message = obj.message ?? {};
   switch (message.role) {
     // Text deltas were already streamed from message_update; only tool calls
@@ -98,7 +104,7 @@ const mapMessageEnd = (obj: Json, strict: boolean): AgentEvent[] | undefined => 
       ];
     }
     case "user": {
-      return undefined;
+      return;
     }
     default: {
       if (strict) {
@@ -107,7 +113,7 @@ const mapMessageEnd = (obj: Json, strict: boolean): AgentEvent[] | undefined => 
           `unknown message role ${message.role}`
         );
       }
-      return undefined;
+      return;
     }
   }
 };
@@ -126,7 +132,7 @@ const mapTurnEnd = (obj: Json, ctx: Ctx): AgentEvent | undefined => {
   }
   const u = message.usage;
   if (!u) {
-    return undefined;
+    return;
   }
   ctx.usage.seen = true;
   ctx.usage.input += u.input ?? 0;
@@ -164,7 +170,7 @@ const parse = ndjsonParser<Ctx>({
     switch (obj.type) {
       case "session": {
         ctx.sessionId = obj.id;
-        return undefined;
+        return;
       }
       case "agent_start":
       case "turn_start":
@@ -172,7 +178,7 @@ const parse = ndjsonParser<Ctx>({
       case "tool_execution_start":
       case "tool_execution_end":
       case "agent_end": {
-        return undefined;
+        return;
       }
       case "message_update": {
         return mapUpdate(obj, ctx, strict);
@@ -194,7 +200,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return undefined;
+        return;
       }
     }
   },

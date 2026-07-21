@@ -10,6 +10,7 @@ import type { Adapter, AgentEvent, OutputSource, RunResult } from "./types.js";
  * text, tool-call ids, the final raw payload.
  */
 export interface NdjsonSpec<Ctx> {
+  finalize: (ctx: Ctx) => RunResult;
   init: () => Ctx;
   /**
    * Map one raw NDJSON object to normalized event(s), or `undefined` to ignore
@@ -21,7 +22,6 @@ export interface NdjsonSpec<Ctx> {
     ctx: Ctx,
     strict: boolean
   ) => AgentEvent | AgentEvent[] | undefined;
-  finalize: (ctx: Ctx) => RunResult;
 }
 
 /**
@@ -49,6 +49,7 @@ export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>): Adapter["parse"] =>
       try {
         obj = JSON.parse(trimmed);
       } catch (error) {
+        // biome-ignore lint/style/useErrorCause: AnyAgentError carries the original on `raw`, its documented cause field.
         throw new AnyAgentError(
           "Parse",
           `invalid JSON line: ${trimmed.slice(0, 120)}`,

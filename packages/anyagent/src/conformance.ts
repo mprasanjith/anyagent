@@ -15,6 +15,7 @@ import type {
  */
 export const sourceFromBody = (body: string): OutputSource => ({
   exitCode: Promise.resolve(0),
+  // biome-ignore lint/suspicious/useAwait: replays in-memory data through the async OutputSource interface.
   async *lines() {
     for (const l of body.split("\n")) {
       yield l;

@@ -8,7 +8,6 @@ import { sourceFromBody } from "./fake-adapter.js";
 const sourceFromLines = (lines: string[]): OutputSource =>
   sourceFromBody(lines.join("\n"));
 
-// oxlint-disable-next-line typescript/no-explicit-any -- toy schema.
 type Toy = any;
 
 const parse = ndjsonParser<{ text: string[] }>({
@@ -25,12 +24,11 @@ const parse = ndjsonParser<{ text: string[] }>({
       return { text: obj.v, type: "text-delta" };
     }
     if (obj.t === "end") {
-      return undefined;
+      return;
     }
     if (strict) {
       throw new AnyAgentError("Parse", `unknown type ${obj.t}`);
     }
-    return undefined;
   },
 });
 

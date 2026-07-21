@@ -1,5 +1,5 @@
-import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import path from "node:path";
 
@@ -40,7 +40,7 @@ const isExecutable = async (candidate: string): Promise<string | undefined> => {
     await access(candidate, constants.X_OK);
     return candidate;
   } catch {
-    return undefined;
+    // Not executable (or missing): this candidate simply does not resolve.
   }
 };
 
@@ -69,7 +69,6 @@ const PROBE_TIMEOUT_MS = 10_000;
  */
 export const realProbe: VersionProbe = {
   exec: (bin, args) =>
-    // oxlint-disable-next-line promise/avoid-new -- child_process events need callback interop.
     new Promise((resolve) => {
       const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
       let stdout = "";
@@ -84,7 +83,7 @@ export const realProbe: VersionProbe = {
         }
         settled = true;
         clearTimeout(timer);
-        // oxlint-disable-next-line promise/no-multiple-resolved -- the settled guard makes the second call a no-op; error/close/timeout race to settle once.
+        // The settled guard makes the second call a no-op; error/close/timeout race to settle once.
         resolve({ code, stderr, stdout });
       };
       child.stdout?.on("data", (c) => {

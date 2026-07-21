@@ -62,5 +62,7 @@ test("aborting the signal rejects exitCode with an Aborted error", async () => {
 
 test("realProbe.which resolves an existing binary and undefined for a missing one", async () => {
   expect(await realProbe.which("sh")).toBeTruthy();
-  expect(await realProbe.which("definitely-not-a-real-binary-xyz")).toBeUndefined();
+  expect(
+    await realProbe.which("definitely-not-a-real-binary-xyz")
+  ).toBeUndefined();
 });

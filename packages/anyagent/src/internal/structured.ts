@@ -1,12 +1,13 @@
-// oxlint-disable-next-line typescript/no-explicit-any -- JSON Schema is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: JSON Schema is dynamically shaped.
 type Schema = Record<string, any>;
 
 const FENCE = /```(?:json)?\s*\n?(?<body>[\s\S]*?)```/u;
+const JSON_OPENER = /[{[]/u;
 
 const matchingSlice = (text: string): string | undefined => {
-  const start = text.search(/[{[]/u);
+  const start = text.search(JSON_OPENER);
   if (start === -1) {
-    return undefined;
+    return;
   }
   const open = text[start];
   const close = open === "{" ? "}" : "]";
@@ -69,45 +70,58 @@ const typeMatches = (value: unknown, type: string): boolean => {
   }
 };
 
-const check = (value: unknown, schema: Schema, path: string): string[] => {
+const checkEnum = (value: unknown, schema: Schema, path: string): string[] => {
+  if (!Array.isArray(schema.enum)) {
+    return [];
+  }
+  const ok = schema.enum.some(
+    (e: unknown) => e === value || JSON.stringify(e) === JSON.stringify(value)
+  );
+  return ok ? [] : [`${path}: value not in enum`];
+};
+
+const checkObject = (
+  value: unknown,
+  schema: Schema,
+  path: string
+): string[] => {
+  if (!schema.properties || typeOf(value) !== "object") {
+    return [];
+  }
   const errors: string[] = [];
-
-  if (typeof schema.type === "string" && !typeMatches(value, schema.type)) {
-    errors.push(`${path}: expected ${schema.type}, got ${typeOf(value)}`);
-    // The value is the wrong shape; deeper checks would only add noise.
-    return errors;
-  }
-
-  if (Array.isArray(schema.enum)) {
-    const ok = schema.enum.some(
-      (e: unknown) => e === value || JSON.stringify(e) === JSON.stringify(value)
-    );
-    if (!ok) {
-      errors.push(`${path}: value not in enum`);
+  const obj = value as Record<string, unknown>;
+  for (const [key, sub] of Object.entries(schema.properties as Schema)) {
+    if (key in obj) {
+      errors.push(...check(obj[key], sub as Schema, `${path}.${key}`));
     }
   }
-
-  if (schema.properties && typeOf(value) === "object") {
-    const obj = value as Record<string, unknown>;
-    for (const [key, sub] of Object.entries(schema.properties as Schema)) {
-      if (key in obj) {
-        errors.push(...check(obj[key], sub as Schema, `${path}.${key}`));
-      }
-    }
-    for (const key of (schema.required ?? []) as string[]) {
-      if (!(key in obj)) {
-        errors.push(`${path}.${key}: required`);
-      }
+  for (const key of (schema.required ?? []) as string[]) {
+    if (!(key in obj)) {
+      errors.push(`${path}.${key}: required`);
     }
   }
-
-  if (schema.items && Array.isArray(value)) {
-    for (const [i, item] of value.entries()) {
-      errors.push(...check(item, schema.items as Schema, `${path}[${i}]`));
-    }
-  }
-
   return errors;
+};
+
+const checkItems = (value: unknown, schema: Schema, path: string): string[] => {
+  if (!(schema.items && Array.isArray(value))) {
+    return [];
+  }
+  return value.flatMap((item, i) =>
+    check(item, schema.items as Schema, `${path}[${i}]`)
+  );
+};
+
+const check = (value: unknown, schema: Schema, path: string): string[] => {
+  if (typeof schema.type === "string" && !typeMatches(value, schema.type)) {
+    // The value is the wrong shape; deeper checks would only add noise.
+    return [`${path}: expected ${schema.type}, got ${typeOf(value)}`];
+  }
+  return [
+    ...checkEnum(value, schema, path),
+    ...checkObject(value, schema, path),
+    ...checkItems(value, schema, path),
+  ];
 };
 
 /**

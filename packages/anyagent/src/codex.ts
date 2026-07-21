@@ -41,13 +41,13 @@ interface Ctx {
   usage?: Usage;
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 const usageFrom = (obj: Json): Usage | undefined => {
   const u = obj.usage;
   if (!u) {
-    return undefined;
+    return;
   }
   // Codex's input_tokens folds cache reads in; subtract to report uncached
   // input like the other adapters. Exact native accounting stays on raw.
@@ -84,13 +84,13 @@ const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | undefined => {
     case "agent_message":
     case "reasoning":
     case "error": {
-      return undefined;
+      return;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown item type ${item.type}`);
       }
-      return undefined;
+      return;
     }
   }
 };
@@ -126,13 +126,13 @@ const mapItemCompleted = (
     // fatal failures arrive as top-level `error`/`turn.failed` instead.
     case "reasoning":
     case "error": {
-      return undefined;
+      return;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown item type ${item.type}`);
       }
-      return undefined;
+      return;
     }
   }
 };
@@ -152,11 +152,11 @@ const parse = ndjsonParser<Ctx>({
     switch (obj.type) {
       case "thread.started": {
         ctx.threadId = obj.thread_id;
-        return undefined;
+        return;
       }
       case "turn.started":
       case "item.updated": {
-        return undefined;
+        return;
       }
       case "item.started": {
         return mapItemStarted(obj, strict);
@@ -167,7 +167,9 @@ const parse = ndjsonParser<Ctx>({
       case "turn.completed": {
         ctx.usage = usageFrom(obj);
         ctx.turn = obj;
-        return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : undefined;
+        return ctx.usage
+          ? { raw: obj, type: "usage", usage: ctx.usage }
+          : undefined;
       }
       case "turn.failed": {
         throw new AnyAgentError(
@@ -187,7 +189,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return undefined;
+        return;
       }
     }
   },

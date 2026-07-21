@@ -10,6 +10,8 @@ import type {
   Usage,
 } from "./types.js";
 
+const VERSION_REGEX = /(?<version>\d+\.\d+\.\d+)/u;
+
 const CAPS: CapabilityTable = {
   cwd: "native",
   mcp: "native",
@@ -31,19 +33,19 @@ const PERMISSION_MODE: Record<PermissionLevel, string> = {
 };
 
 interface Ctx {
+  raw?: unknown;
   text: string[];
   toolNames: Map<string, string>;
   usage?: Usage;
-  raw?: unknown;
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 const usageFrom = (obj: Json): Usage | undefined => {
   const u = obj.usage;
   if (!u && obj.total_cost_usd === undefined) {
-    return undefined;
+    return;
   }
   return {
     costUsd: obj.total_cost_usd,
@@ -110,7 +112,7 @@ const parse = ndjsonParser<Ctx>({
       // normalized event; they are known types, so strict mode ignores them too.
       case "system":
       case "rate_limit_event": {
-        return undefined;
+        return;
       }
       case "assistant": {
         return mapAssistant(obj, ctx, strict);
@@ -130,13 +132,15 @@ const parse = ndjsonParser<Ctx>({
             raw: obj,
           });
         }
-        return ctx.usage ? { raw: obj, type: "usage", usage: ctx.usage } : undefined;
+        return ctx.usage
+          ? { raw: obj, type: "usage", usage: ctx.usage }
+          : undefined;
       }
       default: {
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return undefined;
+        return;
       }
     }
   },
@@ -203,7 +207,7 @@ export const claudeCode = (): Adapter => ({
   capabilities: CAPS,
   detection: {
     versionCommand: ["--version"],
-    versionRegex: /(?<version>\d+\.\d+\.\d+)/u,
+    versionRegex: VERSION_REGEX,
   },
   meta: { bin: ["claude"], id: "claude-code", name: "Claude Code" },
   parse,

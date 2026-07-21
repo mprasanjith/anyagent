@@ -1,14 +1,11 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-
-import type {
-  AgentEvent,
-  OutputSource,
-  RunResult,
-} from "../src/types.js";
 import { kiloCode } from "../src/kilo-code.js";
+import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
+
+const SESSION_ID = /^ses_/u;
 
 // Kilo shares the opencode-family implementation; the shared mapping logic is
 // exercised in depth by opencode.test.ts. These tests pin kilo's own identity
@@ -59,7 +56,7 @@ test("parses kilo's own simple fixture", async () => {
   expect(result?.text).toBe("pong");
   expect(typeof result?.usage?.inputTokens).toBe("number");
   const raw = result?.raw as { sessionId?: string };
-  expect(raw.sessionId).toMatch(/^ses_/u);
+  expect(raw.sessionId).toMatch(SESSION_ID);
 });
 
 test("parses kilo's own tools and edit fixtures", async () => {

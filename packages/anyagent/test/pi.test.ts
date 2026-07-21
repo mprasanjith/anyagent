@@ -3,12 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
-import type {
-  AgentEvent,
-  OutputSource,
-  RunResult,
-} from "../src/types.js";
 import { pi } from "../src/pi.js";
+import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>

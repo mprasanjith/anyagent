@@ -3,13 +3,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
-import type {
-  AgentEvent,
-  OutputSource,
-  RunResult,
-} from "../src/types.js";
 import { opencode } from "../src/opencode.js";
+import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
+
+const SESSION_ID = /^ses_/u;
 
 const bodySource = (lines: unknown[]): OutputSource =>
   sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
@@ -81,7 +79,7 @@ test("parses a simple text answer with usage summed from step_finish", async () 
 test("raw exposes the session id for resume", async () => {
   const { result } = await collect("simple.jsonl");
   const raw = result?.raw as { sessionId?: string; stepFinish?: unknown };
-  expect(raw.sessionId).toMatch(/^ses_/u);
+  expect(raw.sessionId).toMatch(SESSION_ID);
   expect(raw.stepFinish).toBeDefined();
 });
 

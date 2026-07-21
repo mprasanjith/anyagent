@@ -4,11 +4,7 @@ import path from "node:path";
 
 import { cline } from "../src/cline.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
-import type {
-  AgentEvent,
-  OutputSource,
-  RunResult,
-} from "../src/types.js";
+import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>

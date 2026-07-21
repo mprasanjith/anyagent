@@ -80,6 +80,7 @@ test("breaking out of runStream early terminates the underlying process", async 
       closed = true;
     },
     exitCode: Promise.resolve(0),
+    // biome-ignore lint/suspicious/useAwait: replays in-memory data through the async OutputSource interface.
     async *lines() {
       yield '{"t":"text","v":"Hi"}';
       yield '{"t":"end"}';
@@ -115,7 +116,6 @@ test("extraArgs escape hatch appends native flags to the argv", () => {
 test("run() throws Parse when the adapter never yields a done event", async () => {
   const noDone: Adapter = {
     ...fakeStreaming,
-    // oxlint-disable-next-line require-yield -- yields once then returns without a done.
     async *parse() {
       await Promise.resolve();
       yield { text: "x", type: "text-delta" } as AgentEvent;

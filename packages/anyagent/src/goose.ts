@@ -27,12 +27,12 @@ const CAPS: CapabilityTable = {
 };
 
 interface Ctx {
+  complete?: unknown;
   text: string[];
   toolNames: Map<string, string>;
-  complete?: unknown;
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 const mapContent = (
@@ -68,7 +68,7 @@ const mapContent = (
       if (strict) {
         throw new AnyAgentError("Parse", `unknown content block ${block.type}`);
       }
-      return undefined;
+      return;
     }
   }
 };
@@ -114,7 +114,7 @@ const parse = ndjsonParser<Ctx>({
         const input = obj.input_tokens;
         const output = obj.output_tokens;
         if (typeof input !== "number" && typeof output !== "number") {
-          return undefined;
+          return;
         }
         return {
           raw: obj,
@@ -129,7 +129,7 @@ const parse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return undefined;
+        return;
       }
     }
   },

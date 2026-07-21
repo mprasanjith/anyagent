@@ -54,6 +54,26 @@ export type CapabilitySupport = "native" | "emulated" | false;
  */
 export interface CapabilityTable {
   /**
+   * Whether you can choose the directory the agent works in. See
+   * {@link RunOptions.cwd}.
+   */
+  cwd: CapabilitySupport;
+  /** Whether you can attach MCP servers to a run. See {@link RunOptions.mcp}. */
+  mcp: CapabilitySupport;
+  /** Whether you can pick the model for a run. See {@link RunOptions.model}. */
+  modelSelection: CapabilitySupport;
+  /**
+   * The {@link PermissionLevel}s this agent supports. Asking for one that
+   * isn't listed fails fast, rather than quietly giving the agent more or less
+   * freedom than you asked for.
+   */
+  permissionLevels: PermissionLevel[];
+  /**
+   * Whether the agent can pick up an earlier conversation. See
+   * {@link RunOptions.resume}.
+   */
+  sessionResume: CapabilitySupport;
+  /**
    * Whether the agent streams its work as it goes. When truthy, `runStream`
    * relays the agent's own live events. When `false`, the CLI only prints a
    * final answer, so you get it all at once — one `text-delta` with the whole
@@ -62,12 +82,6 @@ export interface CapabilityTable {
    */
   streaming: CapabilitySupport;
   /**
-   * The {@link PermissionLevel}s this agent supports. Asking for one that
-   * isn't listed fails fast, rather than quietly giving the agent more or less
-   * freedom than you asked for.
-   */
-  permissionLevels: PermissionLevel[];
-  /**
    * Whether the agent can return output shaped to a schema, guarding
    * {@link RunOptions.schema}. `"emulated"` (the built-in agents) means the
    * core appends the schema to the prompt and parses the reply itself;
@@ -75,26 +89,12 @@ export interface CapabilityTable {
    * requesting a schema throws `UnsupportedCapability`.
    */
   structuredOutput: CapabilitySupport;
-  /** Whether you can pick the model for a run. See {@link RunOptions.model}. */
-  modelSelection: CapabilitySupport;
-  /**
-   * Whether the agent can pick up an earlier conversation. See
-   * {@link RunOptions.resume}.
-   */
-  sessionResume: CapabilitySupport;
-  /** Whether you can attach MCP servers to a run. See {@link RunOptions.mcp}. */
-  mcp: CapabilitySupport;
   /**
    * Whether you can add to the agent's system prompt. See
    * {@link RunOptions.systemPrompt}. `"emulated"` means the core folds the
    * system prompt into the prompt text for CLIs with no append-system flag.
    */
   systemPrompt: CapabilitySupport;
-  /**
-   * Whether you can choose the directory the agent works in. See
-   * {@link RunOptions.cwd}.
-   */
-  cwd: CapabilitySupport;
 }
 
 /**
@@ -104,6 +104,7 @@ export interface CapabilityTable {
  * native accounting is always available on the event's or result's `raw`.
  */
 export interface Usage {
+  costUsd?: number;
   /**
    * Uncached input tokens, matching the underlying provider's accounting (e.g.
    * Anthropic reports cache reads/writes as separate line items, not folded in
@@ -111,7 +112,6 @@ export interface Usage {
    */
   inputTokens?: number;
   outputTokens?: number;
-  costUsd?: number;
 }
 
 /**
@@ -121,10 +121,10 @@ export interface Usage {
  * whatever config format its CLI expects.
  */
 export interface McpServer {
-  command?: string;
   args?: string[];
-  url?: string;
+  command?: string;
   env?: Record<string, string>;
+  url?: string;
 }
 
 /**
@@ -149,27 +149,6 @@ export type McpConfig = Record<string, McpServer>;
 export interface RunOptions {
   /** Directory the agent works in. Defaults to the current process's cwd. */
   cwd?: string;
-  /** Model name in the CLI's own vocabulary (e.g. `"opus"` for claude-code). */
-  model?: string;
-  /** How much autonomy the agent gets. Defaults to `"edit"`. */
-  permission?: PermissionLevel;
-  /** Appended to (not replacing) the CLI's own system prompt. */
-  systemPrompt?: string;
-  /** A session id from a previous run, to continue that conversation. */
-  resume?: string;
-  /**
-   * A plain JSON Schema object describing the shape you want the reply in.
-   * Works on every adapter (guarded by
-   * {@link CapabilityTable.structuredOutput}). With {@link Agent.run}, the
-   * reply is parsed and validated against the schema and the parsed value
-   * lands on {@link RunResult.json}. With {@link Agent.runStream}, the schema
-   * still shapes the prompt, but you get raw text events and no parsing.
-   */
-  schema?: Record<string, unknown>;
-  /** MCP servers to attach for this run. */
-  mcp?: McpConfig;
-  /** Aborting terminates the process; the run throws `code: "Aborted"`. */
-  signal?: AbortSignal;
   /** Extra environment variables, merged over the parent's environment. */
   env?: Record<string, string>;
   /**
@@ -183,6 +162,27 @@ export interface RunOptions {
    * flag you need.
    */
   extraArgs?: string[];
+  /** MCP servers to attach for this run. */
+  mcp?: McpConfig;
+  /** Model name in the CLI's own vocabulary (e.g. `"opus"` for claude-code). */
+  model?: string;
+  /** How much autonomy the agent gets. Defaults to `"edit"`. */
+  permission?: PermissionLevel;
+  /** A session id from a previous run, to continue that conversation. */
+  resume?: string;
+  /**
+   * A plain JSON Schema object describing the shape you want the reply in.
+   * Works on every adapter (guarded by
+   * {@link CapabilityTable.structuredOutput}). With {@link Agent.run}, the
+   * reply is parsed and validated against the schema and the parsed value
+   * lands on {@link RunResult.json}. With {@link Agent.runStream}, the schema
+   * still shapes the prompt, but you get raw text events and no parsing.
+   */
+  schema?: Record<string, unknown>;
+  /** Aborting terminates the process; the run throws `code: "Aborted"`. */
+  signal?: AbortSignal;
+  /** Appended to (not replacing) the CLI's own system prompt. */
+  systemPrompt?: string;
 }
 
 /**
@@ -219,14 +219,12 @@ export type AgentEvent =
  * fields leave out (exact cache accounting, session ids, …).
  */
 export interface RunResult {
-  text: string;
   /**
    * Every normalized event the run produced, in order (the terminal `done` is
    * excluded). The whole list is held in memory, so for very long agentic
    * runs prefer consuming {@link Agent.runStream} as events arrive.
    */
   events: AgentEvent[];
-  usage?: Usage;
   /**
    * The reply parsed as JSON, present only when a {@link RunOptions.schema}
    * was passed to {@link Agent.run}. It has been validated against that schema
@@ -235,6 +233,8 @@ export interface RunResult {
    */
   json?: unknown;
   raw: unknown;
+  text: string;
+  usage?: Usage;
 }
 
 /**
@@ -245,10 +245,10 @@ export interface RunResult {
  * is how prompts reach CLIs that read them from a pipe.
  */
 export interface Invocation {
-  command: string;
   args: string[];
-  env?: Record<string, string>;
+  command: string;
   cwd?: string;
+  env?: Record<string, string>;
   input?: string;
 }
 
@@ -258,20 +258,20 @@ export interface Invocation {
  * underlying stdout stream is read once.
  */
 export interface OutputSource {
-  lines: () => AsyncIterable<string>;
-  text: () => Promise<string>;
-  /**
-   * Resolves with the stderr captured so far — complete only once `exitCode`
-   * has settled.
-   */
-  stderr: () => Promise<string>;
-  exitCode: Promise<number>;
   /**
    * Terminate the underlying process. The core calls this when a consumer
    * abandons a stream early, so a half-read agent isn't left running. A no-op
    * once the process has already exited.
    */
   close?: () => void;
+  exitCode: Promise<number>;
+  lines: () => AsyncIterable<string>;
+  /**
+   * Resolves with the stderr captured so far — complete only once `exitCode`
+   * has settled.
+   */
+  stderr: () => Promise<string>;
+  text: () => Promise<string>;
 }
 
 /**
@@ -282,11 +282,11 @@ export interface OutputSource {
  * spawning processes.
  */
 export interface VersionProbe {
-  which: (bin: string) => Promise<string | undefined>;
   exec: (
     bin: string,
     args: string[]
   ) => Promise<{ stdout: string; stderr: string; code: number }>;
+  which: (bin: string) => Promise<string | undefined>;
 }
 
 /**
@@ -337,9 +337,9 @@ export type AgentId = keyof KnownAgents | (string & Record<never, never>);
  * first one found wins, even if a later one also exists.
  */
 export interface AdapterMeta {
+  bin: string[];
   id: AgentId;
   name: string;
-  bin: string[];
 }
 
 /**
@@ -349,26 +349,26 @@ export interface AdapterMeta {
  */
 export interface DetectResult {
   /**
+   * The adapter that knows how to drive this agent. `create()` uses it; you
+   * won't normally reach for it yourself.
+   */
+  adapter: Adapter;
+  /** What this agent can and can't do, so you can tailor a run to it. */
+  capabilities: CapabilityTable;
+  /**
    * The stable id of the agent tool, e.g. `"claude-code"`. Use this
    * to programmatically identify a specific agent tool.
    */
   id: AgentId;
   /** The human-readable agent tool name, e.g. `"Claude Code"`. */
   name: string;
+  /** The full path to the agent's program on disk. */
+  path: string;
   /**
    * The installed version, e.g. `"2.0.31"`, absent when the agent doesn't
    * report one.
    */
   version?: string;
-  /** The full path to the agent's program on disk. */
-  path: string;
-  /** What this agent can and can't do, so you can tailor a run to it. */
-  capabilities: CapabilityTable;
-  /**
-   * The adapter that knows how to drive this agent. `create()` uses it; you
-   * won't normally reach for it yourself.
-   */
-  adapter: Adapter;
 }
 
 /**
@@ -380,20 +380,20 @@ export interface DetectResult {
  * won't meet this type unless you're writing an adapter.
  */
 export interface Detection {
-  /** Whether the agent's program was found on the user's `PATH`. */
-  installed: boolean;
-  /** The full path to the program on disk, absent when it wasn't found. */
-  path?: string;
-  /** A short, stable id for the agent, e.g. `"claude-code"`. */
-  id: AgentId;
-  /** The agent's display name, e.g. `"Claude Code"`. */
-  name: string;
-  /** The installed version, absent when none was reported. */
-  version?: string;
-  /** What this agent can and can't do. */
-  capabilities: CapabilityTable;
   /** The adapter that knows how to drive this agent. */
   adapter: Adapter;
+  /** What this agent can and can't do. */
+  capabilities: CapabilityTable;
+  /** A short, stable id for the agent, e.g. `"claude-code"`. */
+  id: AgentId;
+  /** Whether the agent's program was found on the user's `PATH`. */
+  installed: boolean;
+  /** The agent's display name, e.g. `"Claude Code"`. */
+  name: string;
+  /** The full path to the program on disk, absent when it wasn't found. */
+  path?: string;
+  /** The installed version, absent when none was reported. */
+  version?: string;
 }
 
 /**
@@ -409,16 +409,16 @@ export interface Detection {
  * implementation.
  */
 export interface Adapter {
-  meta: AdapterMeta;
-  detection: DetectionSpec;
-  capabilities: CapabilityTable;
-  /** Replace default detection entirely; most adapters omit this. */
-  detect?: (probe: VersionProbe) => Promise<Detection>;
   /**
    * Map a prompt plus validated options to the exact process to spawn. Pure:
    * build the {@link Invocation}, never launch it.
    */
   buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
+  capabilities: CapabilityTable;
+  /** Replace default detection entirely; most adapters omit this. */
+  detect?: (probe: VersionProbe) => Promise<Detection>;
+  detection: DetectionSpec;
+  meta: AdapterMeta;
   /**
    * Map the process output to normalized events, ending with exactly one
    * `done`. Under `strict`, throw `AnyAgentError` (`code: "Parse"`) on any
@@ -472,10 +472,10 @@ export interface RawHandle {
 export interface Agent {
   readonly adapter: Adapter;
   readonly capabilities: CapabilityTable;
+  readonly raw: RawHandle;
   run: (prompt: string, opts?: RunOptions) => Promise<RunResult>;
   runStream: (
     prompt: string,
     opts?: RunOptions
   ) => AsyncGenerator<AgentEvent, RunResult>;
-  readonly raw: RawHandle;
 }

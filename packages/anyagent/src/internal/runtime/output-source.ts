@@ -33,7 +33,6 @@ export const outputSourceFromChild = (
     extra?: { raw?: unknown; stderr?: string }
   ) => new AnyAgentError("Invocation", message, { argv, ...extra });
 
-  // oxlint-disable-next-line promise/avoid-new -- child_process lifecycle events need callback interop.
   const exitCode = new Promise<number>((resolve, reject) => {
     child.on("error", (err) =>
       reject(
@@ -66,7 +65,7 @@ export const outputSourceFromChild = (
     });
   });
   // Fire-and-forget guard so an unawaited exitCode never becomes an unhandled rejection.
-  // oxlint-disable-next-line promise/prefer-await-to-then, no-empty-function -- deliberate detached guard.
+  // biome-ignore lint/suspicious/noEmptyBlockStatements: deliberate detached rejection guard.
   exitCode.catch(() => {});
 
   // A stdout read error is almost always a downstream symptom of the process

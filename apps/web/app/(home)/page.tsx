@@ -103,7 +103,7 @@ const Page = () => (
         <h2>Detect the agent, then run your prompt</h2>
         <figure className="hm-codeframe">
           <figcaption className="hm-label">INSTALLER.TS</figcaption>
-          <pre aria-label="Detect the installed agent and run a prompt">
+          <pre>
             <span className="tok-kw">{"import "}</span>
             {"{ create, detect } "}
             <span className="tok-kw">from</span>{" "}

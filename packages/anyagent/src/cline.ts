@@ -31,11 +31,11 @@ const CAPS: CapabilityTable = {
 };
 
 interface Ctx {
-  text: string[];
   raw?: unknown;
+  text: string[];
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any -- the CLI's JSON is dynamically shaped.
+// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
 const mapAgentEvent = (
@@ -55,7 +55,7 @@ const mapAgentEvent = (
     case "usage":
     case "done":
     case "error": {
-      return undefined;
+      return;
     }
     case "content_start": {
       if (ev.contentType === "tool") {
@@ -67,7 +67,7 @@ const mapAgentEvent = (
         };
       }
       if (ev.contentType === "text") {
-        return undefined;
+        return;
       }
       if (strict) {
         throw new AnyAgentError(
@@ -75,7 +75,7 @@ const mapAgentEvent = (
           `unknown content type ${ev.contentType}`
         );
       }
-      return undefined;
+      return;
     }
     case "content_end": {
       if (ev.contentType === "tool") {
@@ -96,13 +96,13 @@ const mapAgentEvent = (
           `unknown content type ${ev.contentType}`
         );
       }
-      return undefined;
+      return;
     }
     default: {
       if (strict) {
         throw new AnyAgentError("Parse", `unknown agent event ${ev.type}`);
       }
-      return undefined;
+      return;
     }
   }
 };
@@ -129,7 +129,7 @@ const innerParse = ndjsonParser<Ctx>({
     const obj = raw as Json;
     switch (obj.type) {
       case "hook_event": {
-        return undefined;
+        return;
       }
       case "agent_event": {
         return mapAgentEvent(obj, ctx, strict);
@@ -160,7 +160,7 @@ const innerParse = ndjsonParser<Ctx>({
         if (strict) {
           throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
         }
-        return undefined;
+        return;
       }
     }
   },
