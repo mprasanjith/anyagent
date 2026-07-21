@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = path.join(import.meta.dir, "..");
 const runCli = (args: string[]) =>
-  spawnSync("bun", ["src/cli/record.ts", ...args], {
+  spawnSync("bun", ["src/internal/record.ts", ...args], {
     cwd: root,
     encoding: "utf-8",
   });

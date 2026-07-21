@@ -6,7 +6,7 @@ import { claudeCode } from "../src/claude-code.js";
 import { cline } from "../src/cline.js";
 import { codex } from "../src/codex.js";
 import { goose } from "../src/goose.js";
-import { runConformance } from "../src/internal/conformance/suite.js";
+import { runConformance } from "../src/conformance.js";
 import { kiloCode } from "../src/kilo-code.js";
 import { opencode } from "../src/opencode.js";
 import { pi } from "../src/pi.js";

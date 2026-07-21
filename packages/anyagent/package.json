@@ -4,7 +4,7 @@
   "description": "Detect and drive the coding-agent CLI a user already has installed.",
   "license": "MIT",
   "bin": {
-    "anyagent-record": "./dist/cli/record.js"
+    "anyagent-record": "./dist/internal/record.js"
   },
   "files": [
     "dist"
@@ -44,8 +44,8 @@
       "import": "./dist/cline.js"
     },
     "./conformance": {
-      "types": "./dist/conformance/index.d.ts",
-      "import": "./dist/conformance/index.js"
+      "types": "./dist/conformance.d.ts",
+      "import": "./dist/conformance.js"
     },
     "./goose": {
       "types": "./dist/goose.d.ts",
