@@ -1,5 +1,5 @@
-import { AnyAgentError } from "../internal/errors.js";
-import { ndjsonParser } from "../internal/ndjson.js";
+import { AnyAgentError } from "../errors.js";
+import { ndjsonParser } from "../ndjson.js";
 import type {
   Adapter,
   AgentEvent,
@@ -7,7 +7,7 @@ import type {
   Invocation,
   RunOptions,
   Usage,
-} from "../internal/types.js";
+} from "../types.js";
 
 const CAPS: CapabilityTable = {
   cwd: "native",

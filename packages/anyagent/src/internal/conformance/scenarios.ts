@@ -1,4 +1,4 @@
-import type { Invocation, OutputSource } from "../types.js";
+import type { Invocation, OutputSource } from "../../types.js";
 
 /**
  * An {@link OutputSource} that replays a recorded stdout body with a clean

@@ -9,7 +9,7 @@ import type {
   DetectResult,
   OutputSource,
   RunResult,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 import {
   fakeBinaryPerms,
   fakeStreaming,

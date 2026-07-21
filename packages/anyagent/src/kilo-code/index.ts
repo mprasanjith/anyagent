@@ -1,5 +1,5 @@
 import { opencodeFamilyAdapter } from "../internal/opencode-family.js";
-import type { Adapter } from "../internal/types.js";
+import type { Adapter } from "../types.js";
 
 /**
  * The adapter for Kilo Code's CLI. Kilo is an opencode fork and exposes the

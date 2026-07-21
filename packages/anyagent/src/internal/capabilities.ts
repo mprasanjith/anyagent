@@ -1,10 +1,10 @@
-import { AnyAgentError } from "./errors.js";
+import { AnyAgentError } from "../errors.js";
 import type {
   Adapter,
   CapabilityTable,
   PermissionLevel,
   RunOptions,
-} from "./types.js";
+} from "../types.js";
 
 const DEFAULT_PERMISSION: PermissionLevel = "edit";
 

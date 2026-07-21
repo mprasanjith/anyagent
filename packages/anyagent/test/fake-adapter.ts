@@ -1,10 +1,10 @@
-import { ndjsonParser } from "../src/internal/ndjson.js";
+import { ndjsonParser } from "../src/ndjson.js";
 import type {
   Adapter,
   CapabilityTable,
   Invocation,
   OutputSource,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 
 const allCaps: CapabilityTable = {
   cwd: "native",

@@ -5,7 +5,7 @@ import type {
   Adapter,
   Invocation,
   OutputSource,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 import { fakeStreaming, sourceFromBody } from "./fake-adapter.js";
 
 // A streaming adapter that emulates structured output, carrying the (possibly

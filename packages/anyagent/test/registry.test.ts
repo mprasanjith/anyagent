@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
 import { detect } from "../src/internal/registry.js";
-import type { VersionProbe } from "../src/internal/types.js";
+import type { VersionProbe } from "../src/types.js";
 import { fakeStreaming, fakeText } from "./fake-adapter.js";
 
 const probe: VersionProbe = {

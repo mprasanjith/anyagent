@@ -5,7 +5,7 @@ import type {
   Adapter,
   CapabilitySupport,
   CapabilityTable,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 
 const adapterWith = (
   systemPrompt: CapabilitySupport,

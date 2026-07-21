@@ -5,7 +5,7 @@ import type {
   CapabilitySupport,
   PermissionLevel,
   RunOptions,
-} from "../types.js";
+} from "../../types.js";
 import { fixedRunner } from "./scenarios.js";
 
 const ALL_LEVELS: PermissionLevel[] = ["read", "edit", "auto"];

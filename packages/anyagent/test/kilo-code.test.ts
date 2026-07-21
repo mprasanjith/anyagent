@@ -6,7 +6,7 @@ import type {
   AgentEvent,
   OutputSource,
   RunResult,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 import { kiloCode } from "../src/kilo-code/index.js";
 import { sourceFromBody } from "./fake-adapter.js";
 

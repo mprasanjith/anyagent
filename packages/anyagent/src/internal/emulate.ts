@@ -1,4 +1,4 @@
-import type { Adapter, RunOptions } from "./types.js";
+import type { Adapter, RunOptions } from "../types.js";
 
 const withSystemPrompt = (prompt: string, systemPrompt: string): string =>
   `<system-instructions>\n${systemPrompt}\n</system-instructions>\n\n${prompt}`;

@@ -3,7 +3,7 @@ import type { ChildProcess } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import path from "node:path";
 
-import type { Invocation, OutputSource, VersionProbe } from "../types.js";
+import type { Invocation, OutputSource, VersionProbe } from "../../types.js";
 import { outputSourceFromChild } from "./output-source.js";
 
 /**

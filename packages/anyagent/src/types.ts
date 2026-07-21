@@ -306,7 +306,7 @@ export interface DetectionSpec {
  * agent by adding to this interface through module augmentation:
  *
  * ```ts
- * declare module "anyagent" {
+ * declare module "anyagent/types" {
  *   interface KnownAgents {
  *     "my-cli": true;
  *   }

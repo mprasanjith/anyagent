@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 
-import { AnyAgentError } from "../errors.js";
-import type { Invocation, OutputSource } from "../types.js";
+import { AnyAgentError } from "../../errors.js";
+import type { Invocation, OutputSource } from "../../types.js";
 
 const STDERR_SNIPPET_LEN = 200;
 

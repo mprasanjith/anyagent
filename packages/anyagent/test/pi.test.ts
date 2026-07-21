@@ -7,7 +7,7 @@ import type {
   AgentEvent,
   OutputSource,
   RunResult,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 import { pi } from "../src/pi/index.js";
 import { sourceFromBody } from "./fake-adapter.js";
 

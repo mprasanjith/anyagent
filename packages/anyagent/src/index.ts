@@ -1,6 +1,6 @@
-export { AnyAgentError, type AnyAgentErrorCode } from "./internal/errors.js";
+export { AnyAgentError, type AnyAgentErrorCode } from "./errors.js";
 export { create } from "./internal/agent.js";
-export { ndjsonParser, type NdjsonSpec } from "./internal/ndjson.js";
+export { ndjsonParser, type NdjsonSpec } from "./ndjson.js";
 export { detect, type DetectOptions } from "./internal/registry.js";
 export type {
   Adapter,
@@ -24,4 +24,4 @@ export type {
   RunResult,
   Usage,
   VersionProbe,
-} from "./internal/types.js";
+} from "./types.js";

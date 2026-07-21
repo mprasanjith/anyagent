@@ -7,7 +7,7 @@ import type {
   Detection,
   RunResult,
   VersionProbe,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 
 const caps: CapabilityTable = {
   cwd: "native",

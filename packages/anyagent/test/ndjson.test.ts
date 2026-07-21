@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 
-import { AnyAgentError } from "../src/internal/errors.js";
-import { ndjsonParser } from "../src/internal/ndjson.js";
-import type { AgentEvent, OutputSource } from "../src/internal/types.js";
+import { AnyAgentError } from "../src/errors.js";
+import { ndjsonParser } from "../src/ndjson.js";
+import type { AgentEvent, OutputSource } from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const sourceFromLines = (lines: string[]): OutputSource =>

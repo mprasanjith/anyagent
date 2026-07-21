@@ -9,7 +9,7 @@ import type {
   OutputSource,
   PermissionLevel,
   RunResult,
-} from "../src/internal/types.js";
+} from "../src/types.js";
 import { sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>

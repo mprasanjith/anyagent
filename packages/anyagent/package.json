@@ -19,6 +19,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./ndjson": {
+      "types": "./dist/ndjson.d.ts",
+      "import": "./dist/ndjson.js"
+    },
     "./claude-code": {
       "types": "./dist/claude-code/index.d.ts",
       "import": "./dist/claude-code/index.js"

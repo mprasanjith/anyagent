@@ -1,5 +1,5 @@
-import { AnyAgentError } from "./errors.js";
-import { ndjsonParser } from "./ndjson.js";
+import { AnyAgentError } from "../errors.js";
+import { ndjsonParser } from "../ndjson.js";
 import type {
   Adapter,
   AdapterMeta,
@@ -8,7 +8,7 @@ import type {
   Invocation,
   RunOptions,
   Usage,
-} from "./types.js";
+} from "../types.js";
 
 /**
  * Shared implementation for opencode and its fork Kilo Code. Both CLIs expose
