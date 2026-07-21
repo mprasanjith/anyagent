@@ -66,6 +66,7 @@
   },
   "scripts": {
     "test": "bun test",
+    "test:live": "ANYAGENT_LIVE=1 bun test --path-ignore-patterns '' live.test",
     "types": "tsc --noEmit",
     "build": "rm -rf dist && tsc -p tsconfig.build.json"
   }
