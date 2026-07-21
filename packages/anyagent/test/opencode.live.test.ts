@@ -22,7 +22,7 @@ live(
     // Real-output check: the parser summed usage from step_finish events.
     expect(typeof res.usage?.outputTokens).toBe("number");
     // The session id must be reachable for resume.
-    expect(typeof (res.raw as { sessionId?: string }).sessionId).toBe("string");
+    expect(typeof res.sessionId).toBe("string");
   },
   120_000
 );
@@ -35,10 +35,7 @@ live(
   "live: real output parses clean under strict mode",
   async () => {
     const adapter = opencode();
-    const inv = adapter.buildInvocation(
-      PROMPT,
-      MODEL ? { model: MODEL, permission: "edit" } : { permission: "edit" }
-    );
+    const inv = adapter.buildInvocation(PROMPT, MODEL ? { model: MODEL } : {});
     const source = spawnAndStream(inv);
     let sawText = false;
     let finalText: string | undefined;

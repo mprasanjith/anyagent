@@ -1,6 +1,6 @@
 # API v2: baseline standard plus gated extensions
 
-Status: proposal. Sources: a 7-harness upstream audit (flags live-verified on claude 2.1.216, codex 0.144.6, opencode 1.18.3, pi 0.80.6; kilo/cline via npx; goose from source and docs), a source-level audit of the AI SDK's experimental harness packages and the three community `ai-sdk-provider-*` packages, and two adversarial review passes whose confirmed findings are folded in below. Open items that still need live verification before implementation are collected in §12.
+Status: M1 implemented on `feat/api-v2` (with §1.5 type-level tiering; `CapabilityTable` shipped under the name `Capabilities`); M2/M3 pending. Sources: a 7-harness upstream audit (flags live-verified on claude 2.1.216, codex 0.144.6, opencode 1.18.3, pi 0.80.6; kilo/cline via npx; goose from source and docs), a source-level audit of the AI SDK's experimental harness packages and the three community `ai-sdk-provider-*` packages, and two adversarial review passes whose confirmed findings are folded in below. Open items that still need live verification before implementation are collected in §12.
 
 ## 1. Product frame
 
@@ -14,7 +14,7 @@ The three layers of §1 must be visible in the type system, not only in docs. Th
 
 1. **Exported split**: `RunOptions = BaselineRunOptions & Partial<ExtensionOptions>`. `BaselineRunOptions` (model, cwd, env, signal, systemPrompt, schema, extraArgs) is the importable baseline contract — portable caller code types against it and the compiler enforces portability. Every `ExtensionOptions` key pairs 1:1 with a capability-table field; rename capability fields to match option names (`reasoningEffort` → `effort`, `sessionFork` → `forkSession`) so types, `GUARDED_OPTIONS`, and the docs matrix all derive from one alignment and cannot drift. `systemPromptMode: "append"` is baseline; the `"replace"` value is what the extension unlocks.
 2. **`agent.supports(...keys)` type guard**: `Agent<C>` from `detect()`/`create()` accepts only baseline options until `supports("effort", "mcp")` narrows `C` — the runtime capability check and the compile-time unlock are the same gesture. Extension usage without the check does not typecheck.
-3. **Literal capability types on factories**: adapter tables declared `as const satisfies CapabilityTable`; `create(goose())` statically rejects `effort` (goose declares it `false`) with no runtime check needed. `detect()` results stay dynamically typed — on an unknown machine, `supports()` is the honest path.
+3. **Literal capability types on factories**: adapter tables declared `as const satisfies Capabilities`; `create(goose())` statically rejects `effort` (goose declares it `false`) with no runtime check needed. `detect()` results stay dynamically typed — on an unknown machine, `supports()` is the honest path.
 
 A nested `extensions: {}` options bag was considered and rejected: grouping without type enforcement adds ceremony, not safety.
 
@@ -54,7 +54,7 @@ export interface AuthStatus { state: AuthState; method?: string; providers?: str
 export type DiscoverySupport = "native" | "probed" | false;
 
 // Adapter:        authStatus?: (probe: SystemProbe) => Promise<AuthStatus>;
-// CapabilityTable: authStatus: DiscoverySupport;
+// Capabilities: authStatus: DiscoverySupport;
 // Agent:           authStatus: () => Promise<AuthStatus>;
 ```
 
@@ -77,7 +77,7 @@ Fallback documented for callers: an unauthenticated run exits 1 with a recogniza
 ```ts
 export interface ModelInfo { id: string; provider?: string; reasoningEfforts?: string[]; raw?: unknown }
 // Adapter:        listModels?: (probe: SystemProbe) => Promise<ModelInfo[]>;
-// CapabilityTable: modelListing: DiscoverySupport;
+// Capabilities: modelListing: DiscoverySupport;
 // Agent:           models: () => Promise<ModelInfo[]>;
 ```
 
@@ -99,7 +99,7 @@ export type ReasoningEffort =
   | (string & Record<never, never>); // autocomplete, open by design
 
 // RunOptions:      effort?: ReasoningEffort;
-// CapabilityTable: reasoningEffort: CapabilitySupport;
+// Capabilities: reasoningEffort: CapabilitySupport;
 //                  reasoningEfforts?: string[];   // present only when the CLI's vocabulary is closed
 ```
 
@@ -166,7 +166,7 @@ The 3-level enum does not survive contact with the data. anyagent's API has no a
 
 ```ts
 // RunOptions:      readOnly?: boolean;          // default false = unattended full access
-// CapabilityTable: readOnly: CapabilitySupport;  // replaces permissionLevels
+// Capabilities: readOnly: CapabilitySupport;  // replaces permissionLevels
 ```
 
 - **Omitted / `false`** — the baseline, deliverable on all 7: unattended, never blocks, the maximum autonomy the CLI offers (claude `--permission-mode bypassPermissions`, codex `--sandbox danger-full-access`, opencode/kilo `--auto`, goose `GOOSE_MODE=auto`, cline `--auto-approve true`, pi as-is). Loud doc callout required: this default is more permissive than v1's `edit`.
@@ -179,14 +179,14 @@ The 3-level enum does not survive contact with the data. anyagent's API has no a
 ```ts
 export interface ToolPolicy { allow?: string[]; deny?: string[] } // native tool names
 // RunOptions:      tools?: ToolPolicy;
-// CapabilityTable: toolPolicy: CapabilitySupport;
+// Capabilities: toolPolicy: CapabilitySupport;
 ```
 
 Names are native (a policy is an instruction to the CLI; translating names could silently fail open or closed). Deny wins. **A policy may only narrow what the run already allows — under `readOnly: true` it may never grant a mutating tool** — and per the review's blocker, that rules out claude-code's `--allowedTools`, whose native semantics are *auto-approval*, not availability. On claude-code, `allow` compiles to `--tools` (availability restriction of the built-in set) and `deny` to `--disallowedTools`; approval-granting rule syntax stays in `extraArgs`. pi maps to `--tools`/`--exclude-tools` (true availability filters). opencode/kilo: the permission matrices only accept category keys (per-tool-name keys silently ignored, live-verified on kilo — a name-keyed policy would fail open), so per-tool-name policy rides the config `tools` availability map instead — live-verified on opencode (`tools: {"write": false, …}` hides the tool from the model entirely; run completes with the honest refusal). Kilo uses the same mechanism via `KILO_CONFIG_CONTENT`; one confirmation run there before flipping (§12). codex, goose, cline: `false`. Conformance adds: a `ToolPolicy` combined with `readOnly: true` never emits an approval-granting or write-enabling flag. Web-search toggles fold into this policy rather than a dedicated option.
 
 ### 8.5 `maxTurns`
 
-`RunOptions.maxTurns` + `CapabilityTable.maxTurns`. Native: claude-code (`--max-turns`, hidden but probe-verified), goose (`--max-turns`), opencode/kilo (agent `steps` via config env). `false`: codex, pi, cline. No emulation — killing a process mid-turn is a different feature. Ships together with `finishReason` (§7.1).
+`RunOptions.maxTurns` + `Capabilities.maxTurns`. Native: claude-code (`--max-turns`, hidden but probe-verified), goose (`--max-turns`), opencode/kilo (agent `steps` via config env). `false`: codex, pi, cline. No emulation — killing a process mid-turn is a different feature. Ships together with `finishReason` (§7.1).
 
 ### 8.6 Attachments
 
@@ -195,14 +195,14 @@ Names are native (a policy is an instruction to the CLI; translating names could
 ### 8.7 Sessions: fork, list
 
 - `RunOptions.forkSession?: boolean` (requires `resume`, else throws — see §10 error code) — native on claude-code `--fork-session`, opencode/kilo `--fork`, pi `--fork`; `false` on codex/goose/cline.
-- `Agent.sessions()` / `Adapter.listSessions?(probe)` / `CapabilityTable.sessionList: DiscoverySupport` — native on opencode/kilo (`session list --format json`), goose (`session list --format json`), cline (`history --json`); `false` on claude-code/codex/pi (reverse-engineering private transcript layouts is upstream's contract to offer, not ours — the same standard §3 applies via `DiscoverySupport`). Deferred to M3; `RunResult.sessionId` already unblocks resume workflows.
+- `Agent.sessions()` / `Adapter.listSessions?(probe)` / `Capabilities.sessionList: DiscoverySupport` — native on opencode/kilo (`session list --format json`), goose (`session list --format json`), cline (`history --json`); `false` on claude-code/codex/pi (reverse-engineering private transcript layouts is upstream's contract to offer, not ours — the same standard §3 applies via `DiscoverySupport`). Deferred to M3; `RunResult.sessionId` already unblocks resume workflows.
 
 ### 8.8 System-prompt mode
 
 ```ts
 // RunOptions:      systemPrompt?: string;
 //                  systemPromptMode?: "append" | "replace";  // default "append"
-// CapabilityTable: systemPrompt: CapabilitySupport;          // append tier (core service)
+// Capabilities: systemPrompt: CapabilitySupport;          // append tier (core service)
 //                  systemPromptReplace: CapabilitySupport;   // "native" | false — never emulated
 ```
 
@@ -214,7 +214,7 @@ The draft claimed a `hermetic: boolean` native on all 7. The fact-check broke it
 
 ## 9. Factory options
 
-Adapter factories gain optional typed settings for harness-idiosyncratic knobs. The rule: concepts shared by ≥2 harnesses go to `RunOptions` + `CapabilityTable` (effort is the proof case — a run option here, unlike the AI SDK's `createCodex({reasoningEffort})`); factory options shape the adapter, never one run, and never duplicate `RunOptions` fields. Initial: `claudeCode({ settingsFile?, addDirs? })`, `codex({ profile?, configOverrides? })`, `goose({ provider? })`. Zero-arg calls keep working.
+Adapter factories gain optional typed settings for harness-idiosyncratic knobs. The rule: concepts shared by ≥2 harnesses go to `RunOptions` + `Capabilities` (effort is the proof case — a run option here, unlike the AI SDK's `createCodex({reasoningEffort})`); factory options shape the adapter, never one run, and never duplicate `RunOptions` fields. Initial: `claudeCode({ settingsFile?, addDirs? })`, `codex({ profile?, configOverrides? })`, `goose({ provider? })`. Zero-arg calls keep working.
 
 ## 10. Cross-cutting corrections
 

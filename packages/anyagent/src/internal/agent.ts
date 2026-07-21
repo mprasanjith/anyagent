@@ -4,15 +4,26 @@ import type {
   Adapter,
   Agent,
   AgentEvent,
+  AuthStatus,
+  Capabilities,
+  ExtensionKey,
   Invocation,
+  ModelInfo,
   OutputSource,
   RawHandle,
   RunOptions,
   RunResult,
+  SupportedCapabilities,
+  SystemProbe,
 } from "../types.js";
-import { resolvePermission, validateOptions } from "./capabilities.js";
+import { EXTENSION_CAPABILITY } from "../types.js";
+import { validateOptions } from "./capabilities.js";
 import { applyEmulations } from "./emulate.js";
-import { spawnAndStream, spawnChild } from "./runtime/spawn.js";
+import {
+  realSystemProbe,
+  spawnAndStream,
+  spawnChild,
+} from "./runtime/spawn.js";
 import { extractJson, validateAgainstSchema } from "./structured.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
@@ -40,12 +51,15 @@ const correctionPrompt = (
     .join("\n")}\n\nReply again with only a corrected JSON value.`;
 
 // The concrete {@link Agent}: validates options against the adapter's
-// capability table, spawns via the injected runner (real process spawn by
-// default; tests inject fixture-backed runners), and delegates output
-// parsing to the adapter.
-export class AgentImpl implements Agent {
-  readonly adapter: Adapter;
+// capabilities, spawns via the injected runner (real process spawn by
+// default; tests inject fixture-backed runners), answers discovery through
+// the injected probe, and delegates output parsing to the adapter.
+export class AgentImpl<C extends Capabilities = Capabilities>
+  implements Agent<C>
+{
+  readonly adapter: Adapter<C>;
   private readonly runner: Runner;
+  private readonly probe: SystemProbe;
   readonly raw: RawHandle = {
     buildInvocation: (prompt: string, opts: RunOptions = {}) =>
       this.build(prompt, opts),
@@ -53,20 +67,54 @@ export class AgentImpl implements Agent {
       spawnChild(this.build(prompt, opts), opts.signal),
   };
 
-  constructor(adapter: Adapter, runner: Runner = spawnAndStream) {
+  constructor(
+    adapter: Adapter<C>,
+    runner: Runner = spawnAndStream,
+    probe: SystemProbe = realSystemProbe
+  ) {
     this.adapter = adapter;
     this.runner = runner;
+    this.probe = probe;
   }
 
-  get capabilities() {
+  get capabilities(): C {
     return this.adapter.capabilities;
   }
 
+  supports<K extends ExtensionKey[]>(
+    ...keys: K
+  ): this is AgentImpl<C & SupportedCapabilities<K[number]>> {
+    return keys.every((key) =>
+      Boolean(this.adapter.capabilities[EXTENSION_CAPABILITY[key]])
+    );
+  }
+
+  async authStatus(): Promise<AuthStatus> {
+    const impl = this.adapter.authStatus;
+    if (!(this.adapter.capabilities.authStatus && impl)) {
+      throw new AnyAgentError(
+        "UnsupportedCapability",
+        `${this.adapter.meta.id} does not report auth status`
+      );
+    }
+    return await impl(this.probe);
+  }
+
+  async models(): Promise<ModelInfo[]> {
+    const impl = this.adapter.listModels;
+    if (!(this.adapter.capabilities.modelListing && impl)) {
+      throw new AnyAgentError(
+        "UnsupportedCapability",
+        `${this.adapter.meta.id} does not list models`
+      );
+    }
+    return await impl(this.probe);
+  }
+
   private build(prompt: string, opts: RunOptions): Invocation {
-    const resolved = { ...opts, permission: resolvePermission(opts) };
-    const invocation = this.adapter.buildInvocation(prompt, resolved);
-    return resolved.extraArgs?.length
-      ? { ...invocation, args: [...invocation.args, ...resolved.extraArgs] }
+    const invocation = this.adapter.buildInvocation(prompt, opts);
+    return opts.extraArgs?.length
+      ? { ...invocation, args: [...invocation.args, ...opts.extraArgs] }
       : invocation;
   }
 

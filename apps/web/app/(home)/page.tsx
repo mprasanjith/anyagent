@@ -186,9 +186,7 @@ const Page = () => (
           <Kw>await</Kw>
           {" create(agent).run(\n  "}
           <Str>"wire our SDK into this project"</Str>
-          {",\n  { permission: "}
-          <Str>"edit"</Str>
-          {" },\n);"}
+          {"\n);"}
         </pre>
       </figure>
       <Body>
@@ -248,19 +246,20 @@ const Page = () => (
     </Section>
 
     <Section>
-      <SectionTitle>Safe by default</SectionTitle>
+      <SectionTitle>Unattended by design</SectionTitle>
       <Body>
-        Your tool is driving someone else’s install, so every run sets an
-        explicit permission ceiling. AnyAgent itself adds zero runtime
-        dependencies to your tool.
+        Headless runs cannot answer approval prompts, so every run is
+        unattended, and <code>readOnly: true</code> guarantees an analysis run
+        changes nothing. AnyAgent itself adds zero runtime dependencies to your
+        tool.
       </Body>
       <SafetyPresets />
       <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
         <Link
           className={buttonVariants({ variant: "link" })}
-          href="/docs/run-agents#set-a-permission-level"
+          href="/docs/run-agents#keep-a-run-read-only"
         >
-          How permissions work →
+          How read-only runs work →
         </Link>
       </p>
     </Section>

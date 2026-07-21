@@ -3,17 +3,20 @@ import { expect, test } from "bun:test";
 import { defaultDetect, runDetect } from "../src/internal/detect.js";
 import type {
   Adapter,
-  CapabilityTable,
+  Capabilities,
   Detection,
   RunResult,
   VersionProbe,
 } from "../src/types.js";
 
-const caps: CapabilityTable = {
+const caps: Capabilities = {
+  authStatus: false,
   cwd: "native",
+  effort: false,
   mcp: false,
+  modelListing: false,
   modelSelection: "native",
-  permissionLevels: ["edit"],
+  readOnly: false,
   sessionResume: false,
   streaming: "native",
   structuredOutput: false,

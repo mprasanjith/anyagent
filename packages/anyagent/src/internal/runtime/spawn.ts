@@ -1,9 +1,15 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
-import { access, constants } from "node:fs/promises";
+import { access, constants, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
-import type { Invocation, OutputSource, VersionProbe } from "../../types.js";
+import type {
+  Invocation,
+  OutputSource,
+  SystemProbe,
+  VersionProbe,
+} from "../../types.js";
 import { outputSourceFromChild } from "./output-source.js";
 
 // Launch an invocation's process: merge its env over the parent's, and close
@@ -88,4 +94,20 @@ export const realProbe: VersionProbe = {
       child.on("close", (code) => done(code ?? -1));
     }),
   which: resolveOnPath,
+};
+
+// The production {@link SystemProbe}: the real environment, home directory,
+// and filesystem behind discovery. Tests pass a fake via
+// `create(source, { probe })` instead of this.
+export const realSystemProbe: SystemProbe = {
+  ...realProbe,
+  env: process.env,
+  homedir,
+  readFile: async (file) => {
+    try {
+      return await readFile(file, "utf8");
+    } catch {
+      // Missing and unreadable both mean "no answer here": resolve undefined.
+    }
+  },
 };

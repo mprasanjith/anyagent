@@ -66,7 +66,7 @@ if (existsSync(target)) {
 }
 await mkdir(target, { recursive: true });
 await cp("./skills/acme-setup", target, { recursive: true });
-// Keep staged files out of the diff so an `auto` run cannot commit them.
+// Keep staged files out of the diff so the unattended run cannot commit them.
 await appendFile(join(repo, ".git/info/exclude"), `\n${skillsDir}/\n`);
 
 try {
@@ -80,7 +80,7 @@ try {
 }
 ```
 
-Two hygiene rules keep this safe. Create then delete only the directory you staged, and bail when it already exists, so you never remove a skill the user installed. Add the staged path to `.git/info/exclude`, so a run with `permission: "auto"` cannot commit your temporary files into the user’s history. The `finally` removes the skill whether the run succeeds or throws.
+Two hygiene rules keep this safe. Create then delete only the directory you staged, and bail when it already exists, so you never remove a skill the user installed. Add the staged path to `.git/info/exclude`, so the unattended run cannot commit your temporary files into the user’s history. The `finally` removes the skill whether the run succeeds or throws.
 
 ## Fall back to the system prompt when skills are unsupported
 
@@ -100,6 +100,6 @@ Branch on `found.id` to stage a skill when the agent supports one and fall back 
 
 ## Next steps
 
-- [Run agents](/docs/run-agents): `cwd`, `systemPrompt`, permission levels, and the other run options
+- [Run agents](/docs/run-agents): `cwd`, `systemPrompt`, read-only runs, and the other run options
 - [Escape hatches](/docs/escape-hatches): pass Pi’s `--skill` flag through `extraArgs`
 - [Supported agents](/docs/adapters): what each CLI declares, side by side

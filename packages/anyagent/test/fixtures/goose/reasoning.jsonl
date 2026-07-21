@@ -1,0 +1,4 @@
+{"type":"message","message":{"id":"gen-1783300001-Rz2kThinkA1","role":"assistant","created":1783300001,"content":[{"type":"thinking","thinking":"The user wants exactly the word pong.","signature":"EqQBCkgIBBABGAIiQO"}],"metadata":{"userVisible":true,"agentVisible":true}}}
+{"type":"message","message":{"id":"gen-1783300001-Rz2kThinkA1","role":"assistant","created":1783300002,"content":[{"type":"redactedThinking","data":"EroBCkYIBBACGAI="}],"metadata":{"userVisible":true,"agentVisible":true}}}
+{"type":"message","message":{"id":"gen-1783300001-Rz2kThinkA1","role":"assistant","created":1783300002,"content":[{"type":"text","text":"pong"}],"metadata":{"userVisible":true,"agentVisible":true}}}
+{"type":"complete","total_tokens":3210,"input_tokens":3150,"output_tokens":60}

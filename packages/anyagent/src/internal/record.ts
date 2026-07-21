@@ -18,8 +18,10 @@ const main = async (): Promise<void> => {
     process.stderr.write(`unknown adapter: ${id}\n`);
     process.exit(2);
   }
+  // Recording confines the run where the CLI can honor it; adapters without
+  // a read-only mapping record at their default autonomy.
   const inv = adapter.buildInvocation(promptParts.join(" "), {
-    permission: "read",
+    readOnly: true,
   });
   const source = spawnAndStream(inv);
   let body = "";

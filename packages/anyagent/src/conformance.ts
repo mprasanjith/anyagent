@@ -5,7 +5,6 @@ import type {
   CapabilitySupport,
   Invocation,
   OutputSource,
-  PermissionLevel,
   RunOptions,
 } from "./types.js";
 
@@ -33,8 +32,6 @@ export const fixedRunner =
   (body: string) =>
   (_inv: Invocation): OutputSource =>
     sourceFromBody(body);
-
-const ALL_LEVELS: PermissionLevel[] = ["read", "edit", "auto"];
 
 const assert = (cond: boolean, msg: string): void => {
   if (!cond) {
@@ -86,6 +83,17 @@ const checkStreamInvariants = async (
     !result?.events.some((e) => e.type === "done"),
     `[${name}] result.events must not include the done event`
   );
+
+  const sessions = events.filter((e) => e.type === "session");
+  assert(
+    sessions.length <= 1,
+    `[${name}] at most one session event per stream`
+  );
+  const sessionId = sessions[0]?.type === "session" && sessions[0].sessionId;
+  assert(
+    sessions.length === 0 || result?.sessionId === sessionId,
+    `[${name}] result.sessionId must match the session event`
+  );
 };
 
 const throwsUnsupported = async (
@@ -103,18 +111,19 @@ const throwsUnsupported = async (
  * The executable half of the adapter contract. Feed it your adapter and its
  * recorded stdout fixtures, and it asserts the invariants every adapter must
  * uphold: exactly one terminal `done` event per stream, `result.text` equal
- * to the concatenated text-deltas, a valid invocation for every declared
- * permission level, and an `UnsupportedCapability` throw for every capability
- * left undeclared. Add a `runConformance` test before shipping a new adapter;
- * it is what keeps the adapters uniform.
+ * to the concatenated text-deltas, a `sessionId` consistent with the
+ * `session` event, a valid invocation for whatever the capabilities
+ * declare, and an `UnsupportedCapability` throw for everything it does not.
+ * Add a `runConformance` test before shipping a new adapter; it is what
+ * keeps the adapters uniform.
  */
 export const runConformance = async (
   adapter: Adapter,
   opts: ConformanceOptions
 ): Promise<void> => {
   const caps = adapter.capabilities;
-  const runWith = (runOpts: RunOptions) => () =>
-    new AgentImpl(adapter, fixedRunner("")).run("x", runOpts);
+  const agentOf = () => new AgentImpl(adapter, fixedRunner(""));
+  const runWith = (runOpts: RunOptions) => () => agentOf().run("x", runOpts);
 
   await Promise.all(
     Object.entries(opts.fixtures).map(([name, body]) =>
@@ -122,42 +131,74 @@ export const runConformance = async (
     )
   );
 
-  for (const level of caps.permissionLevels) {
-    const inv = adapter.buildInvocation("x", { permission: level });
+  if (caps.readOnly) {
+    const inv = adapter.buildInvocation("x", { readOnly: true });
     assert(
       inv.command.length > 0 && Array.isArray(inv.args),
-      `permission "${level}" must build a valid invocation`
+      "readOnly must build a valid invocation"
+    );
+  } else {
+    assert(
+      await throwsUnsupported(runWith({ readOnly: true })),
+      "readOnly on an adapter that declares it false must throw UnsupportedCapability"
     );
   }
 
-  const undeclared = ALL_LEVELS.filter(
-    (l) => !caps.permissionLevels.includes(l)
-  );
-  await Promise.all(
-    undeclared.map(async (level) => {
-      assert(
-        await throwsUnsupported(runWith({ permission: level })),
-        `undeclared permission "${level}" must throw UnsupportedCapability`
-      );
-    })
-  );
-
-  const probes: [CapabilitySupport, () => Promise<unknown>][] = [
-    [caps.modelSelection, runWith({ model: "m" })],
-    [caps.sessionResume, runWith({ resume: "s" })],
-    [caps.systemPrompt, runWith({ systemPrompt: "s" })],
-    [caps.mcp, runWith({ mcp: {} })],
-    [caps.cwd, runWith({ cwd: "/tmp" })],
+  const gated: [CapabilitySupport, () => Promise<unknown>, string][] = [
+    [caps.modelSelection, runWith({ model: "m" }), "model"],
+    [caps.sessionResume, runWith({ resume: "s" }), "resume"],
+    [caps.systemPrompt, runWith({ systemPrompt: "s" }), "systemPrompt"],
+    [caps.mcp, runWith({ mcp: {} }), "mcp"],
+    [caps.cwd, runWith({ cwd: "/tmp" }), "cwd"],
+    [caps.structuredOutput, runWith({ schema: {} }), "schema"],
+    [caps.effort, runWith({ effort: "high" }), "effort"],
   ];
   await Promise.all(
-    probes.map(async ([supported, call]) => {
+    gated.map(async ([supported, call, label]) => {
       if (supported) {
         return;
       }
       assert(
         await throwsUnsupported(call),
-        "requesting an undeclared capability must throw UnsupportedCapability"
+        `requesting undeclared "${label}" must throw UnsupportedCapability`
       );
     })
   );
+
+  if (caps.reasoningEfforts) {
+    assert(
+      Boolean(caps.effort),
+      "reasoningEfforts implies the effort capability"
+    );
+    assert(
+      caps.reasoningEfforts.length > 0,
+      "a closed effort vocabulary must not be empty"
+    );
+    assert(
+      await throwsUnsupported(runWith({ effort: "not-a-real-effort-level" })),
+      "an effort outside the closed vocabulary must throw UnsupportedCapability"
+    );
+  }
+
+  assert(
+    !caps.authStatus || typeof adapter.authStatus === "function",
+    "a declared authStatus capability needs an authStatus implementation"
+  );
+  if (!caps.authStatus) {
+    assert(
+      await throwsUnsupported(() => agentOf().authStatus()),
+      "authStatus() on a false capability must throw UnsupportedCapability"
+    );
+  }
+
+  assert(
+    !caps.modelListing || typeof adapter.listModels === "function",
+    "a declared modelListing capability needs a listModels implementation"
+  );
+  if (!caps.modelListing) {
+    assert(
+      await throwsUnsupported(() => agentOf().models()),
+      "models() on a false capability must throw UnsupportedCapability"
+    );
+  }
 };

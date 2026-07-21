@@ -13,20 +13,22 @@ You need three things in place:
 
 - A clone of the AnyAgent repo with `bun install` run at the root
 - The target CLI installed and signed in, so you can record real output
-- The CLI’s headless documentation: its non-interactive invocation, streaming format, and permission flags
+- The CLI’s headless documentation: its non-interactive invocation, streaming format, and autonomy or sandbox flags
 
 Per-CLI facts collected during audits live in the harness audit at `docs/specs/harness-audit.md` in the repo. Verify your CLI’s row there, or write it, before you write code.
 
 ## Implement the contract
 
-Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. The interface has five required members plus an optional `detect`:
+Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. The interface has five required members plus three optional ones:
 
 ```ts
-export interface Adapter {
+export interface Adapter<C extends Capabilities = Capabilities> {
   meta: AdapterMeta; // id, display name, binary names on PATH
   detection: DetectionSpec; // version command and regex; omit for defaults
-  capabilities: CapabilityTable; // which RunOptions this CLI honors
+  capabilities: C; // which RunOptions this CLI honors
   detect?: (probe: VersionProbe) => Promise<Detection>;
+  authStatus?: (probe: SystemProbe) => Promise<AuthStatus>;
+  listModels?: (probe: SystemProbe) => Promise<ModelInfo[]>;
   buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
   parse: (
     source: OutputSource,
@@ -35,7 +37,7 @@ export interface Adapter {
 }
 ```
 
-`meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run. `detect` replaces default detection entirely; omit it unless the CLI needs one. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
+`meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run; declare it `as const satisfies Capabilities` so the literal types reach your consumers and an unsupported option fails to compile. `detect` replaces default detection entirely; omit it unless the CLI needs one. `authStatus` and `listModels` answer the discovery questions from the [`SystemProbe`](/docs/api#systemprobe), reading files and env or running a credential-status subcommand, never anything that costs a model call; each is required exactly when the matching capability is declared. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
 
 Read `packages/anyagent/src/claude-code.ts` alongside this page. It is the reference implementation, and a new adapter should mirror its shape.
 
@@ -100,7 +102,7 @@ export const BUILTINS: Adapter[] = [claudeCode(), codex(), hopper()];
 
 ## Record real fixtures
 
-Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/hopper/`. The recorder builds the adapter’s own read-only invocation, runs it, and writes the raw output lines to the right path. Record from `packages/anyagent/`:
+Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/hopper/`. The recorder builds the adapter’s read-only invocation where the CLI can honor one (adapters without a read-only mapping record at their default autonomy), runs it, and writes the raw output lines to the right path. Record from `packages/anyagent/`:
 
 ```bash
 bun src/internal/record.ts hopper simple "Reply with exactly the word: pong"
@@ -114,7 +116,7 @@ Record at least a `simple` scenario. Add `tools` and `edit` scenarios when the C
 
 ## Run the conformance suite
 
-`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one terminal `done`, delta text that concatenates to `RunResult.text`, a valid invocation for every declared permission level, and an `UnsupportedCapability` throw for every capability left undeclared. Add a test to `packages/anyagent/test/conformance.test.ts`:
+`runConformance` replays your fixtures through the full agent pipeline and asserts the invariants every adapter must hold: exactly one terminal `done`, delta text that concatenates to `RunResult.text`, a `sessionId` consistent with the `session` event, a valid invocation for whatever the capabilities declare, and an `UnsupportedCapability` throw for everything they do not, `authStatus()` and `models()` included. Add a test to `packages/anyagent/test/conformance.test.ts`:
 
 ```ts
 import { test } from "bun:test";

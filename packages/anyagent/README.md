@@ -23,10 +23,7 @@ if (!first) {
 
 const agent = create(first);
 const result = await agent.run(
-  "Summarize this repository for a new contributor.",
-  {
-    permission: "read",
-  }
+  "Summarize this repository for a new contributor."
 );
 
 console.log(result.text);
@@ -34,7 +31,9 @@ console.log(result.text);
 
 `detect()` scans `PATH` for every supported agent, and `create()` wraps one in a runnable handle. Use `agent.runStream()` instead of `run()` to render normalized events as the agent works.
 
-Capabilities differ per agent: check `agent.capabilities` before asking for an option. Each field is `"native"`, `"emulated"`, or `false`. An emulated capability, such as a system prompt or structured output on a CLI whose flags lack it, is supplied by AnyAgent’s core so it works the same on every agent; pass a JSON Schema as `schema` to `run()` and read the parsed reply from `result.json`. An unsupported request throws `AnyAgentError` (`code: "UnsupportedCapability"`) before anything spawns.
+A run is unattended, at the full autonomy the CLI offers. The one restriction is `readOnly: true`, which guarantees nothing on the machine changes; `agent.supports("readOnly")` both checks it at runtime and unlocks the option in the types. Agents that cannot guarantee it throw instead of pretending.
+
+Capabilities differ per agent: check `agent.capabilities` before asking for an option. Most fields are `"native"`, `"emulated"`, or `false`. An emulated capability, such as a system prompt or structured output on a CLI whose flags lack it, is supplied by AnyAgent’s core so it works the same on every agent; pass a JSON Schema as `schema` to `run()` and read the parsed reply from `result.json`. `agent.authStatus()` and `agent.models()` answer whether the CLI is signed in and which models it accepts, without a paid call. An unsupported request throws `AnyAgentError` (`code: "UnsupportedCapability"`) before anything spawns.
 
 ## Documentation
 

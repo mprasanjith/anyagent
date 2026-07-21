@@ -3,7 +3,7 @@ title: Get structured output
 description: Pass a JSON Schema to a run, read the parsed value from RunResult.json, and handle the validation and retry path.
 ---
 
-Pass a JSON Schema to `agent.run()` and AnyAgent returns the agent’s reply parsed and validated against it, on `RunResult.json`. This page shows how to describe the shape you want, read the parsed value, and handle a reply that never matches. It works identically on every supported agent: the capability is [emulated](/docs/how-it-works) everywhere today, with the core appending your schema to the prompt and extracting a JSON value from the reply, whether it comes back bare, fenced, or embedded in prose.
+Pass a JSON Schema to `agent.run()` and AnyAgent returns the agent’s reply parsed and validated against it, on `RunResult.json`. This page shows how to describe the shape you want, read the parsed value, and handle a reply that never matches. The contract is identical on every supported agent: a validated value on `result.json`, with one retry. On Claude Code the capability is native (the schema travels on the CLI’s own flag); everywhere else it is [emulated](/docs/how-it-works), with the core appending your schema to the prompt and extracting a JSON value from the reply, whether it comes back bare, fenced, or embedded in prose.
 
 ## Describe the shape with a JSON Schema
 
@@ -36,7 +36,7 @@ const agent = create(found);
 const result = await agent.run(
   "Inspect this repo and report its runtime dependencies and the command " +
     "that runs its tests.",
-  { schema, permission: "read" }
+  { schema }
 );
 
 const { dependencies, testCommand } = result.json as {
@@ -60,8 +60,10 @@ When the first reply fails to parse or validate, the core retries once. It re-as
 
 <Callout type="warn">
   The retry is a second full agent run. On an agent that edits files, a run
-  whose first reply fails validation acts on your repo twice. Prefer
-  `permission: "read"` for extraction tasks so a retry stays side-effect free.
+  whose first reply fails validation acts on your repo twice. For extraction
+  tasks, pair `schema` with a [read-only
+  run](/docs/run-agents#keep-a-run-read-only) where the agent supports one, so
+  a retry stays side-effect free.
 </Callout>
 
 When the retry also fails, `run()` throws `AnyAgentError` with `code: "Parse"`. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. Each error carries a JSON path, so `$.user.name: expected string, got number` tells you which field came back wrong:
@@ -79,7 +81,6 @@ const agent = create(found);
 try {
   const result = await agent.run("Report this repo's dependencies.", {
     schema,
-    permission: "read",
   });
   console.log(result.json);
 } catch (err) {
@@ -98,7 +99,7 @@ try {
 
 ## Guard structured output on unknown agents
 
-`capabilities.structuredOutput` guards the schema option. Every built-in adapter declares it `"emulated"` today, so a schema works on all of them; a future `"native"` mapping would change how the reply is produced, not how you ask for it. When you drive a custom adapter that might not declare it, check first:
+`capabilities.structuredOutput` guards the schema option. Every built-in adapter declares it, native on Claude Code and `"emulated"` on the rest, so a schema works on all of them; the tier changes how the reply is produced, never how you ask for it. Codex is emulated on purpose: its native `--output-schema` accepts a restricted schema dialect, so whether a native run worked would depend on your schema. When you drive a custom adapter that might not declare the capability, check first:
 
 ```ts
 const opts = agent.capabilities.structuredOutput ? { schema } : {};

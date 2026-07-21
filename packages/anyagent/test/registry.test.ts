@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 
 import { detect } from "../src/index.js";
-import type { VersionProbe } from "../src/types.js";
+import { BUILTINS } from "../src/internal/builtins.js";
+import type { Capabilities, VersionProbe } from "../src/types.js";
 import { fakeStreaming, fakeText } from "./fake-adapter.js";
 
 const probe: VersionProbe = {
@@ -23,4 +24,57 @@ test("detect returns empty when none installed", async () => {
     which: () => Promise.resolve(undefined),
   };
   expect(await detect({ adapters: [fakeStreaming], probe: none })).toEqual([]);
+});
+
+const ALL = [
+  "claude-code",
+  "codex",
+  "opencode",
+  "kilo-code",
+  "pi",
+  "goose",
+  "cline",
+] as const;
+
+const byId = new Map(BUILTINS.map((a) => [a.meta.id, a]));
+const capsOf = (id: string): Capabilities | undefined =>
+  byId.get(id)?.capabilities;
+
+test("the registry ships all seven builtin adapters", () => {
+  expect([...byId.keys()].sort()).toEqual([...ALL].sort());
+});
+
+const DISCOVERY: readonly unknown[] = ["native", "probed", false];
+const SUPPORT: readonly unknown[] = ["native", "emulated", false];
+
+for (const id of ALL) {
+  test(`${id} declares every v2 capability field with a legal value`, () => {
+    const caps = capsOf(id);
+    expect(DISCOVERY).toContain(caps?.authStatus);
+    expect(DISCOVERY).toContain(caps?.modelListing);
+    expect(SUPPORT).toContain(caps?.effort);
+    expect(SUPPORT).toContain(caps?.readOnly);
+  });
+}
+
+test("authStatus is declared available on every builtin", () => {
+  for (const id of ALL) {
+    expect(Boolean(capsOf(id)?.authStatus)).toBe(true);
+  }
+});
+
+test("readOnly is truthy exactly where a no-writes run is guaranteed", () => {
+  for (const id of ["claude-code", "codex", "opencode", "kilo-code", "pi"]) {
+    expect(Boolean(capsOf(id)?.readOnly)).toBe(true);
+  }
+  for (const id of ["goose", "cline"]) {
+    expect(capsOf(id)?.readOnly).toBe(false);
+  }
+});
+
+test("modelListing is native exactly on codex, opencode, kilo-code, and pi", () => {
+  const native = new Set(["codex", "opencode", "kilo-code", "pi"]);
+  for (const id of ALL) {
+    expect(capsOf(id)?.modelListing === "native").toBe(native.has(id));
+  }
 });

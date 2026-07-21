@@ -1,49 +1,53 @@
 ---
 title: How AnyAgent works
-description: "The mental model behind AnyAgent: one surface across agents, capability tables, one process per prompt, and native payloads kept on raw."
+description: "The mental model behind AnyAgent: a baseline that works everywhere, capability-gated extensions, unattended runs, one process per prompt, and native payloads kept on raw."
 ---
 
-AnyAgent runs a prompt by launching the coding-agent CLI installed on the machine and translating its output into normalized events. This page builds that mental model in five ideas: one surface across every agent, capability tables, detection that observes rather than chooses, one process per prompt, and a `raw` field that keeps every native detail reachable. Understand these and the rest of the API follows.
+AnyAgent runs a prompt by launching the coding-agent CLI installed on the machine and translating its output into normalized events. This page builds that mental model in six ideas: a baseline surface that works on every agent, extensions gated by capabilities, unattended runs, detection that observes rather than chooses, one process per prompt, and a `raw` field that keeps every native detail reachable. Understand these and the rest of the API follows.
 
-## One surface across every agent
+## A baseline that works on every agent
 
-The unified surface models the feature subset coding-agent CLIs have in common: a prompt goes in, a permission level bounds what the agent may touch, events stream out, and a final answer comes back. That shared subset is the whole surface. It never widens to fit one CLI.
+The baseline surface models what every supported CLI provides: a prompt goes in, events stream out, and a final answer comes back, in a directory you choose, on a model you name, cancellable, with token usage on success. That is [`BaselineRunOptions`](/docs/api#baselinerunoptions), and code typed against it runs on every supported agent unchanged; the compiler enforces the portability.
 
-This has a direct consequence for your code. Anything written against the surface runs on every supported agent unchanged. When you ask for something a CLI cannot do, the call throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
+Two baseline members deserve a note, because AnyAgent’s core supplies them where a CLI’s flags do not. `schema` produces a validated JSON reply on all agents, and `systemPrompt` reaches all agents; the next section explains how the native-versus-emulated split works.
 
-Each CLI still has native capabilities outside the surface, such as bidirectional sessions or finer permission flags. Those stay reachable through [escape hatches](/docs/escape-hatches) instead of widening the surface. Where a common feature is missing from one CLI’s flags, AnyAgent’s core can supply it uniformly rather than dropping it, which the next section calls emulation.
+Each CLI still has native capabilities outside the surface, such as bidirectional sessions or finer sandbox flags. Those stay reachable through [escape hatches](/docs/escape-hatches) instead of widening the surface.
 
-## Capability tables describe each agent
+## Capabilities gate the extensions
 
-A `CapabilityTable` is the machine-readable answer to “what does this agent support”. Read it from `agent.capabilities` or any `DetectResult`, then adapt what you ask for:
+Beyond the baseline sit the extensions: `readOnly`, `effort`, `mcp`, and `resume` exist only on some agents. Each is gated by the agent’s [`Capabilities`](/docs/api#capabilities), the machine-readable answer to “what does this agent support”. Requesting an extension an agent does not declare throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
+
+The gate lives in the types too. An agent created from an adapter factory, `create(claudeCode())`, carries that adapter’s literal capabilities, so an unsupported option is a compile error. An agent from `detect()` could be anything, so only the baseline is typed until you ask:
 
 ```ts
-const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
-const result = await agent.run(prompt, opts);
+if (agent.supports("readOnly", "effort")) {
+  await agent.run(prompt, { effort: "high", readOnly: true });
+}
 ```
 
-This code sets `model` only when the agent supports choosing one, so the same call works across agents. Most fields guard the matching `RunOptions` field: requesting an option the table does not declare throws `UnsupportedCapability` before anything spawns. `streaming` is the one informational field, describing whether output arrives progressively rather than guarding an option, so `runStream` works either way. The table each CLI declares is on its [adapter page](/docs/adapters).
+`supports()` is one gesture that is both the runtime check and the compile-time unlock: inside the `true` branch, those options typecheck.
 
-Every guarding field is one of three values, which the reference calls [`CapabilitySupport`](/docs/api#capabilitysupport):
+Every gating field is one of three values, which the reference calls [`CapabilitySupport`](/docs/api#capabilitysupport):
 
 - `"native"`: the CLI has its own flag, and the adapter maps your request onto it.
 - `"emulated"`: the CLI has no such flag, so the core provides the behavior itself, identically on every agent that declares it. A system prompt folded into the prompt text on a CLI without an append-system flag is emulated; on Claude Code the same request is native.
 - `false`: unavailable, and requesting it throws `UnsupportedCapability`.
 
-Both `"native"` and `"emulated"` are truthy, so `capabilities.systemPrompt` reads the same way regardless of how the feature is provided:
+Both `"native"` and `"emulated"` are truthy, so `capabilities.systemPrompt` reads the same way regardless of how the feature is provided. You ask for an emulated capability exactly as you ask for a native one. The tier is still observable where it matters: an emulated system prompt travels as a prompt preamble, and its adherence is observably weaker than a native system-role append. The docs say so wherever it applies rather than papering over it.
 
-```ts
-const opts = agent.capabilities.systemPrompt
-  ? { systemPrompt: "Follow the conventions in docs/conventions.md." }
-  : {};
-await agent.run(prompt, opts);
-```
+Two capability fields answer discovery questions instead of gating options: `authStatus` and `modelListing` are `"native"` (the CLI answers itself), `"probed"` (best-effort heuristics over credential files and environment variables; a hint, not a guarantee), or `false` (the method throws, because no honest answer exists). `agent.authStatus()` never verifies credentials with a paid model call. What each CLI declares is on the [support matrix](/docs/adapters).
 
-You ask for an emulated capability exactly as you ask for a native one, and the result is uniform across agents. Structured output and system prompts are both emulated on the CLIs whose flags lack them.
+## Every run is unattended
+
+`run()` and `runStream()` have no channel for answering an approval prompt: headless, nothing can say “yes” mid-run. So every run executes with the most autonomy its CLI offers, and a permission setting that waits for approval cannot exist on this surface.
+
+The one restriction is `readOnly: true`, with a strict contract: nothing on the machine changes. No file writes, no shell. An agent whose CLI cannot guarantee that declares `readOnly: false` and throws rather than approximating; goose and Cline do today. Harness-specific modes between the two extremes stay reachable via [`extraArgs`](/docs/escape-hatches).
+
+[Run agents](/docs/run-agents#keep-a-run-read-only) covers what this means for how you scope prompts.
 
 ## Detection observes, never chooses
 
-`detect()` checks the machine’s `PATH` for each supported CLI and returns one result per install, carrying the binary’s path, the reported version, and the agent’s capability table. The order of results carries no ranking, so picking an agent is your product decision; [Run agents](/docs/run-agents) covers the patterns.
+`detect()` checks the machine’s `PATH` for each supported CLI and returns one result per install, carrying the binary’s path, the reported version, and the agent’s capabilities. The order of results carries no ranking, so picking an agent is your product decision; [Run agents](/docs/run-agents) covers the patterns.
 
 The version is for display only. AnyAgent targets current CLIs and never changes behavior based on the version it reads, and an agent whose version probe fails still works, with `version` left absent.
 
@@ -57,20 +61,21 @@ Conversation state lives with the CLI, so continuing a conversation across runs 
 
 ## One event stream, native detail on raw
 
-Whatever the CLI prints, you receive the same five event types: `text-delta`, `tool-call`, `tool-result`, `usage`, and a final `done` carrying the `RunResult`. How much text one `text-delta` carries varies by agent, from a token to a whole message, but concatenating every delta’s `text` always reproduces `RunResult.text` exactly.
+Whatever the CLI prints, you receive the same event vocabulary: `session`, `text-delta`, `reasoning-delta`, `tool-call`, `tool-result`, `file-change`, `usage`, and a final `done` carrying the `RunResult`; [`AgentEvent`](/docs/api#agentevent) lists each one’s fields. How much text one `text-delta` carries varies by agent, from a token to a whole message, but concatenating every delta’s `text` always reproduces `RunResult.text` exactly.
 
-Normalization drops CLI-specific detail from the fields your code branches on, and it keeps all of that detail reachable. Every event carries the CLI’s untouched native payload on its `raw` field, and `RunResult.raw` holds the final native payload: session ids, exact cache accounting, and anything the normalized fields leave out.
+Normalization keeps the fields your code branches on uniform, and it keeps every CLI-specific detail reachable. Tool events carry the shared [`ToolName`](/docs/api#toolname) vocabulary on `name` and the CLI’s own name on `nativeName`. Every event carries the CLI’s untouched native payload on its `raw` field, and `RunResult.raw` holds the final native payload for anything the normalized fields leave out.
 
-Session resume is the everyday case. A CLI reports its session id only in the raw payload, under its own key, so you read it there and pass it to the next run:
+Session resume is the everyday case. The `session` event surfaces the id early, and the same id lands on `RunResult.sessionId`, so continuing a conversation is two lines:
 
 ```ts
 const first = await agent.run("Start reviewing this repo.");
-const { session_id } = first.raw as { session_id?: string };
 
-const followUp = await agent.run("Continue with src/.", { resume: session_id });
+if (first.sessionId) {
+  await agent.run("Continue with src/.", { resume: first.sessionId });
+}
 ```
 
-Each adapter page documents its raw shape, including the key its session id lives under.
+`sessionId` is absent on CLIs that never reveal one headless; each adapter page says whether its CLI does.
 
 ## Next steps
 

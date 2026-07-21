@@ -1,19 +1,10 @@
 import { AnyAgentError } from "../errors.js";
-import type {
-  Adapter,
-  CapabilityTable,
-  PermissionLevel,
-  RunOptions,
-} from "../types.js";
-
-const DEFAULT_PERMISSION: PermissionLevel = "edit";
-
-export const resolvePermission = (opts: RunOptions): PermissionLevel =>
-  opts.permission ?? DEFAULT_PERMISSION;
+import type { Adapter, Capabilities, RunOptions } from "../types.js";
 
 type GuardedCap = keyof Pick<
-  CapabilityTable,
+  Capabilities,
   | "cwd"
+  | "effort"
   | "mcp"
   | "modelSelection"
   | "sessionResume"
@@ -32,10 +23,11 @@ const GUARDED_OPTIONS: readonly (readonly [
   ["mcp", "mcp", "MCP config"],
   ["cwd", "cwd", "a working directory"],
   ["schema", "structuredOutput", "structured output"],
+  ["effort", "effort", "reasoning effort"],
 ];
 
 // Throw `AnyAgentError` (`code: "UnsupportedCapability"`) when `opts` asks
-// for anything the adapter's capability table does not declare. Runs before
+// for anything the adapter's declared capabilities do not include. Runs before
 // any process spawns, so a wrong assumption fails fast.
 export const validateOptions = (adapter: Adapter, opts: RunOptions): void => {
   const agent = adapter.meta.id;
@@ -49,11 +41,22 @@ export const validateOptions = (adapter: Adapter, opts: RunOptions): void => {
     }
   }
 
-  const level = resolvePermission(opts);
-  if (!caps.permissionLevels.includes(level)) {
+  // `readOnly: false` is the default spelled out, so only `true` is gated.
+  if (opts.readOnly && !caps.readOnly) {
     throw new AnyAgentError(
       "UnsupportedCapability",
-      `${agent} does not support permission level "${level}" (offers: ${caps.permissionLevels.join(", ")})`
+      `${agent} cannot guarantee a read-only run`
+    );
+  }
+
+  if (
+    opts.effort !== undefined &&
+    caps.reasoningEfforts &&
+    !caps.reasoningEfforts.includes(opts.effort)
+  ) {
+    throw new AnyAgentError(
+      "UnsupportedCapability",
+      `${agent} does not accept effort "${opts.effort}" (accepts: ${caps.reasoningEfforts.join(", ")})`
     );
   }
 };

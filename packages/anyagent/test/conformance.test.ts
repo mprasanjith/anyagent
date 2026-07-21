@@ -1,4 +1,4 @@
-import { test } from "bun:test";
+import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -10,7 +10,8 @@ import { goose } from "../src/goose.js";
 import { kiloCode } from "../src/kilo-code.js";
 import { opencode } from "../src/opencode.js";
 import { pi } from "../src/pi.js";
-import { fakeStreaming, fakeText } from "./fake-adapter.js";
+import type { Adapter, RunResult } from "../src/types.js";
+import { fakeClosedEffort, fakeStreaming, fakeText } from "./fake-adapter.js";
 
 const read = (p: string) =>
   readFileSync(path.join(import.meta.dir, p), "utf-8");
@@ -58,9 +59,14 @@ test("cline passes conformance", async () => {
   await runConformance(cline(), { fixtures: fixturesFor("cline") });
 });
 
-test("fakeStreaming passes conformance", async () => {
+const toyFixture = '{"t":"text","v":"Hi"}\n{"t":"end"}';
+
+test("fakeStreaming passes conformance, session event included", async () => {
   await runConformance(fakeStreaming, {
-    fixtures: { simple: '{"t":"text","v":"Hi"}\n{"t":"end"}' },
+    fixtures: {
+      simple: toyFixture,
+      withSession: `{"t":"session","v":"s1"}\n${toyFixture}`,
+    },
   });
 });
 
@@ -68,4 +74,78 @@ test("fakeText (non-streaming) passes conformance", async () => {
   await runConformance(fakeText, {
     fixtures: { simple: "plain answer" },
   });
+});
+
+test("fakeClosedEffort passes conformance, closed vocabulary included", async () => {
+  await runConformance(fakeClosedEffort, {
+    fixtures: { simple: toyFixture },
+  });
+});
+
+// Negative cases: each liar differs from a passing adapter in exactly one
+// respect, so the rejection proves the matching new assertion can fail.
+
+test("conformance rejects two session events in one stream", async () => {
+  await expect(
+    runConformance(fakeStreaming, {
+      fixtures: {
+        twoSessions: `{"t":"session","v":"a"}\n{"t":"session","v":"a"}\n${toyFixture}`,
+      },
+    })
+  ).rejects.toThrow();
+});
+
+test("conformance rejects a result.sessionId that contradicts the session event", async () => {
+  const sessionLiar: Adapter = {
+    ...fakeStreaming,
+    async *parse(source) {
+      await source.text();
+      const result: RunResult = {
+        events: [],
+        raw: undefined,
+        sessionId: "b",
+        text: "",
+      };
+      yield { sessionId: "a", type: "session" };
+      yield { result, type: "done" };
+      return result;
+    },
+  };
+  await expect(
+    runConformance(sessionLiar, { fixtures: { simple: "" } })
+  ).rejects.toThrow();
+});
+
+test("conformance rejects a declared authStatus capability without an implementation", async () => {
+  const { authStatus: _drop, ...rest } = fakeStreaming;
+  await expect(
+    runConformance(rest, { fixtures: { simple: toyFixture } })
+  ).rejects.toThrow();
+});
+
+test("conformance rejects a declared modelListing capability without an implementation", async () => {
+  const { listModels: _drop, ...rest } = fakeStreaming;
+  await expect(
+    runConformance(rest, { fixtures: { simple: toyFixture } })
+  ).rejects.toThrow();
+});
+
+test("conformance rejects reasoningEfforts declared without the effort capability", async () => {
+  const liar: Adapter = {
+    ...fakeClosedEffort,
+    capabilities: { ...fakeClosedEffort.capabilities, effort: false },
+  };
+  await expect(
+    runConformance(liar, { fixtures: { simple: toyFixture } })
+  ).rejects.toThrow();
+});
+
+test("conformance rejects an empty closed effort vocabulary", async () => {
+  const liar: Adapter = {
+    ...fakeClosedEffort,
+    capabilities: { ...fakeClosedEffort.capabilities, reasoningEfforts: [] },
+  };
+  await expect(
+    runConformance(liar, { fixtures: { simple: toyFixture } })
+  ).rejects.toThrow();
 });

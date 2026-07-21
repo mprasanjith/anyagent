@@ -1,0 +1,6 @@
+opencode/big-pickle
+opencode/deepseek-v4-flash-free
+opencode/laguna-s-2.1-free
+opencode/mimo-v2.5-free
+opencode/nemotron-3-ultra-free
+opencode/north-mini-code-free

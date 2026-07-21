@@ -38,15 +38,19 @@ if (!first) {
 }
 
 const agent = create(first);
+if (!agent.supports("readOnly")) {
+  throw new Error(`${first.name} cannot guarantee a read-only run.`);
+}
+
 const result = await agent.run(
   "List the scripts in package.json and what each one does.",
-  { permission: "read" }
+  { readOnly: true }
 );
 
 console.log(result.text);
 ```
 
-`detect()` scans your `PATH` and returns every supported agent it finds, and `create()` wraps the first result in a runnable handle. The prompt runs with `read` permission, so the agent inspects files without changing anything.
+`detect()` scans your `PATH` and returns every supported agent it finds, and `create()` wraps the first result in a runnable handle. `agent.supports("readOnly")` confirms this agent can guarantee a read-only run, and `readOnly: true` then confines it to reading, so the agent inspects files without changing anything.
 
 ## Run the script
 

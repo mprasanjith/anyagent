@@ -34,10 +34,7 @@ live(
   "live: real output parses clean under strict mode",
   async () => {
     const adapter = cline();
-    const inv = adapter.buildInvocation(
-      PROMPT,
-      MODEL ? { model: MODEL, permission: "edit" } : { permission: "edit" }
-    );
+    const inv = adapter.buildInvocation(PROMPT, MODEL ? { model: MODEL } : {});
     const source = spawnAndStream(inv);
     let sawText = false;
     let finalText: string | undefined;

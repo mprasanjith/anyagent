@@ -3,8 +3,12 @@
  * these on its `code`:
  *
  * - `"UnsupportedCapability"` — you asked for something this agent's CLI
- *   cannot do: an option its capability table does not declare, or a
- *   permission level it does not offer. Thrown before anything spawns.
+ *   cannot do: an option or method its declared capabilities do not include, or
+ *   an effort value outside its closed vocabulary. Thrown before anything
+ *   spawns.
+ * - `"InvalidOptions"` — the options contradict each other on any agent: a
+ *   dependent option without its prerequisite. Thrown before anything
+ *   spawns.
  * - `"Invocation"` — the CLI itself went wrong: it failed to spawn, exited
  *   nonzero, or reported an agent-level error. `argv` and `stderr` on the
  *   error tell you what ran and what it said.
@@ -14,6 +18,7 @@
  */
 export type AnyAgentErrorCode =
   | "UnsupportedCapability"
+  | "InvalidOptions"
   | "Invocation"
   | "Parse"
   | "Aborted";

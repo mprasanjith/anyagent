@@ -5,7 +5,11 @@ import { goose } from "anyagent/goose";
 import { kiloCode } from "anyagent/kilo-code";
 import { opencode } from "anyagent/opencode";
 import { pi } from "anyagent/pi";
-import type { Adapter, CapabilitySupport } from "anyagent/types";
+import type {
+  Adapter,
+  CapabilitySupport,
+  DiscoverySupport,
+} from "anyagent/types";
 import Link from "next/link";
 
 // Registry order — the order detect() scans and returns.
@@ -22,6 +26,10 @@ const ADAPTERS: Adapter[] = [
 const COLUMNS = [
   { key: "streaming", label: "Streaming" },
   { key: "modelSelection", label: "Model" },
+  { key: "readOnly", label: "Read-only" },
+  { key: "effort", label: "Effort" },
+  { key: "authStatus", label: "Auth status" },
+  { key: "modelListing", label: "Models" },
   { key: "sessionResume", label: "Resume" },
   { key: "mcp", label: "MCP" },
   { key: "systemPrompt", label: "System prompt" },
@@ -29,7 +37,7 @@ const COLUMNS = [
   { key: "cwd", label: "cwd" },
 ] as const;
 
-const cell = (value: CapabilitySupport): string => {
+const cell = (value: CapabilitySupport | DiscoverySupport): string => {
   if (value === false) {
     return "—";
   }
@@ -47,7 +55,6 @@ export const CapabilityMatrix = () => (
       <tr>
         <th>Agent</th>
         <th>Binary</th>
-        <th>Permissions</th>
         {COLUMNS.map((c) => (
           <th key={c.key}>{c.label}</th>
         ))}
@@ -64,7 +71,6 @@ export const CapabilityMatrix = () => (
           <td>
             <code>{adapter.meta.bin[0]}</code>
           </td>
-          <td>{adapter.capabilities.permissionLevels.join(", ")}</td>
           {COLUMNS.map((c) => (
             <td key={c.key}>{cell(adapter.capabilities[c.key])}</td>
           ))}

@@ -3,13 +3,17 @@ title: Supported agents
 description: Every coding-agent CLI AnyAgent drives, with each adapter’s capabilities side by side and a page per adapter for its quirks.
 ---
 
-These are the agent CLIs AnyAgent supports. `detect()` scans for all of them in the order below, and each has its own subpath export for targeting it directly. The table is rendered from each adapter’s own capability declaration, so it always matches what the code enforces.
+These are the agent CLIs AnyAgent supports. `detect()` scans for all of them in the order below, and each has its own subpath export for targeting it directly. The table is rendered from each adapter’s own `Capabilities` declaration, so it always matches what the code enforces.
 
 <CapabilityMatrix />
 
-A `native` capability maps onto the CLI’s own flag; an `emulated` one is provided by AnyAgent’s core, identically on every agent that declares it; `—` means requesting it throws `UnsupportedCapability` before anything spawns. [How AnyAgent works](/docs/how-it-works) explains the split. Structured output reads `emulated` everywhere because the core appends your schema to the prompt and parses the reply itself on every CLI.
+A `native` capability maps onto the CLI’s own flag; an `emulated` one is provided by AnyAgent’s core, identically on every agent that declares it; `—` means requesting it throws `UnsupportedCapability` before anything spawns. [How AnyAgent works](/docs/how-it-works) explains the split.
 
-Everything else CLI-specific lives on the adapter’s page: the native flag behind each run option, what its stream produces, where its session id lives on `raw`, and its quirks. The pages share one section order, so a fact about one agent sits in the same place on every other. An adapter ships only against recorded real CLI output, never a guessed schema.
+Two columns answer discovery questions rather than gating run options. Auth status and Models read `native` when the CLI answers itself, and `probed` when AnyAgent reads the CLI’s credential files and environment variables instead: a hint, not a guarantee. Pi’s model list is credential-filtered, so it names this machine’s usable models rather than a catalog.
+
+Structured output is native on Claude Code and emulated elsewhere; the contract is the same either way: a validated value on `result.json`, with one retry. Read-only reads `—` on goose and Cline because neither CLI can guarantee that nothing on the machine changes, so `readOnly: true` throws instead of pretending.
+
+Everything else CLI-specific lives on the adapter’s page: the native flag behind each run option, plus a quirks list covering session-id behavior, accounting oddities, and error semantics. The pages share one shape, so a fact about one agent sits in the same place on every other. An adapter ships only against recorded real CLI output, never a guessed schema.
 
 ## Next steps
 

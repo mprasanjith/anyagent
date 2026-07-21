@@ -1,55 +1,28 @@
 ---
 title: Kilo Code
-description: How the kilo-code adapter detects, invokes, and parses the Kilo CLI, which shares the opencode surface it forked.
+description: How the kilo-code adapter invokes the Kilo CLI, which shares the opencode surface it forked.
 ---
 
-The `kilo-code` adapter drives the Kilo CLI through `kilo run --format json`, mapping Kilo’s step, text, and tool event stream onto AnyAgent’s normalized events. Kilo Code’s CLI is an opencode fork and exposes the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode); the sharing is verified, not assumed, because every mapping is checked against recorded `kilo` output, so a fork-side drift shows up in Kilo’s own tests. Kilo is bring-your-own-key (BYOK) with standard provider env vars like opencode, or works through a Kilo account (`kilo auth login`) whose free tier includes starter credits; neither changes a flag on this adapter. The full capability table is on the [support matrix](/docs/adapters).
-
-Import the factory from the `anyagent/kilo-code` subpath and hand it to `create`:
-
-```ts
-import { create } from "anyagent";
-import { kiloCode } from "anyagent/kilo-code";
-
-const agent = create(kiloCode());
-const result = await agent.run("summarize this repo", {
-  model: "openrouter/openai/gpt-5.2",
-});
-```
-
-Detection looks for `kilo`, then `kilocode`, on `PATH`, and the first found wins.
-
-There is no `read` permission level yet. Like opencode, Kilo’s per-tool permissions are config-file driven, and the adapter does not map them. MCP servers are also a config-file concern; reach them through Kilo’s own config or [`extraArgs`](/docs/escape-hatches).
-
-Kilo has no per-run append-system-prompt flag, so a `systemPrompt` is emulated: the core folds it into the prompt text ahead of your prompt, and you set it the same way as on any other agent. Structured output is emulated too: the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
+The `kilo-code` adapter drives the Kilo CLI through `kilo run --format json`; import `kiloCode` from `anyagent/kilo-code`. Kilo’s CLI is an opencode fork with the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode); the sharing is verified against recorded `kilo` output, not assumed from the lineage. Kilo is bring-your-own-key (BYOK) with standard provider env vars, or works through a Kilo account (`kilo auth login`); neither changes a flag here. The full grid is on the [support matrix](/docs/adapters).
 
 ## How options map to flags
 
-Every run executes `kilo run --format json` with the prompt piped over stdin, so a large prompt never exceeds the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
+Every run executes `kilo run --format json --auto` with the prompt piped over stdin. `--auto` is always passed: the default is the CLI’s maximum unattended autonomy, and `readOnly` confines it rather than dropping the flag. [Run options](/docs/api#run-options) append flags:
 
-| Option               | Flag                            |
-| -------------------- | ------------------------------- |
-| `permission: "edit"` | none, Kilo’s own defaults apply |
-| `permission: "auto"` | `--auto`                        |
-| `model`              | `--model <provider/model>`      |
-| `resume`             | `--session <sessionId>`         |
+| Option           | Flag or env                                                 |
+| ---------------- | ------------------------------------------------------------ |
+| `readOnly: true` | env `KILO_PERMISSION={"bash":"deny","edit":"deny"}`         |
+| `model`          | `--model <provider/model>`                                  |
+| `effort`         | `--variant <name>`, a provider-defined name passed verbatim |
+| `resume`         | `--session <sessionId>`                                     |
 
-`edit` is Kilo’s default behavior, with whatever permission config the user has set still applying. `auto` adds `--auto`, which approves everything not explicitly denied.
+## Quirks
 
-`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
-
-## What the stream produces
-
-Text arrives when a message part completes, so the answer is never double-counted against its in-progress updates. Tool parts arrive in a terminal state, input and output together, so one raw `tool_use` event produces both the `tool-call` and its `tool-result`.
-
-Kilo has no single final payload, so the adapter composes one carrying the session id. Read `sessionId` from `result.raw` and pass it back as `resume`; see [Resume a session](/docs/run-agents#resume-a-session).
-
-## Usage reporting
-
-Kilo reports tokens and cost per step, so each `step_finish` yields a `usage` event carrying that step’s share, and `result.usage` carries the totals summed across the run.
-
-## Next steps
-
-- [Supported agents](/docs/adapters): every adapter’s capabilities side by side
-- [Escape hatches](/docs/escape-hatches): reach Kilo’s config-file capabilities through `extraArgs` or `agent.raw`
-- [Pi](/docs/adapters/pi): the same sections for the Pi CLI
+- Detection looks for `kilo`, then `kilocode`, on `PATH`; the first found wins.
+- The adapter owns the `KILO_PERMISSION` env var: a caller-supplied value under that key is overridden, so it can never weaken the read-only contract.
+- The deny matrix uses category keys (the CLI silently ignores per-tool-name keys), and `webfetch` stays allowed: it reads the web and changes nothing on the machine.
+- `authStatus()` reads `~/.local/share/kilo/auth.json` plus the provider key env vars, a hint rather than a guarantee.
+- `models()` runs `kilo models`; every printed `provider/model` id is valid verbatim as `model`.
+- Kilo names its thinking stream `reasoning`; those events map to `reasoning-delta`.
+- The session id is surfaced once, on first sight, and lands on `result.sessionId`.
+- Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
