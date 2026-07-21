@@ -19,7 +19,7 @@ Per-CLI facts collected during audits live in the harness audit at `docs/specs/h
 
 ## Implement the contract
 
-Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/hopper/index.ts` and export it as a factory function. The interface has five required members plus an optional `detect`:
+Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. The interface has five required members plus an optional `detect`:
 
 ```ts
 export interface Adapter {
@@ -37,7 +37,7 @@ export interface Adapter {
 
 `meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run. `detect` replaces default detection entirely; omit it unless the CLI needs one. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
 
-Read `packages/anyagent/src/claude-code/index.ts` alongside this page. It is the reference implementation, and a new adapter should mirror its shape.
+Read `packages/anyagent/src/claude-code.ts` alongside this page. It is the reference implementation, and a new adapter should mirror its shape.
 
 ## Keep buildInvocation pure
 
@@ -54,8 +54,8 @@ Pipe the prompt through `Invocation.input` rather than a positional argument. `i
 When the CLI streams newline-delimited JSON, one JSON object per line, build `parse` from `ndjsonParser`, as most built-in adapters do. The parser owns everything those adapters share: decoding each line, buffering events into the result, throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
 
 ```ts
-import { AnyAgentError } from "../internal/errors.js";
-import { ndjsonParser } from "../internal/ndjson.js";
+import { AnyAgentError } from "./errors.js";
+import { ndjsonParser } from "./ndjson.js";
 
 interface Ctx {
   text: string[];
@@ -86,14 +86,14 @@ const parse = ndjsonParser<Ctx>({
 
 `init` creates the per-run accumulator, `map` turns one raw object into event(s) or `null` to ignore it, and `finalize` builds the terminal `RunResult` from the accumulated state. This sketch handles one fictional `message` event and throws on everything else under strict mode; a real adapter maps its CLI’s whole event taxonomy, including tool calls and usage. `finalize` does not collect events itself: the parser buffers everything `map` emits and fills `RunResult.events` after `finalize` returns.
 
-The relative imports above are what an in-repo adapter uses. An adapter published outside this repo imports the same helpers from the package: `ndjsonParser` and `AnyAgentError` from `anyagent`.
+The relative imports above are what an in-repo adapter uses. An adapter published outside this repo imports the same helpers from the package: `ndjsonParser` from `anyagent/ndjson` and `AnyAgentError` from `anyagent/errors`.
 
 ## Register the adapter in BUILTINS
 
-Append your factory result to `BUILTINS` in `packages/anyagent/src/internal/registry.ts`. `detect()` scans that list, and the fixture recorder resolves adapters by id from it, so registration comes before recording. Add the import and extend the array; the existing lines stay:
+Append your factory result to `BUILTINS` in `packages/anyagent/src/internal/builtins.ts`. `detect()` scans that list, and the fixture recorder resolves adapters by id from it, so registration comes before recording. Add the import and extend the array; the existing lines stay:
 
 ```ts
-import { hopper } from "../hopper/index.js";
+import { hopper } from "../hopper.js";
 
 export const BUILTINS: Adapter[] = [claudeCode(), codex(), hopper()];
 ```
@@ -103,7 +103,7 @@ export const BUILTINS: Adapter[] = [claudeCode(), codex(), hopper()];
 Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/hopper/`. The recorder builds the adapter’s own read-only invocation, runs it, and writes the raw output lines to the right path. Record from `packages/anyagent/`:
 
 ```bash
-bun src/cli/record.ts hopper simple "Reply with exactly the word: pong"
+bun src/internal/record.ts hopper simple "Reply with exactly the word: pong"
 ```
 
 ```text
@@ -121,8 +121,8 @@ import { test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { hopper } from "../src/hopper/index.js";
-import { runConformance } from "../src/internal/conformance/suite.js";
+import { hopper } from "../src/hopper.js";
+import { runConformance } from "../src/conformance.js";
 
 const read = (p: string) =>
   readFileSync(path.join(import.meta.dir, p), "utf-8");
@@ -134,7 +134,7 @@ test("hopper passes conformance", async () => {
 });
 ```
 
-The relative import to `../src/internal/conformance/suite.js` is what an in-repo test uses; an adapter published outside this repo imports `runConformance` from the `anyagent/conformance` subpath instead. Run it and confirm it is green before moving on:
+The relative import to `../src/conformance.js` is what an in-repo test uses; an adapter published outside this repo imports `runConformance` from the `anyagent/conformance` subpath instead. Run it and confirm it is green before moving on:
 
 ```bash
 bun test test/conformance.test.ts
@@ -152,7 +152,7 @@ ANYAGENT_LIVE=1 bun test test/hopper.live.test.ts
 
 Before you open the change, confirm all six:
 
-1. `src/hopper/index.ts` exports the `hopper()` factory, with TSDoc on it
+1. `src/hopper.ts` exports the `hopper()` factory, with TSDoc on it
 2. The adapter is appended to `BUILTINS`
 3. Recorded fixtures live in `test/fixtures/hopper/`
 4. A conformance test covers those fixtures

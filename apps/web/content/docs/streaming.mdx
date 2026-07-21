@@ -81,7 +81,8 @@ When an agent’s `capabilities.streaming` is `false`, the CLI prints a single f
 Pass an `AbortSignal` to cancel a run. Aborting terminates the underlying process, and the run throws `AnyAgentError` with `code: "Aborted"`. Wire it to Ctrl+C so the end user can stop a run and exit cleanly:
 
 ```ts
-import { AnyAgentError, create } from "anyagent";
+import { create } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
 import { claudeCode } from "anyagent/claude-code";
 
 const agent = create(claudeCode());

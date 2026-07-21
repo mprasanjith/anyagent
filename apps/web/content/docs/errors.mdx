@@ -10,7 +10,8 @@ Everything AnyAgent throws is one class, `AnyAgentError`, with four `code` value
 Import `AnyAgentError`, catch it, and branch on `err.code`. There is nothing else to match against:
 
 ```ts
-import { AnyAgentError, create, detect } from "anyagent";
+import { create, detect } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
 
 const [found] = await detect();
 if (!found) {
@@ -82,7 +83,8 @@ console.error("stderr:", err.stderr);
 This wraps the `acme init` run and gives every code a response a stranger could act on:
 
 ```ts
-import { AnyAgentError, create } from "anyagent";
+import { create } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
 import { claudeCode } from "anyagent/claude-code";
 
 const controller = new AbortController();

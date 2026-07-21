@@ -94,7 +94,8 @@ When the first reply fails to parse or validate, the core retries once. It re-as
 When the retry also fails, `run()` throws `AnyAgentError` with `code: "Parse"`. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. Each error carries a JSON path, so `$.user.name: expected string, got number` tells you which field came back wrong:
 
 ```ts
-import { AnyAgentError, create, detect } from "anyagent";
+import { create, detect } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
 
 const [found] = await detect();
 if (!found) {

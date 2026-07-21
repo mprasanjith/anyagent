@@ -8,11 +8,13 @@ This page documents everything the `anyagent` package exports: the two entry-poi
 
 ## Entry points
 
-Import `detect`, `create`, `AnyAgentError`, and every type from the package root. Adapter authors also reach the `ndjsonParser` helper and the `Detection` type from the root, and the conformance suite from the `anyagent/conformance` subpath. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
+Import `detect` and `create` from the package root, `AnyAgentError` from `anyagent/errors`, and every type from `anyagent/types`. Adapter authors also reach the `ndjsonParser` helper from `anyagent/ndjson` and the conformance suite from `anyagent/conformance`. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
 
 ```ts
-import { AnyAgentError, create, detect, ndjsonParser } from "anyagent";
-import type { Agent, Detection, RunOptions, RunResult } from "anyagent";
+import { create, detect } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
+import { ndjsonParser } from "anyagent/ndjson";
+import type { Agent, Detection, RunOptions, RunResult } from "anyagent/types";
 import { claudeCode } from "anyagent/claude-code";
 import { codex } from "anyagent/codex";
 import { opencode } from "anyagent/opencode";
@@ -207,7 +209,7 @@ type AgentId = keyof KnownAgents | (string & Record<never, never>);
 `KnownAgents` is the interface whose keys feed `AgentId`; it ships with a key for every built-in adapter (`"claude-code"`, `"codex"`, `"opencode"`, `"kilo-code"`, `"pi"`, `"goose"`, and `"cline"`). A third-party adapter teaches the type about its own id through module augmentation:
 
 ```ts
-declare module "anyagent" {
+declare module "anyagent/types" {
   interface KnownAgents {
     "acme-cli": true;
   }
@@ -254,7 +256,8 @@ type AnyAgentErrorCode =
 Branch on `code` to handle a specific failure:
 
 ```ts
-import { AnyAgentError, create } from "anyagent";
+import { create } from "anyagent";
+import { AnyAgentError } from "anyagent/errors";
 import { claudeCode } from "anyagent/claude-code";
 
 const controller = new AbortController();
