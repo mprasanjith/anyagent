@@ -3,6 +3,8 @@ import { JetBrains_Mono, Manrope, Teachers } from "next/font/google";
 import Link from "next/link";
 
 import "./landing.css";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import { CopyButton } from "./copy-button";
 import { HeroCanvas } from "./hero-canvas";
 import { Reveal } from "./reveal";
@@ -10,12 +12,12 @@ import { SafetyPresets } from "./safety";
 
 const display = Teachers({
   subsets: ["latin"],
-  variable: "--font-hm-display",
+  variable: "--font-teachers",
 });
-const body = Manrope({ subsets: ["latin"], variable: "--font-hm-body" });
+const body = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
 const mono = JetBrains_Mono({
   subsets: ["latin"],
-  variable: "--font-hm-mono",
+  variable: "--font-jetbrains",
 });
 
 export const metadata: Metadata = {
@@ -54,218 +56,308 @@ const HARNESSES: {
 
 const iVar = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
+const Shell = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div className={cn("mx-auto w-full max-w-6xl px-(--page-gutter)", className)}>
+    {children}
+  </div>
+);
+
+const Section = ({ children }: { children: React.ReactNode }) => (
+  <section className="pt-26 pb-16 max-md:py-16">
+    <Shell>
+      <div data-reveal>{children}</div>
+    </Shell>
+  </section>
+);
+
+const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+  <h2 className="m-0 min-w-0 max-w-[26ch] font-hm-display font-normal text-hm-2xl text-hm-ink leading-[1.1] tracking-[-0.02em] [overflow-wrap:anywhere]">
+    {children}
+  </h2>
+);
+
+const Body = ({ children }: { children: React.ReactNode }) => (
+  <p className="mt-6 max-w-[62ch] leading-[1.62] [&_code]:font-hm-mono [&_code]:text-[0.9em]">
+    {children}
+  </p>
+);
+
+const Label = ({ children }: { children: React.ReactNode }) => (
+  <figcaption className="mb-4 font-hm-mono font-medium text-hm-ink text-hm-label uppercase tracking-hm-micro opacity-55">
+    {children}
+  </figcaption>
+);
+
+const navLink =
+  "whitespace-nowrap text-hm-sm text-hm-muted no-underline transition-colors duration-[120ms] ease-hm-out hover:text-hm-ink hover:underline hover:underline-offset-[0.25em]";
+
+const wordmark =
+  "whitespace-nowrap font-hm-display text-hm-md tracking-[-0.01em] text-hm-ink no-underline";
+
+const Kw = ({ children }: { children: React.ReactNode }) => (
+  <span className="text-hm-muted">{children}</span>
+);
+
+const Str = ({ children }: { children: React.ReactNode }) => (
+  <span className="text-hm-accent">{children}</span>
+);
+
 const Page = () => (
-  <div className={`home ${display.variable} ${body.variable} ${mono.variable}`}>
-    <nav className="hm-nav">
-      <div className="hm-shell hm-nav-row">
-        <Link className="hm-wordmark" href="/">
+  <div
+    className={cn(
+      "home min-h-dvh bg-hm-paper font-hm-body font-normal text-hm-ink-2 [font-variant-numeric:tabular-nums]",
+      display.variable,
+      body.variable,
+      mono.variable
+    )}
+  >
+    <nav className="py-6">
+      <Shell className="flex items-baseline justify-between">
+        <Link className={wordmark} href="/">
           AnyAgent
         </Link>
-        <div className="hm-nav-links">
-          <Link className="hm-nav-link" href="/docs">
+        <div className="flex gap-6">
+          <Link className={navLink} href="/docs">
             Docs
           </Link>
-          <a className="hm-nav-link" href={GITHUB}>
+          <a className={navLink} href={GITHUB}>
             GitHub
           </a>
         </div>
-      </div>
+      </Shell>
     </nav>
 
-    <header className="hm-hero">
+    <header className="hm-hero relative overflow-clip bg-hm-paper">
       <HeroCanvas />
-      <div className="hm-shell hm-hero-inner">
+      <Shell className="relative z-10 pt-26 pb-36 max-[60rem]:pt-16 max-[60rem]:pb-26">
         <div className="hm-reveal" style={iVar(0)}>
-          <h1>
+          <h1 className="m-0 min-w-0 max-w-[16ch] font-hm-display font-normal text-hm-display text-hm-ink leading-[1.04] tracking-[-0.01em] [overflow-wrap:anywhere]">
             Your users already have a coding agent.
             <br />
             Use it.
           </h1>
-          <p className="hm-lede">
+          <p className="mt-6 max-w-[52ch] text-hm-md leading-[1.6]">
             AnyAgent detects the coding agent installed and signed in on your
             end-user’s machine and drives it from your tool. Prompts run on
             their install, under their login and subscription.
           </p>
-          <div className="hm-hero-actions">
-            <Link className="hm-btn" href="/docs">
+          <div className="mt-10 flex flex-wrap items-center gap-6">
+            <Link
+              className={buttonVariants({ variant: "primary" })}
+              href="/docs"
+            >
               Read the quickstart
             </Link>
-            <a className="hm-link" href={GITHUB}>
+            <a className={buttonVariants({ variant: "link" })} href={GITHUB}>
               View on GitHub →
             </a>
           </div>
         </div>
-      </div>
+      </Shell>
     </header>
 
-    <section className="hm-section">
-      <div className="hm-shell" data-reveal>
-        <h2>Detect the agent, then run your prompt</h2>
-        <figure className="hm-codeframe">
-          <figcaption className="hm-label">INSTALLER.TS</figcaption>
-          <pre>
-            <span className="tok-kw">{"import "}</span>
-            {"{ create, detect } "}
-            <span className="tok-kw">from</span>{" "}
-            <span className="tok-str">"anyagent"</span>
-            {";\n\n"}
-            <span className="tok-kw">const</span>
-            {" [agent] = "}
-            <span className="tok-kw">await</span>
-            {" detect();\n"}
-            <span className="tok-kw">if</span>
-            {" (!agent) "}
-            <span className="tok-kw">throw new</span>
-            {" Error("}
-            <span className="tok-str">"no coding agent found"</span>
-            {");\n"}
-            <span className="tok-kw">const</span>
-            {" result = "}
-            <span className="tok-kw">await</span>
-            {" create(agent).run(\n  "}
-            <span className="tok-str">"wire our SDK into this project"</span>
-            {",\n  { permission: "}
-            <span className="tok-str">"edit"</span>
-            {" },\n);"}
-          </pre>
-        </figure>
-        <p className="hm-body">
-          <code>detect()</code> returns whatever is installed.{" "}
-          <code>run()</code> behaves the same on all of it. When no agent is
-          installed, <code>detect()</code> returns an empty array and your tool
-          can fall back.
-        </p>
-        <p className="hm-body">
-          The prompt runs on the user’s own install, under their login and
-          subscription. You collect no API keys and pay no inference bill.
-        </p>
-        <p className="hm-body">
-          The same code path works against whichever supported agent they have.{" "}
-          <Link className="hm-link" href="/docs/how-it-works">
-            How the unified surface works →
-          </Link>
-        </p>
-      </div>
-    </section>
+    <Section>
+      <SectionTitle>Detect the agent, then run your prompt</SectionTitle>
+      <figure className="m-0 mt-10 max-w-[46rem] border-hm-rule border-y pt-4 pb-6">
+        <Label>INSTALLER.TS</Label>
+        <pre className="m-0 overflow-x-auto font-hm-mono text-hm-sm leading-[1.75]">
+          <Kw>{"import "}</Kw>
+          {"{ create, detect } "}
+          <Kw>from</Kw> <Str>"anyagent"</Str>
+          {";\n\n"}
+          <Kw>const</Kw>
+          {" [agent] = "}
+          <Kw>await</Kw>
+          {" detect();\n"}
+          <Kw>if</Kw>
+          {" (!agent) "}
+          <Kw>throw new</Kw>
+          {" Error("}
+          <Str>"no coding agent found"</Str>
+          {");\n"}
+          <Kw>const</Kw>
+          {" result = "}
+          <Kw>await</Kw>
+          {" create(agent).run(\n  "}
+          <Str>"wire our SDK into this project"</Str>
+          {",\n  { permission: "}
+          <Str>"edit"</Str>
+          {" },\n);"}
+        </pre>
+      </figure>
+      <Body>
+        <code>detect()</code> returns whatever is installed. <code>run()</code>{" "}
+        behaves the same on all of it. When no agent is installed,{" "}
+        <code>detect()</code> returns an empty array and your tool can fall
+        back.
+      </Body>
+      <Body>
+        The prompt runs on the user’s own install, under their login and
+        subscription. You collect no API keys and pay no inference bill.
+      </Body>
+      <Body>
+        The same code path works against whichever supported agent they have.{" "}
+        <Link
+          className={buttonVariants({ variant: "link" })}
+          href="/docs/how-it-works"
+        >
+          How the unified surface works →
+        </Link>
+      </Body>
+    </Section>
 
-    <section className="hm-section">
-      <div className="hm-shell" data-reveal>
-        <h2>What you build with it</h2>
-        <p className="hm-body">
-          You ship the prompt and the guardrails; the user’s agent supplies the
-          model and the auth. AnyAgent suits tools that run a defined task
-          against the user’s own project.
-        </p>
-        <div className="hm-cases">
-          <div className="hm-case">
-            <h3>Setup wizards</h3>
-            <p>
-              Wire your SDK into the user’s codebase from your init command.
-            </p>
+    <Section>
+      <SectionTitle>What you build with it</SectionTitle>
+      <Body>
+        You ship the prompt and the guardrails; the user’s agent supplies the
+        model and the auth. AnyAgent suits tools that run a defined task against
+        the user’s own project.
+      </Body>
+      <div className="mt-10 grid grid-cols-[0.9fr_0.95fr_1.15fr] gap-6 max-md:grid-cols-1">
+        {[
+          {
+            desc: "Wire your SDK into the user’s codebase from your init command.",
+            title: "Setup wizards",
+          },
+          {
+            desc: "Apply a framework upgrade across the user’s repo.",
+            title: "Migrations",
+          },
+          {
+            desc: "Produce changelogs, tests, or docs from the current source.",
+            title: "Generators",
+          },
+        ].map((c) => (
+          <div
+            className="hm-case relative overflow-clip rounded-xl border border-hm-rule p-6 transition-transform duration-[220ms] ease-hm-soft"
+            key={c.title}
+          >
+            <h3 className="m-0 font-hm-display font-normal text-hm-ink text-hm-lg tracking-[-0.015em]">
+              {c.title}
+            </h3>
+            <p className="mt-3 mb-0 text-hm-sm leading-[1.6]">{c.desc}</p>
           </div>
-          <div className="hm-case">
-            <h3>Migrations</h3>
-            <p>Apply a framework upgrade across the user’s repo.</p>
-          </div>
-          <div className="hm-case">
-            <h3>Generators</h3>
-            <p>Produce changelogs, tests, or docs from the current source.</p>
-          </div>
-        </div>
+        ))}
       </div>
-    </section>
+    </Section>
 
-    <section className="hm-section">
-      <div className="hm-shell" data-reveal>
-        <h2>Safe by default</h2>
-        <p className="hm-body">
-          Your tool is driving someone else’s install, so every run sets an
-          explicit permission ceiling. AnyAgent itself adds zero runtime
-          dependencies to your tool.
-        </p>
-        <SafetyPresets />
-        <p className="hm-foot-note">
-          <Link className="hm-link" href="/docs/permissions">
-            How permissions work →
-          </Link>
-        </p>
-      </div>
-    </section>
+    <Section>
+      <SectionTitle>Safe by default</SectionTitle>
+      <Body>
+        Your tool is driving someone else’s install, so every run sets an
+        explicit permission ceiling. AnyAgent itself adds zero runtime
+        dependencies to your tool.
+      </Body>
+      <SafetyPresets />
+      <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
+        <Link
+          className={buttonVariants({ variant: "link" })}
+          href="/docs/permissions"
+        >
+          How permissions work →
+        </Link>
+      </p>
+    </Section>
 
-    <section className="hm-section">
-      <div className="hm-shell" data-reveal>
-        <h2>Whichever agent they have</h2>
-        <p className="hm-body">
-          Fourteen harnesses audited: seven adapters shipped, seven on the way.
-          For anything else, an adapter is one file.
-        </p>
-        <ul className="hm-wall">
-          {HARNESSES.map((h) => {
-            const cell = (
-              <>
-                <img
-                  alt=""
-                  height={40}
-                  loading="lazy"
-                  src={`/agents/${h.logo}.svg`}
-                  width={40}
-                />
-                <span className="hm-wall-info">
-                  <span className="hm-wall-name">{h.name}</span>
-                  <span className={`hm-status is-${h.status}`}>{h.status}</span>
+    <Section>
+      <SectionTitle>Whichever agent they have</SectionTitle>
+      <Body>
+        Fourteen harnesses audited: seven adapters shipped, seven on the way.
+        For anything else, an adapter is one file.
+      </Body>
+      <ul className="m-0 mt-10 grid list-none grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-px border border-hm-rule bg-hm-rule p-0">
+        {HARNESSES.map((h) => {
+          const cell = (
+            <>
+              <img
+                alt=""
+                className="block size-10 shrink-0 rounded-lg"
+                height={40}
+                loading="lazy"
+                src={`/agents/${h.logo}.svg`}
+                width={40}
+              />
+              <span className="grid min-w-0">
+                <span className="text-hm-ink text-hm-sm">{h.name}</span>
+                <span
+                  className={cn(
+                    "whitespace-nowrap font-hm-mono text-hm-label uppercase tracking-hm-micro",
+                    h.status === "shipped" ? "text-hm-accent" : "text-hm-muted"
+                  )}
+                >
+                  {h.status}
                 </span>
-              </>
-            );
-            return (
-              <li key={h.name}>
-                {h.status === "shipped" ? (
-                  <Link
-                    className="hm-wall-cell"
-                    href={`/docs/adapters/${h.slug ?? h.logo}`}
-                  >
-                    {cell}
-                  </Link>
-                ) : (
-                  <span className="hm-wall-cell">{cell}</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        <p className="hm-foot-note">
-          <Link className="hm-link" href="/docs/adding-an-adapter">
-            Adding an adapter →
-          </Link>
-        </p>
-      </div>
-    </section>
+              </span>
+            </>
+          );
+          const cellClass = "flex h-full items-center gap-3 p-4 no-underline";
+          return (
+            <li className="bg-hm-paper" key={h.name}>
+              {h.status === "shipped" ? (
+                <Link
+                  className={cn(
+                    cellClass,
+                    "text-inherit transition-colors duration-[120ms] ease-hm-out hover:bg-hm-paper-2"
+                  )}
+                  href={`/docs/adapters/${h.slug ?? h.logo}`}
+                >
+                  {cell}
+                </Link>
+              ) : (
+                <span className={cellClass}>{cell}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
+        <Link
+          className={buttonVariants({ variant: "link" })}
+          href="/docs/adding-an-adapter"
+        >
+          Adding an adapter →
+        </Link>
+      </p>
+    </Section>
 
-    <footer className="hm-footer">
-      <div className="hm-shell hm-footer-inner">
-        <p className="hm-footer-line">
+    <footer className="border-hm-rule border-t pt-26 pb-10">
+      <Shell className="grid gap-10">
+        <p className="m-0 min-w-0 max-w-[28ch] font-hm-display font-normal text-[clamp(1.75rem,5vw,3.25rem)] text-hm-ink leading-[1.05] tracking-[-0.02em] [overflow-wrap:anywhere]">
           Add AnyAgent to your tool with one zero-dependency package.
         </p>
-        <div className="hm-footer-actions">
-          <span className="hm-install">
-            <code>bun add anyagent</code>
+        <div className="flex flex-wrap items-center gap-6">
+          <span className="inline-flex items-center gap-2 rounded-full border border-hm-rule bg-hm-paper-2 py-1 pr-1 pl-4">
+            <code className="whitespace-nowrap font-hm-mono text-hm-sm">
+              bun add anyagent
+            </code>
             <CopyButton text="bun add anyagent" />
           </span>
-          <Link className="hm-btn" href="/docs">
+          <Link className={buttonVariants({ variant: "primary" })} href="/docs">
             Read the quickstart
           </Link>
-          <a className="hm-link" href={GITHUB}>
+          <a className={buttonVariants({ variant: "link" })} href={GITHUB}>
             View on GitHub →
           </a>
         </div>
-        <div className="hm-footer-meta">
-          <Link className="hm-wordmark" href="/">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-4 border-hm-rule border-t pt-4 text-hm-muted text-hm-sm">
+          <Link className={cn(wordmark, "text-base")} href="/">
             AnyAgent
           </Link>
-          <Link href="/docs">Docs</Link>
-          <a href={GITHUB}>GitHub</a>
+          <Link className={navLink} href="/docs">
+            Docs
+          </Link>
+          <a className={navLink} href={GITHUB}>
+            GitHub
+          </a>
           <span>MIT</span>
         </div>
-      </div>
+      </Shell>
     </footer>
 
     <Reveal />

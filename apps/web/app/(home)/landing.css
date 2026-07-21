@@ -1,15 +1,7 @@
-/* Hallmark · genre: atmospheric · macrostructure: Marquee Hero · theme: custom (ember grain:
- * paper oklch(13% 0.014 265) · accent oklch(76% 0.17 50) brass ·
- * Teachers 400 display + Manrope body + JetBrains Mono, sentence case) ·
- * shape: left-biased hero over a GrainGradient shader canvas · logo wall for coverage ·
- * enrichment: paper-shaders GrainGradient hero + harness logo wall · nav: N1 · footer: Ft5 ·
- * motion: load reveal (once) · section reveal (once, IO, JS-gated) · shader drift ·
- * card/CTA hover lift · contrast: pass (40–41) · honest: pass (46) · chrome: pass (47) ·
- * tokens: pass (48) · responsive: pass (34, 49–52) ·
- * pre-emit critique: P5 H4 E5 S5 R4 V5
- */
-
-@import "./tokens.css";
+/* AnyAgent landing — only what utilities can't express: hero scrims, card
+ * emit gradients, the scroll-reveal system, and the motion/accessibility
+ * media queries. Tokens live in theme.css; everything else is Tailwind
+ * utilities in the (home) components. */
 
 html,
 body {
@@ -17,105 +9,29 @@ body {
 }
 
 .home {
-  min-height: 100dvh;
-  font-family: var(--font-body);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ink-2);
-  background: var(--color-paper);
+  --page-gutter: clamp(1.25rem, 4vw, 3rem);
 }
 
 .home *:focus-visible {
-  outline: 2px solid var(--color-focus);
+  outline: 2px solid var(--color-hm-focus);
   outline-offset: 3px;
   border-radius: 4px;
 }
 
 .home ::selection {
-  color: var(--color-accent-ink);
-  background: var(--color-accent);
+  color: var(--color-hm-accent-ink);
+  background: var(--color-hm-accent);
 }
 
-.hm-shell {
-  width: 100%;
-  max-width: 72rem;
-  padding-inline: var(--page-gutter);
-  margin-inline: auto;
-}
-
-/* ---- labels — the only uppercase register ---- */
-
-.hm-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  font-weight: 500;
-  color: var(--color-ink);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-micro);
-  opacity: 0.55;
-}
-
-/* ---- nav · N1 wordmark + 2 links ---- */
-
-.hm-nav {
-  padding-block: var(--space-lg);
-}
-
-.hm-nav-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.hm-wordmark {
-  font-family: var(--font-display);
-  font-size: var(--text-md);
-  color: var(--color-ink);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-.hm-nav-links {
-  display: flex;
-  gap: var(--space-lg);
-}
-
-.hm-nav-link {
-  font-size: var(--text-sm);
-  color: var(--color-muted);
-  white-space: nowrap;
-  text-decoration: none;
-  transition: color var(--dur-micro) var(--ease-out);
-}
-
-.hm-nav-link:hover {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: 0.25em;
-}
-
-/* ---- hero · statement over shader canvas ---- */
-
-.hm-hero {
-  position: relative;
-  overflow: clip;
-  background: var(--color-paper);
-}
-
-/* The GrainGradient canvas fills the hero; scrims keep the text column
- * readable and fade the shader into the page below. */
-.hm-hero-canvas {
-  position: absolute;
-  inset: 0;
-}
+/* ---- hero scrims — keep the text column readable over the shader and fade
+ * it into the page below ---- */
 
 .hm-hero::before {
   position: absolute;
   inset: 0;
   pointer-events: none;
   content: "";
-  background: linear-gradient(90deg, var(--color-scrim) 0%, transparent 60%);
+  background: linear-gradient(90deg, var(--color-hm-scrim) 0%, transparent 60%);
 }
 
 .hm-hero::after {
@@ -123,88 +39,11 @@ body {
   inset: 0;
   pointer-events: none;
   content: "";
-  background: linear-gradient(180deg, transparent 72%, var(--color-paper) 100%);
-}
-
-.hm-hero-inner {
-  position: relative;
-  z-index: var(--z-raised);
-  padding-block: var(--space-3xl) calc(var(--space-3xl) + var(--space-xl));
-}
-
-.hm-hero h1 {
-  min-width: 0;
-  max-width: 16ch;
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-display);
-  font-weight: 400;
-  line-height: 1.04;
-  color: var(--color-ink);
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-}
-
-.hm-lede {
-  max-width: 52ch;
-  margin-block: var(--space-lg) 0;
-  font-size: var(--text-md);
-  line-height: 1.6;
-}
-
-.hm-lede code {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-}
-
-.hm-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-lg);
-  align-items: center;
-  margin-block-start: var(--space-xl);
-}
-
-/* ---- buttons and links ---- */
-
-.hm-btn {
-  display: inline-block;
-  padding: var(--space-sm) var(--space-lg);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--color-accent-ink);
-  white-space: nowrap;
-  text-decoration: none;
-  background: var(--color-accent);
-  border-radius: var(--radius-pill);
-  transition:
-    background-color var(--dur-short) var(--ease-out),
-    transform var(--dur-micro) var(--ease-out);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .hm-btn:hover {
-    transform: translateY(-1.5px);
-  }
-}
-
-.hm-btn:active {
-  transform: translateY(0);
-}
-
-.hm-link {
-  font-size: var(--text-sm);
-  color: var(--color-muted);
-  white-space: nowrap;
-  text-decoration: underline;
-  text-decoration-color: var(--color-rule-2);
-  text-underline-offset: 0.3em;
-  transition: color var(--dur-micro) var(--ease-out);
-}
-
-.hm-link:hover {
-  color: var(--color-ink);
-  text-decoration-color: var(--color-accent);
+  background: linear-gradient(
+    180deg,
+    transparent 72%,
+    var(--color-hm-paper) 100%
+  );
 }
 
 /* ---- page-load reveal (hero only, pure CSS) ---- */
@@ -212,7 +51,7 @@ body {
 .hm-reveal {
   opacity: 0;
   transform: translateY(8px);
-  animation: hm-reveal var(--dur-long) var(--ease-out) forwards;
+  animation: hm-reveal 420ms var(--ease-hm-out) forwards;
   animation-delay: calc(var(--i, 0) * 120ms);
 }
 
@@ -223,51 +62,13 @@ body {
   }
 }
 
-/* ---- sections ---- */
-
-.hm-section {
-  padding-block: var(--space-3xl) var(--space-2xl);
-}
-
-.hm-section h2 {
-  min-width: 0;
-  max-width: 26ch;
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: 400;
-  line-height: 1.1;
-  color: var(--color-ink);
-  letter-spacing: -0.02em;
-  overflow-wrap: anywhere;
-}
-
-.hm-body {
-  max-width: 62ch;
-  margin-block: var(--space-lg) 0;
-  line-height: 1.62;
-}
-
-.hm-body code {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-}
-
-.hm-foot-note {
-  max-width: 62ch;
-  margin-block-start: var(--space-lg);
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  color: var(--color-muted);
-}
-
 /* Scroll reveal — one-shot, gated on JS so a no-script page never blanks. */
 .hm-js [data-reveal] {
   opacity: 0;
   transform: translateY(12px);
   transition:
-    opacity 600ms var(--ease-soft),
-    transform 600ms var(--ease-soft);
+    opacity 600ms var(--ease-hm-soft),
+    transform 600ms var(--ease-hm-soft);
   transition-delay: calc(var(--i, 0) * 60ms);
 }
 
@@ -276,23 +77,7 @@ body {
   transform: none;
 }
 
-/* ---- use-case cards — lit from within, unequal tracks ---- */
-
-.hm-cases {
-  display: grid;
-  grid-template-columns: 0.9fr 0.95fr 1.15fr;
-  gap: var(--space-lg);
-  margin-block-start: var(--space-xl);
-}
-
-.hm-case {
-  position: relative;
-  padding: var(--space-lg);
-  overflow: clip;
-  border: 1px solid var(--color-rule);
-  border-radius: var(--radius-card);
-  transition: transform var(--dur-short) var(--ease-soft);
-}
+/* ---- use-case cards — lit from within ---- */
 
 .hm-case::before {
   position: absolute;
@@ -301,7 +86,7 @@ body {
   content: "";
   background: radial-gradient(
     120% 90% at 50% 0%,
-    var(--color-card-emit) 0%,
+    var(--color-hm-card-emit) 0%,
     transparent 70%
   );
 }
@@ -313,11 +98,11 @@ body {
   content: "";
   background: radial-gradient(
     120% 90% at 50% 0%,
-    var(--color-card-emit-hover) 0%,
+    var(--color-hm-card-emit-hover) 0%,
     transparent 70%
   );
   opacity: 0;
-  transition: opacity var(--dur-short) var(--ease-soft);
+  transition: opacity 220ms var(--ease-hm-soft);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -330,108 +115,10 @@ body {
   }
 }
 
-.hm-case h3 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: 400;
-  color: var(--color-ink);
-  letter-spacing: -0.015em;
-}
-
-.hm-case p {
-  margin-block: var(--space-sm) 0;
-  font-size: var(--text-sm);
-  line-height: 1.6;
-}
-
-.hm-case p code {
-  font-family: var(--font-mono);
-  font-size: 0.92em;
-}
-
-/* ---- code — typographic frame, no window chrome ---- */
-
-.hm-codeframe {
-  max-width: 46rem;
-  padding-block: var(--space-md) var(--space-lg);
-  margin-block-start: var(--space-xl);
-  border-block: 1px solid var(--color-rule);
-}
-
-.hm-codeframe figcaption {
-  margin-block-end: var(--space-md);
-}
-
-.hm-codeframe pre {
-  margin: 0;
-  overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: 1.75;
-}
-
-.tok-kw {
-  color: var(--color-muted);
-}
-
-.tok-str {
-  color: var(--color-accent);
-}
-
-/* ---- permissions strip ---- */
-
-.hm-safety {
-  margin-block-start: var(--space-xl);
-}
-
-.hm-perm {
-  display: flex;
-  flex-wrap: wrap;
-  min-inline-size: auto;
-  padding: 0;
-  margin: 0;
-  border: 0;
-}
-
-.hm-perm > button {
-  padding: var(--space-sm) var(--space-md);
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  color: var(--color-muted);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-micro);
-  white-space: nowrap;
-  cursor: pointer;
-  background: none;
-  border: 1px solid var(--color-rule);
-  transition: color var(--dur-micro) var(--ease-out);
-}
-
-.hm-perm > button + button {
-  margin-inline-start: -1px;
-}
-
-.hm-perm > button:hover {
-  color: var(--color-ink);
-}
-
-.hm-perm > .is-active {
-  position: relative;
-  z-index: var(--z-raised);
-  color: var(--color-ink);
-  border-color: var(--color-accent);
-}
+/* ---- safety preset panel ---- */
 
 .hm-perm-panel {
-  min-height: 3.25rem;
-  padding-block-start: var(--space-lg);
-  animation: hm-panel-in 150ms var(--ease-out);
-}
-
-.hm-perm-panel p {
-  max-width: 62ch;
-  margin: 0;
+  animation: hm-panel-in 150ms var(--ease-hm-out);
 }
 
 @keyframes hm-panel-in {
@@ -440,214 +127,6 @@ body {
   }
   to {
     opacity: 1;
-  }
-}
-
-/* ---- coverage · logo wall (hairline lattice, no card boxes) ---- */
-
-.hm-wall {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 1px;
-  padding: 0;
-  margin: var(--space-xl) 0 0;
-  list-style: none;
-  background: var(--color-rule);
-  border: 1px solid var(--color-rule);
-}
-
-.hm-wall li {
-  background: var(--color-paper);
-}
-
-.hm-wall-cell {
-  display: flex;
-  gap: var(--space-sm);
-  align-items: center;
-  height: 100%;
-  padding: var(--space-md);
-  color: inherit;
-  text-decoration: none;
-}
-
-a.hm-wall-cell {
-  transition: background-color var(--dur-micro) var(--ease-out);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  a.hm-wall-cell:hover {
-    background: var(--color-paper-2);
-  }
-}
-
-.hm-wall img {
-  display: block;
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-}
-
-.hm-wall-info {
-  display: grid;
-  min-width: 0;
-}
-
-.hm-wall-name {
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-}
-
-.hm-status {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-micro);
-  white-space: nowrap;
-}
-
-.hm-status.is-shipped {
-  color: var(--color-accent);
-}
-
-.hm-status.is-soon {
-  color: var(--color-muted);
-}
-
-/* ---- install one-liner (footer) ---- */
-
-.hm-install {
-  display: inline-flex;
-  gap: var(--space-xs);
-  align-items: center;
-  padding: var(--space-2xs) var(--space-2xs) var(--space-2xs) var(--space-md);
-  background: var(--color-paper-2);
-  border: 1px solid var(--color-rule);
-  border-radius: var(--radius-pill);
-}
-
-.hm-install code {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
-
-.hm-copy {
-  padding: var(--space-2xs) var(--space-xs);
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  color: var(--color-muted);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-micro);
-  cursor: pointer;
-  background: none;
-  border: none;
-  transition: color var(--dur-micro) var(--ease-out);
-}
-
-.hm-copy:hover {
-  color: var(--color-ink);
-}
-
-.hm-copy:active {
-  transform: translateY(1px);
-}
-
-.hm-copy:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.hm-copy[data-state="copied"] {
-  color: var(--color-accent);
-}
-
-/* ---- footer · Ft5 statement ---- */
-
-.hm-footer {
-  padding-block: var(--space-3xl) var(--space-xl);
-  border-top: 1px solid var(--color-rule);
-}
-
-.hm-footer-inner {
-  display: grid;
-  gap: var(--space-xl);
-}
-
-.hm-footer-line {
-  min-width: 0;
-  max-width: 28ch;
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.75rem, 5vw, 3.25rem);
-  font-weight: 400;
-  line-height: 1.05;
-  color: var(--color-ink);
-  letter-spacing: -0.02em;
-  overflow-wrap: anywhere;
-}
-
-.hm-footer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-lg);
-  align-items: center;
-}
-
-.hm-footer-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md) var(--space-lg);
-  align-items: baseline;
-  justify-content: space-between;
-  padding-block-start: var(--space-md);
-  font-size: var(--text-sm);
-  color: var(--color-muted);
-  border-top: 1px solid var(--color-rule);
-}
-
-.hm-footer-meta .hm-wordmark {
-  font-size: var(--text-base);
-}
-
-.hm-footer-meta a {
-  color: var(--color-muted);
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-.hm-footer-meta a:hover {
-  color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: 0.25em;
-}
-
-/* ---- responsive ---- */
-
-@media (max-width: 60rem) {
-  .hm-hero-inner {
-    padding-block: var(--space-2xl) var(--space-3xl);
-  }
-}
-
-@media (max-width: 48rem) {
-  .hm-cases {
-    grid-template-columns: 1fr;
-  }
-
-  .hm-steps {
-    grid-template-columns: 1fr;
-  }
-
-  .hm-section {
-    padding-block: var(--space-2xl);
-  }
-}
-
-@media (pointer: coarse) {
-  .hm-btn,
-  .hm-copy {
-    min-height: 44px;
   }
 }
 

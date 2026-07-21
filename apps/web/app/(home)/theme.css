@@ -1,0 +1,31 @@
+/* AnyAgent landing — "ember grain" tokens as hm-* utilities: violet-black
+ * paper, brass + coral embers. The hero shader (hero-canvas.tsx) mirrors
+ * paper/violet/brass/coral as hex — WebGL can't read custom props. */
+
+@theme {
+  --color-hm-paper: oklch(13% 0.014 265);
+  --color-hm-paper-2: oklch(16% 0.016 265);
+  --color-hm-ink: oklch(96% 0.006 262);
+  --color-hm-ink-2: oklch(86% 0.01 262);
+  --color-hm-muted: oklch(67% 0.014 262);
+  --color-hm-rule: oklch(26% 0.014 265);
+  --color-hm-rule-2: oklch(36% 0.016 265);
+  --color-hm-accent: oklch(76% 0.17 50);
+  --color-hm-accent-ink: oklch(15% 0.03 50);
+  --color-hm-card-emit: oklch(76% 0.17 50 / 0.05);
+  --color-hm-card-emit-hover: oklch(76% 0.17 50 / 0.11);
+  --color-hm-focus: oklch(76% 0.17 50);
+  --color-hm-scrim: oklch(13% 0.014 265 / 0.78);
+  --font-hm-display: var(--font-teachers), ui-sans-serif, system-ui, sans-serif;
+  --font-hm-body: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-hm-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --text-hm-label: 0.6875rem;
+  --text-hm-sm: 0.85rem;
+  --text-hm-md: 1.1875rem;
+  --text-hm-lg: 1.5rem;
+  --text-hm-2xl: clamp(1.9rem, 2.4vw + 0.9rem, 2.75rem);
+  --text-hm-display: clamp(2.75rem, 5vw + 1rem, 5.25rem);
+  --tracking-hm-micro: 0.1em;
+  --ease-hm-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-hm-soft: cubic-bezier(0.4, 0, 0.2, 1);
+}
