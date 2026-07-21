@@ -2,13 +2,11 @@ import { opencodeFamilyAdapter } from "./internal/opencode-family.js";
 import type { Adapter } from "./types.js";
 
 /**
- * The adapter for Kilo Code's CLI. Kilo is an opencode fork and exposes the
- * identical `kilo run --format json` surface — same flags, same
- * `step_start`/`text`/`tool_use`/`step_finish` stream — verified against real
- * `kilo` output, not assumed from the lineage. See the opencode adapter for
- * the shared behavior: prompt over stdin, `--auto` for `auto`,
- * `--session <sessionId>` for `resume` (id on `RunResult.raw.sessionId`),
- * models as `provider/model`.
+ * The adapter for Kilo Code's CLI (`kilo`). Kilo is an opencode fork with the
+ * identical headless surface — verified against real `kilo` output, not
+ * assumed from the lineage. It behaves like the opencode adapter: `auto`
+ * auto-approves, `resume` continues a session (id on
+ * `RunResult.raw.sessionId`), and models use `provider/model` form.
  *
  * ```ts
  * import { create } from "anyagent";

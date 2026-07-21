@@ -26,12 +26,11 @@ export interface NdjsonSpec<Ctx> {
 
 /**
  * Build an `Adapter.parse` from an {@link NdjsonSpec}, so an NDJSON adapter
- * only has to write its event mapping. The parser owns everything the NDJSON
- * adapters share: decoding one JSON object per line (a malformed line throws
- * `AnyAgentError` with `code: "Parse"` and the offending text), buffering
- * events into the result, awaiting the process exit (a nonzero exit throws
- * the descriptive `Invocation` error), and emitting the single terminal
- * `done` event.
+ * only has to write its event mapping. The parser guarantees what every
+ * NDJSON adapter shares: a malformed line throws `AnyAgentError`
+ * (`code: "Parse"`) naming the offending text, a nonzero exit throws the
+ * descriptive `Invocation` error, and the stream ends with the single
+ * terminal `done` event carrying the finalized result.
  */
 export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>): Adapter["parse"] =>
   async function* parse(

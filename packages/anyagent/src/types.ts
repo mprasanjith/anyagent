@@ -106,9 +106,10 @@ export interface CapabilityTable {
 export interface Usage {
   costUsd?: number;
   /**
-   * Uncached input tokens, matching the underlying provider's accounting (e.g.
-   * Anthropic reports cache reads/writes as separate line items, not folded in
-   * here). For exact cost, read the native payload on the event/result `raw`.
+   * Uncached input tokens, matching the underlying provider's accounting
+   * (some providers report cache reads/writes as separate line items, not
+   * folded in here). For exact cost, read the native payload on the
+   * event/result `raw`.
    */
   inputTokens?: number;
   outputTokens?: number;
@@ -403,10 +404,8 @@ export interface Detection {
  * lifecycle). That split keeps adapters testable offline against recorded
  * fixtures, with zero subprocesses.
  *
- * To add one, implement this interface in `src/<id>/index.ts` (use
- * `ndjsonParser` when the CLI emits NDJSON), record real fixtures, and run
- * `runConformance` over them. `src/claude-code/index.ts` is the reference
- * implementation.
+ * To add one, implement this interface (use `ndjsonParser` when the CLI
+ * emits NDJSON), record real fixtures, and run `runConformance` over them.
  */
 export interface Adapter {
   /**

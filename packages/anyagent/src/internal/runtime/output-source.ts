@@ -8,11 +8,9 @@ const STDERR_SNIPPET_LEN = 200;
 const isAbort = (err: Error & { code?: string }): boolean =>
   err.name === "AbortError" || err.code === "ABORT_ERR";
 
-/**
- * Wrap a spawned child in an {@link OutputSource}: line-buffered stdout,
- * captured stderr, and an `exitCode` that rejects with a descriptive
- * `Invocation` (or `Aborted`) error on any failure.
- */
+// Wrap a spawned child in an {@link OutputSource}: line-buffered stdout,
+// captured stderr, and an `exitCode` that rejects with a descriptive
+// `Invocation` (or `Aborted`) error on any failure.
 export const outputSourceFromChild = (
   child: ChildProcess,
   invocation: Invocation

@@ -3,13 +3,11 @@ import type { Adapter, Detection, VersionProbe } from "../types.js";
 const DEFAULT_VERSION_COMMAND = ["--version"];
 const DEFAULT_VERSION_REGEX = /(?<version>\d+\.\d+\.\d+\S*)/u;
 
-/**
- * The built-in detection an adapter gets when it does not supply its own
- * `detect`: resolve the first of `meta.bin` on `PATH`, then read the version
- * per the adapter's {@link DetectionSpec}. A missing binary yields
- * `installed: false`; a failing version probe never blocks use — `version`
- * just stays absent.
- */
+// The built-in detection an adapter gets when it does not supply its own
+// `detect`: resolve the first of `meta.bin` on `PATH`, then read the version
+// per the adapter's {@link DetectionSpec}. A missing binary yields
+// `installed: false`; a failing version probe never blocks use — `version`
+// just stays absent.
 export const defaultDetect = async (
   adapter: Adapter,
   probe: VersionProbe
@@ -43,10 +41,6 @@ export const defaultDetect = async (
   return { ...base, installed: true, path, version };
 };
 
-/**
- * Detect one agent: the adapter's own `detect` when present, else
- * {@link defaultDetect}.
- */
 export const runDetect = (
   adapter: Adapter,
   probe: VersionProbe

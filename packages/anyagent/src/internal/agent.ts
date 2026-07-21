@@ -19,7 +19,6 @@ type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
 type Parsed = { json: unknown } | { errors: string[] };
 
-/** Extract and validate a reply against a schema, in one pass. */
 const evaluate = (text: string, schema: Record<string, unknown>): Parsed => {
   let value: unknown;
   try {
@@ -40,12 +39,10 @@ const correctionPrompt = (
     .map((e) => `- ${e}`)
     .join("\n")}\n\nReply again with only a corrected JSON value.`;
 
-/**
- * The concrete {@link Agent}: validates options against the adapter's
- * capability table, spawns via the injected runner (real process spawn by
- * default; tests inject fixture-backed runners), and delegates output
- * parsing to the adapter.
- */
+// The concrete {@link Agent}: validates options against the adapter's
+// capability table, spawns via the injected runner (real process spawn by
+// default; tests inject fixture-backed runners), and delegates output
+// parsing to the adapter.
 export class AgentImpl implements Agent {
   readonly adapter: Adapter;
   private readonly runner: Runner;

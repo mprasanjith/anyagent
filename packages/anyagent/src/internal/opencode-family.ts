@@ -10,13 +10,11 @@ import type {
   Usage,
 } from "../types.js";
 
-/**
- * Shared implementation for opencode and its fork Kilo Code. Both CLIs expose
- * the same `run --format json` surface and emit the same
- * `step_start`/`text`/`tool_use`/`step_finish` event stream — verified
- * separately against real output of each. Only the binary name and identity
- * differ, so each adapter passes its own meta here.
- */
+// Shared implementation for opencode and its fork Kilo Code. Both CLIs expose
+// the same `run --format json` surface and emit the same
+// `step_start`/`text`/`tool_use`/`step_finish` event stream — verified
+// separately against real output of each. Only the binary name and identity
+// differ, so each adapter passes its own meta here.
 
 const CAPS: CapabilityTable = {
   cwd: "native",

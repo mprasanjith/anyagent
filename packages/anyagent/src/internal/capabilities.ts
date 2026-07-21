@@ -8,7 +8,6 @@ import type {
 
 const DEFAULT_PERMISSION: PermissionLevel = "edit";
 
-/** The permission level a run will use: the caller's choice, or `"edit"`. */
 export const resolvePermission = (opts: RunOptions): PermissionLevel =>
   opts.permission ?? DEFAULT_PERMISSION;
 
@@ -35,11 +34,9 @@ const GUARDED_OPTIONS: readonly (readonly [
   ["schema", "structuredOutput", "structured output"],
 ];
 
-/**
- * Throw `AnyAgentError` (`code: "UnsupportedCapability"`) when `opts` asks
- * for anything the adapter's capability table does not declare. Runs before
- * any process spawns, so a wrong assumption fails fast.
- */
+// Throw `AnyAgentError` (`code: "UnsupportedCapability"`) when `opts` asks
+// for anything the adapter's capability table does not declare. Runs before
+// any process spawns, so a wrong assumption fails fast.
 export const validateOptions = (adapter: Adapter, opts: RunOptions): void => {
   const agent = adapter.meta.id;
   const caps = adapter.capabilities;

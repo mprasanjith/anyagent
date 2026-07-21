@@ -213,9 +213,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for Cline's CLI. Drives `cline --json --auto-approve true`,
- * mapping the `hook_event`/`agent_event`/`run_result` NDJSON stream onto
- * normalized events. Cline is BYOK: configure a provider once via
+ * The adapter for Cline's CLI (`cline`). Cline is BYOK: configure a provider once via
  * `cline auth -p <provider> -k <key>` (e.g. openrouter), or pass `-P`/`-k`
  * per run through `extraArgs`.
  *
@@ -229,9 +227,8 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * Headless cline auto-approves every tool, so `edit` and `auto` are
  * equivalent and there is no `read` level (plan mode still executes
  * shell commands). Session resume is undeclared: `--id` is broken in headless
- * JSON mode upstream. System prompts have no append flag (`-s` replaces), so
- * the core emulates them by folding into the prompt. A failed run throws
- * `AnyAgentError` with cline's own message from `run_result`.
+ * JSON mode upstream. System prompts have no append flag (`-s` replaces) and
+ * are emulated. A failed run throws `AnyAgentError` with cline's own message.
  */
 export const cline = (): Adapter => ({
   buildInvocation,

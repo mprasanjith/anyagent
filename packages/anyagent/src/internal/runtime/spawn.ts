@@ -6,11 +6,9 @@ import path from "node:path";
 import type { Invocation, OutputSource, VersionProbe } from "../../types.js";
 import { outputSourceFromChild } from "./output-source.js";
 
-/**
- * Launch an invocation's process: merge its env over the parent's, and close
- * stdin (carrying the prompt payload, if any) so an agent reading it isn't
- * left waiting on EOF.
- */
+// Launch an invocation's process: merge its env over the parent's, and close
+// stdin (carrying the prompt payload, if any) so an agent reading it isn't
+// left waiting on EOF.
 export const spawnChild = (
   invocation: Invocation,
   signal?: AbortSignal
@@ -25,10 +23,8 @@ export const spawnChild = (
   return child;
 };
 
-/**
- * The default runner: spawn the invocation and wrap the child in an
- * {@link OutputSource} for an adapter's `parse` to consume.
- */
+// The default runner: spawn the invocation and wrap the child in an
+// {@link OutputSource} for an adapter's `parse` to consume.
 export const spawnAndStream = (
   invocation: Invocation,
   signal?: AbortSignal
@@ -44,10 +40,8 @@ const isExecutable = async (candidate: string): Promise<string | undefined> => {
   }
 };
 
-/**
- * Find `bin` on the `PATH`, trying Windows executable extensions on win32.
- * Resolves to the first executable match in `PATH` order, or `undefined`.
- */
+// Find `bin` on the `PATH`, trying Windows executable extensions on win32.
+// Resolves to the first executable match in `PATH` order, or `undefined`.
 export const resolveOnPath = async (
   bin: string
 ): Promise<string | undefined> => {
@@ -63,10 +57,8 @@ export const resolveOnPath = async (
 
 const PROBE_TIMEOUT_MS = 10_000;
 
-/**
- * The production {@link VersionProbe}: real `PATH` lookup and real version
- * commands. Tests pass a fake via `detect({ probe })` instead of this.
- */
+// The production {@link VersionProbe}: real `PATH` lookup and real version
+// commands. Tests pass a fake via `detect({ probe })` instead of this.
 export const realProbe: VersionProbe = {
   exec: (bin, args) =>
     new Promise((resolve) => {

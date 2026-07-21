@@ -7,7 +7,7 @@ import { opencode } from "../opencode.js";
 import { pi } from "../pi.js";
 import type { Adapter } from "../types.js";
 
-/** Built-in adapters. A new adapter appends its factory result here. */
+// Built-in adapters. A new adapter appends its factory result here.
 export const BUILTINS: Adapter[] = [
   claudeCode(),
   codex(),

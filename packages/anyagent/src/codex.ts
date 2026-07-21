@@ -234,12 +234,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for OpenAI's Codex CLI. Drives `codex exec --json` with the
- * prompt piped over stdin, mapping the thread→turn→item event stream onto
- * normalized events. Permission levels map onto `--sandbox`
- * (`read-only` / `workspace-write` / `danger-full-access`); `resume` runs
- * `codex exec resume <threadId>`, where the thread id comes from
- * `RunResult.raw.threadId` of a prior run.
+ * The adapter for the Codex CLI (`codex`). Permission levels map onto
+ * Codex's sandbox levels (`read-only` / `workspace-write` /
+ * `danger-full-access`); `resume` continues a prior thread, whose id comes
+ * from `RunResult.raw.threadId` of a prior run.
  *
  * ```ts
  * import { create } from "anyagent";
@@ -248,9 +246,9 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * const result = await create(codex()).run("summarize this repo");
  * ```
  *
- * MCP servers are not supported on `codex exec`; Codex's `-c` config overrides
- * can reach them via `extraArgs` or `agent.raw`. System prompts have no native
- * flag, so the core emulates them by folding them into the prompt.
+ * MCP servers are not supported on headless Codex; Codex's `-c` config
+ * overrides can reach them via `extraArgs` or `agent.raw`. System prompts
+ * have no native flag and are emulated.
  */
 export const codex = (): Adapter => ({
   buildInvocation,

@@ -15,12 +15,10 @@ const matchingSlice = (text: string): string | undefined => {
   return end > start ? text.slice(start, end + 1) : undefined;
 };
 
-/**
- * Pull a JSON value out of a model's reply. Tries, in order: the whole trimmed
- * text as JSON; the contents of the first fenced code block; the substring
- * from the first `{`/`[` to the matching last `}`/`]`. Throws if none parse —
- * an agent that answered in prose leaves nothing to parse.
- */
+// Pull a JSON value out of a model's reply. Tries, in order: the whole trimmed
+// text as JSON; the contents of the first fenced code block; the substring
+// from the first `{`/`[` to the matching last `}`/`]`. Throws if none parse —
+// an agent that answered in prose leaves nothing to parse.
 export const extractJson = (text: string): unknown => {
   const trimmed = text.trim();
   try {
@@ -124,14 +122,12 @@ const check = (value: unknown, schema: Schema, path: string): string[] => {
   ];
 };
 
-/**
- * Validate a parsed value against a JSON Schema, returning human-readable
- * error strings (empty means valid). Each error carries a JSON path, e.g.
- * `$.user.name: expected string, got number`. Only the essentials are
- * honored — `type` (including `"integer"` and `"array"`), `properties` +
- * `required` (recursively), `items` (a single schema), and `enum`. Every
- * other JSON Schema keyword is ignored.
- */
+// Validate a parsed value against a JSON Schema, returning human-readable
+// error strings (empty means valid). Each error carries a JSON path, e.g.
+// `$.user.name: expected string, got number`. Only the essentials are
+// honored — `type` (including `"integer"` and `"array"`), `properties` +
+// `required` (recursively), `items` (a single schema), and `enum`. Every
+// other JSON Schema keyword is ignored.
 export const validateAgainstSchema = (
   value: unknown,
   schema: Record<string, unknown>

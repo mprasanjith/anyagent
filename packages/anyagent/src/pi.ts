@@ -234,9 +234,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for Pi (`@earendil-works/pi-coding-agent`). Drives
- * `pi --mode json -p`, mapping the `session`/`turn_*`/`message_*` NDJSON
- * stream onto normalized events — Pi streams token-level text deltas, so
+ * The adapter for the Pi CLI (`pi`). Pi streams token-level text deltas, so
  * `text-delta` events are fine-grained. Pi is BYOK: pick the backend with
  * provider env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …) and pass
  * `model` as Pi's `provider/model` pattern (e.g.
@@ -249,11 +247,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * const result = await create(pi()).run("summarize this repo");
  * ```
  *
- * Pi never prompts for approval, so `edit` and `auto` are equivalent
- * (the default toolset); `read` maps to `--tools read`. `resume` runs
- * `--session-id <id>`, where the id comes from `RunResult.raw.sessionId`.
- * Pi exits 0 even when a turn fails, so the adapter turns a `stopReason:
- * "error"` turn into an `AnyAgentError` instead of trusting the exit code.
+ * Pi never prompts for approval, so `edit` and `auto` are equivalent (the
+ * default toolset), while `read` restricts Pi to its read tools. `resume`
+ * continues a session, whose id comes from `RunResult.raw.sessionId`. A
+ * failed turn throws `AnyAgentError` even though Pi's process exits 0.
  */
 export const pi = (): Adapter => ({
   buildInvocation,

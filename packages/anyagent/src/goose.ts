@@ -168,11 +168,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 };
 
 /**
- * The adapter for goose (Block's open-source agent, now under the Agentic AI
- * Foundation). Drives `goose run --output-format stream-json --quiet` with
- * the prompt piped over stdin via `-i -`. Goose is BYOK: pick the backend
+ * The adapter for the goose CLI (`goose`). Goose is BYOK: pick the backend
  * with `GOOSE_PROVIDER` plus the provider's key env var (or goose's own
- * config), and pass `model` in the provider's naming.
+ * config),
+ * and pass `model` in the provider's naming.
  *
  * ```ts
  * import { create } from "anyagent";
@@ -184,9 +183,8 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * Sessions are resumed by name: name the first run yourself via
  * `extraArgs: ["--name", "my-session"]`, then pass that same name as
  * `resume` — goose's headless stream carries no session id to hand back on
- * `raw`. Goose reports errors as ordinary assistant text with a final
- * `complete` event of null token counts, so a failed turn returns that text
- * rather than throwing.
+ * `raw`. Goose reports errors as ordinary assistant text, so a failed turn
+ * returns that text as the reply rather than throwing.
  */
 export const goose = (): Adapter => ({
   buildInvocation,
