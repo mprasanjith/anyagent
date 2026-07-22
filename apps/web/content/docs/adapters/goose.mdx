@@ -1,27 +1,30 @@
 ---
 title: goose
-description: How the goose adapter invokes the goose CLI’s goose binary, and what each run option maps to.
+description: "Use goose through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `goose` adapter drives `goose run --output-format stream-json --quiet` with the prompt piped over stdin via `-i -`; import `goose` from `anyagent/goose`. goose is Apache-2.0 open source and bring-your-own-key (BYOK): pass `model` as `"provider/model"`, or configure a provider in goose’s own config and pass a bare name. `readOnly`, `effort`, `mcp`, and model listing are undeclared, and requesting them throws. The full grid is on the [support matrix](/docs/adapters).
+The `goose` adapter drives `goose run --output-format stream-json --quiet` with the prompt piped over stdin via `-i -`; import `goose` from `anyagent/goose`. goose is Apache-2.0 open source and bring-your-own-key (BYOK): pass `model` as `"provider/model"`, or configure a provider in goose’s own config and pass a bare name.
 
-## How options map to flags
+## What you can ask for
 
-Every run executes `goose run --output-format stream-json --quiet -i -`, with `GOOSE_MODE=auto` set as an env default so approval modes cannot hang a headless run; a `GOOSE_MODE` you pass in `env` wins. [Run options](/docs/api#run-options) append flags:
+`model`, `systemPrompt`, and session resume work on the CLI’s own flags; `schema` works too, provided by AnyAgent. `readOnly`, `effort`, `mcp`, and model listing are undeclared, and requesting them throws. The full grid is on the [support matrix](/docs/adapters).
+
+No read-only run exists because goose has nothing to build one on: its chat mode disables tools entirely (the agent could not even read files) and its approval modes hang headless. `authStatus()` runs `goose info -v` (no model call) and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`.
+
+## Good to know
+
+- The headless stream never reveals a session id, so `result.sessionId` stays absent. Resume by name instead: name the first run via `extraArgs: ["--name", "review-1"]`, then pass `resume` with that name.
+- `model` splits at the first slash only, so an openrouter path like `"openrouter/openai/gpt-5.2"` works verbatim; a bare name leaves the provider to goose’s config.
+- Thinking blocks map to `reasoning-delta`; namespaced tools normalize (`developer__shell` surfaces as `bash`, the text editor’s commands as `write` or `edit` by what they do).
+- Usage reports `inputTokens` and `outputTokens` only.
+- A failed run reports the provider error as ordinary assistant text rather than throwing, ending with null token counts.
+
+## Under the hood
+
+Every run executes `goose run --output-format stream-json --quiet -i -`, with `GOOSE_MODE=auto` set as an env default so approval modes cannot hang a headless run; a `GOOSE_MODE` you pass in `env` wins. `--quiet` matters: without it goose prints a banner that would corrupt the NDJSON stream. [Run options](/docs/api#run-options) append flags:
 
 | Option         | Flag                                                                                                         |
 | -------------- | -------------------------------------------------------------------------------------------------------------- |
 | `model`        | `--provider <provider> --model <model>` from `"provider/model"`; a bare name maps to `--model <name>` alone |
 | `systemPrompt` | `--system <text>`                                                                                            |
 | `resume`       | `--name <name> --resume`                                                                                     |
-
-## Quirks
-
-- `model` splits at the first slash only, so an openrouter path like `"openrouter/openai/gpt-5.2"` works verbatim; a bare name leaves the provider to goose’s config.
-- No read-only run exists: goose’s chat mode disables tools entirely (the agent could not even read files) and its approval modes hang headless, so `readOnly: true` throws rather than pretending.
-- `--quiet` matters: without it goose prints a banner that would corrupt the NDJSON stream.
-- `authStatus()` runs `goose info -v` (no model call) and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`.
-- `models()` throws: the CLI has no listing mechanism.
-- Thinking blocks map to `reasoning-delta`; namespaced tools normalize (`developer__shell` surfaces as `bash`, the text editor’s commands as `write` or `edit` by what they do).
-- The headless stream never reveals a session id, so `result.sessionId` stays absent; resume by name instead, naming the first run via `extraArgs: ["--name", "review-1"]`.
-- Usage reports `inputTokens` and `outputTokens` only, and a failed run reports the provider error as ordinary assistant text rather than throwing, ending with null token counts.

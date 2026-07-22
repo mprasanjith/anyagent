@@ -9,17 +9,20 @@ description: Let the CLI pick up an Agent Skill from the repo, stage one for a s
 
 Each CLI reads skills from its own directories, at a project level (relative to `cwd`) and a user level (under the home directory). These are verified against each CLI’s current documentation:
 
-| Agent       | Project paths                                             | User paths                                 |
-| ----------- | --------------------------------------------------------- | ------------------------------------------ |
-| Claude Code | `.claude/skills/`                                         | `~/.claude/skills/`                        |
-| Codex       | `.agents/skills/`                                         | `~/.agents/skills/`                        |
-| opencode    | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` | user-level equivalents of each             |
-| Pi          | `.pi/skills/`, `.agents/skills/`                          | `~/.pi/agent/skills/`, `~/.agents/skills/` |
-| goose       | `.agents/skills/`                                         | `~/.agents/skills/`                        |
-| Kilo Code   | none                                                      | none                                       |
-| Cline       | none                                                      | none                                       |
+| Agent       | Project paths                                                            | User paths                                 |
+| ----------- | ------------------------------------------------------------------------ | ------------------------------------------ |
+| Claude Code | `.claude/skills/`                                                        | `~/.claude/skills/`                        |
+| Codex       | `.agents/skills/`                                                        | `~/.agents/skills/`                        |
+| opencode    | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/`                | user-level equivalents of each             |
+| Pi          | `.pi/skills/`, `.agents/skills/`                                         | `~/.pi/agent/skills/`, `~/.agents/skills/` |
+| goose       | `.agents/skills/`                                                        | `~/.agents/skills/`                        |
+| Gemini CLI  | `.agents/skills/`, `.gemini/skills/`                                     | `~/.agents/skills/`, `~/.gemini/skills/`   |
+| Antigravity | `.agents/skills/`                                                        | `~/.gemini/config/skills/`                 |
+| Cursor      | `.agents/skills/`, `.cursor/skills/`, `.claude/skills/`, `.codex/skills/` | user-level equivalents of each             |
+| Kilo Code   | none                                                                     | none                                       |
+| Cline       | none                                                                     | none                                       |
 
-`.agents/skills/` is the shared path: Codex, opencode, Pi, and goose all read it, so a skill placed there reaches every one of them. Claude Code is the exception, reading `.claude/skills/` instead. Pi also accepts a repeatable `--skill <path>` flag, which you can pass through [`extraArgs`](/docs/escape-hatches). Kilo Code and Cline have no skills support today.
+`.agents/skills/` is the shared path: every skills-capable agent except Claude Code reads it, so a skill placed there reaches all of them at once. Claude Code reads `.claude/skills/` instead (Cursor and opencode read that path too). Pi also accepts a repeatable `--skill <path>` flag, which you can pass through [`extraArgs`](/docs/escape-hatches). Kilo Code and Cline have no skills support today.
 
 ## Let an installed skill get picked up
 
@@ -84,7 +87,7 @@ Two hygiene rules keep this safe. Create then delete only the directory you stag
 
 ## Fall back to the system prompt when skills are unsupported
 
-Kilo Code and Cline discover no skills, so on those agents fold the instructions into the run instead. `systemPrompt` reaches every built-in agent now, natively on some and [emulated](/docs/how-it-works) on the rest, so the same call works everywhere:
+Kilo Code and Cline discover no skills, so on those agents fold the instructions into the run instead. `systemPrompt` reaches every built-in agent, natively on some and provided by AnyAgent on the rest ([the matrix](/docs/adapters) shows which), so the same call works everywhere:
 
 ```ts
 import { readFile } from "node:fs/promises";

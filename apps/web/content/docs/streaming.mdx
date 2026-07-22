@@ -39,7 +39,7 @@ The test expected a trailing newline; parse() now preserves it.
 Done.
 ```
 
-Tool events carry the shared [`ToolName`](/docs/api#toolname) vocabulary on `name` (`read`, `edit`, `bash`, …) regardless of what the CLI calls the tool natively; the CLI’s own name is on `event.nativeName`. The full event vocabulary is `session`, `text-delta`, `reasoning-delta`, `tool-call`, `tool-result`, `file-change`, `usage`, and `done`; [`AgentEvent`](/docs/api#agentevent) lists each one’s fields. How much text one `text-delta` carries depends on the agent, from a token to a whole assistant message, but concatenating every delta’s `text` always reproduces `RunResult.text` exactly. `reasoning-delta` events carry the model’s visible thinking on CLIs that stream it; render or ignore them, they are never part of `RunResult.text`.
+Tool events carry the shared [`ToolName`](/docs/api#toolname) vocabulary on `name` (`read`, `edit`, `bash`, …) regardless of what the CLI calls the tool natively; the CLI’s own name is on `event.nativeName`. [`AgentEvent`](/docs/api#agentevent) lists the full event vocabulary and each event’s fields. How much text one `text-delta` carries varies by agent, from a token to a whole assistant message, but concatenating every delta’s `text` always reproduces `RunResult.text` exactly. `reasoning-delta` events carry the model’s visible thinking on CLIs that stream it; render or ignore them, they are never part of `RunResult.text`.
 
 The `session` event arrives once, early, carrying the id the run can later be resumed under; persist it as it appears and a crash mid-run still leaves you able to continue the conversation.
 

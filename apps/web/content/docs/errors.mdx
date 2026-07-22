@@ -43,7 +43,7 @@ goose cannot guarantee a read-only run
 cline does not accept effort "ultra" (accepts: none, low, medium, high, xhigh)
 ```
 
-Drop the option, or check first and degrade the feature when it is missing: `agent.supports()` for the extension options, `agent.capabilities` for the rest. [Run agents](/docs/run-agents#tune-the-run) shows both guards, and the [support matrix](/docs/adapters) shows what every CLI declares.
+Drop the option, or check first and degrade the feature when it is missing: `agent.supports()` for `readOnly`, `effort`, `mcp`, and `resume`; `agent.capabilities` for the rest. [Run agents](/docs/run-agents#tune-the-run) shows both guards, and the [support matrix](/docs/adapters) shows what every CLI declares.
 
 ## InvalidOptions
 
@@ -63,7 +63,7 @@ The CLI ran, but its output did not match the shape the adapter expects, or the 
 
 ## Aborted
 
-Your `AbortSignal` fired and the underlying process was terminated, whether from a user cancelling or an `AbortSignal.timeout` expiring. In a shipped tool that is usually the end user stopping a run on purpose, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming#cancel-a-run) shows how to wire the signal to Ctrl+C.
+Your `AbortSignal` fired and the underlying process was terminated, whether from a user cancelling or an `AbortSignal.timeout` expiring. In a shipped tool that means the end user stopped the run or your own timeout fired, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming#cancel-a-run) shows how to wire the signal to Ctrl+C.
 
 ## Diagnostic fields
 

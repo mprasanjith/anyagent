@@ -1,11 +1,23 @@
 ---
 title: opencode
-description: How the opencode adapter invokes the opencode CLI, and what each run option maps to.
+description: "Use opencode through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `opencode` adapter drives the opencode CLI, detected as the `opencode` binary on `PATH`, through `opencode run --format json`; import `opencode` from `anyagent/opencode`. opencode is bring-your-own-key (BYOK): it reads standard provider keys (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …) from the environment, so it needs no subscription. Model listing is native; auth status is probed; system prompts and structured output are emulated; MCP is a config-file concern, reachable via [`extraArgs`](/docs/escape-hatches). The full grid is on the [support matrix](/docs/adapters).
+The `opencode` adapter drives the opencode CLI through `opencode run --format json`, detected as the `opencode` binary on `PATH`; import `opencode` from `anyagent/opencode`. opencode is bring-your-own-key (BYOK): it reads standard provider keys (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …) from the environment, so it needs no subscription.
 
-## How options map to flags
+## What you can ask for
+
+`readOnly`, `model` (as `"provider/model"`), `effort` (a provider-defined variant name, passed verbatim), and `resume` all work on the CLI’s own switches. `systemPrompt` and `schema` work too, provided by AnyAgent. MCP is a config-file concern for opencode, reachable via [`extraArgs`](/docs/escape-hatches). The full grid is on the [support matrix](/docs/adapters).
+
+`models()` runs `opencode models`, and every printed `provider/model` id is valid verbatim as `model`. `authStatus()` reads `~/.local/share/opencode/auth.json` plus the provider key env vars: a hint rather than a guarantee.
+
+## Good to know
+
+- Tool parts arrive in a terminal state, so one raw event produces both the `tool-call` and its `tool-result`; reasoning parts map to `reasoning-delta`.
+- The session id is surfaced once, on first sight, and lands on `result.sessionId`.
+- Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
+
+## Under the hood
 
 Every run executes `opencode run --format json --auto` with the prompt piped over stdin. `--auto` is always passed: the default is the CLI’s maximum unattended autonomy, and `readOnly` confines it rather than dropping the flag. [Run options](/docs/api#run-options) append flags:
 
@@ -13,15 +25,7 @@ Every run executes `opencode run --format json --auto` with the prompt piped ove
 | ---------------- | ------------------------------------------------------------ |
 | `readOnly: true` | env `OPENCODE_PERMISSION={"bash":"deny","edit":"deny"}`     |
 | `model`          | `--model <provider/model>`                                  |
-| `effort`         | `--variant <name>`, a provider-defined name passed verbatim |
+| `effort`         | `--variant <name>`                                          |
 | `resume`         | `--session <sessionId>`                                     |
 
-## Quirks
-
-- The adapter owns the `OPENCODE_PERMISSION` env var: a caller-supplied value under that key is overridden, so it can never weaken the read-only contract.
-- The deny matrix uses category keys (the CLI silently ignores per-tool-name keys), and `webfetch` stays allowed: it reads the web and changes nothing on the machine.
-- `authStatus()` reads `~/.local/share/opencode/auth.json` plus the provider key env vars, a hint rather than a guarantee; `auth list` is never run because it exits 0 even with zero credentials.
-- `models()` runs `opencode models`; every printed `provider/model` id is valid verbatim as `model`.
-- Tool parts arrive in a terminal state, so one raw event produces both the `tool-call` and its `tool-result`; reasoning parts map to `reasoning-delta`.
-- The session id is surfaced once, on first sight, and lands on `result.sessionId`.
-- Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
+The adapter owns the `OPENCODE_PERMISSION` env var: a caller-supplied value under that key is overridden, so it can never weaken the read-only contract. The deny matrix uses category keys (the CLI silently ignores per-tool-name keys), and `webfetch` stays allowed: it reads the web and changes nothing on the machine. `auth list` is never run for `authStatus()`, because it exits 0 even with zero credentials.

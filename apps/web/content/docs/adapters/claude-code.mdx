@@ -1,31 +1,36 @@
 ---
 title: Claude Code
-description: How the claude-code adapter invokes the Claude Code CLI, and what each run option maps to.
+description: "Use Claude Code through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `claude-code` adapter drives the Claude Code CLI in headless mode, detected as the `claude` binary on `PATH`; import `claudeCode` from `anyagent/claude-code`. Every capability is native except model listing, which the CLI does not offer. The full grid is on the [support matrix](/docs/adapters).
+The `claude-code` adapter drives the Claude Code CLI in headless mode, detected as the `claude` binary on `PATH`; import `claudeCode` from `anyagent/claude-code`.
 
-## How options map to flags
+## What you can ask for
+
+Every run option works, on the CLI’s own flags: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own system prompt, never replacing it), `resume`, `mcp`, and `schema`. The full grid is on the [support matrix](/docs/adapters).
+
+`authStatus()` asks `claude auth status --json`, so the answer is the CLI’s own word. `models()` throws: the CLI has no listing mechanism.
+
+## Good to know
+
+- The session id lands on `result.sessionId`; pass it back as `resume` to continue the conversation.
+- `mcp` means exactly the servers you passed: servers from the end user’s own configuration stay out of the run.
+- With a `schema`, the model answers through the CLI’s structured-output path and emits no other text, so `result.text` is the serialized JSON reply; validation and the one retry still apply.
+- One `text-delta` carries a whole assistant text block; thinking blocks stream as `reasoning-delta`.
+- `usage` follows the provider’s accounting: cache reads and writes are separate line items on `cacheReadTokens` and `cacheWriteTokens`, and `costUsd` is set.
+
+## Under the hood
 
 Every run executes `claude -p --output-format stream-json --verbose --permission-mode bypassPermissions`, the unattended default, with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
 
 | Option           | Flag                                                                             |
 | ---------------- | --------------------------------------------------------------------------------- |
 | `readOnly: true` | `--permission-mode manual` plus `--disallowedTools Bash,Edit,NotebookEdit,Write` |
-| `model`          | `--model <name>`, in Claude Code’s own vocabulary such as `"opus"`               |
-| `effort`         | `--effort <level>`, closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`   |
-| `systemPrompt`   | `--append-system-prompt <text>`, which appends and never replaces                |
+| `model`          | `--model <name>`                                                                 |
+| `effort`         | `--effort <level>`                                                               |
+| `systemPrompt`   | `--append-system-prompt <text>`                                                  |
 | `resume`         | `--resume <sessionId>`                                                           |
 | `mcp`            | `--mcp-config <json>` plus `--strict-mcp-config`                                 |
 | `schema`         | `--json-schema <json>`                                                           |
 
-## Quirks
-
-- `readOnly` is belt and braces: `manual` mode already denies unattended mutations, and the mutating built-in tools are also denied by name in case the mode’s semantics drift upstream.
-- `--strict-mcp-config` keeps servers from the user’s own config out of the run, so `mcp` means exactly the servers you passed.
-- `authStatus()` asks `claude auth status --json`, so the answer is the CLI’s own word.
-- `models()` throws: the CLI has no listing mechanism.
-- With a `schema`, the model answers through the structured-output path and emits no text blocks; the adapter surfaces the serialized JSON as the run’s text, and the core still validates and retries once.
-- One `text-delta` carries a whole assistant text block; thinking blocks stream as `reasoning-delta`.
-- The init event’s session id lands on `result.sessionId`.
-- `inputTokens` follows Anthropic’s accounting: cache reads and writes are separate line items on `cacheReadTokens` and `cacheWriteTokens`. `costUsd` is set.
+`readOnly` is enforced twice on purpose: `manual` mode already denies unattended mutations, and the mutating built-in tools are also denied by name, so the guarantee holds even if the mode’s semantics drift upstream.

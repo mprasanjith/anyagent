@@ -1,11 +1,24 @@
 ---
 title: Pi
-description: How the pi adapter invokes the Pi CLI’s pi binary, and what each run option maps to.
+description: "Use Pi through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `pi` adapter drives the Pi CLI as `pi --mode json -p`; import `pi` from `anyagent/pi`. Pi is MIT-licensed and pure bring-your-own-key (BYOK), reading provider keys from around 20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …), and extends through its own extension system rather than MCP, so `mcp` is unsupported. Model listing is native, auth status probed, structured output emulated. The full grid is on the [support matrix](/docs/adapters).
+The `pi` adapter drives the Pi CLI as `pi --mode json -p`, detected as the `pi` binary on `PATH`; import `pi` from `anyagent/pi`. Pi is MIT-licensed and pure bring-your-own-key (BYOK), reading provider keys from around 20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …).
 
-## How options map to flags
+## What you can ask for
+
+`readOnly`, `model` (as `"provider/model"`), `effort` (closed vocabulary: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt`, and `resume` all work on the CLI’s own flags. `schema` works too, provided by AnyAgent. Pi extends through its own extension system rather than MCP, so `mcp` is unsupported and requesting it throws. The full grid is on the [support matrix](/docs/adapters).
+
+`models()` (`pi --list-models`) is credential-filtered: it names this machine’s usable models, not a catalog, and every id is valid verbatim as `model`. `authStatus()` reads `~/.pi/agent/auth.json` plus the provider key env vars: a hint rather than a guarantee.
+
+## Good to know
+
+- Pi has no approval prompts and always runs autonomously; `readOnly` restricts the toolset to the `read` tool, the CLI’s own guarantee.
+- Pi’s `session` event opens the stream, and the id lands on `result.sessionId`; `resume` creates the session if it is missing.
+- `text-delta` events are token-level, and `thinking_delta` updates map to `reasoning-delta`; Pi’s built-in tool names already match the shared vocabulary.
+- Usage arrives per turn, including cache line items, reasoning tokens, and cost.
+
+## Under the hood
 
 Every run executes `pi --mode json -p` with the prompt piped over stdin. [Run options](/docs/api#run-options) append flags:
 
@@ -15,15 +28,6 @@ Every run executes `pi --mode json -p` with the prompt piped over stdin. [Run op
 | `model`          | `--model <provider/model>`                           |
 | `effort`         | `--thinking <level>`; `"none"` is sent as Pi’s `off` |
 | `systemPrompt`   | `--append-system-prompt <text>`                      |
-| `resume`         | `--session-id <id>`, creating the session if missing |
+| `resume`         | `--session-id <id>`                                  |
 
-## Quirks
-
-- Pi has no approval prompts and always runs autonomously; `readOnly` restricts the toolset to the `read` tool, the CLI’s own guarantee.
-- `effort` is a closed vocabulary (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); anything else throws before spawn.
-- `models()` (`pi --list-models`) is credential-filtered: it names this machine’s usable models, not a catalog, and every id is valid verbatim as `model`.
-- `authStatus()` reads `~/.pi/agent/auth.json` plus the provider key env vars, a hint rather than a guarantee.
-- `text-delta` events are token-level, and `thinking_delta` updates map to `reasoning-delta`; Pi’s built-in tool names already match the shared vocabulary.
-- Pi’s `session` event opens the stream, and the id lands on `result.sessionId`.
-- Usage arrives per turn, including cache line items, reasoning tokens, and cost.
-- Pi exits 0 even when a turn fails, so the adapter reads errors from the stream: `stopReason: "error"` or a top-level `error` event throws `Invocation` with Pi’s own message.
+Pi exits 0 even when a turn fails, so the adapter reads errors from the stream: `stopReason: "error"` or a top-level `error` event throws `Invocation` with Pi’s own message.

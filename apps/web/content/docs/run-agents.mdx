@@ -142,7 +142,7 @@ if (agent.supports("readOnly")) {
 }
 ```
 
-Not every CLI can make that guarantee: goose and Cline declare `readOnly: false`, and requesting it throws [`UnsupportedCapability`](/docs/errors#unsupportedcapability) rather than pretending. The `supports` check above is both the runtime guard and what makes the option typecheck on a detected agent.
+Not every CLI can make that guarantee: goose, Cline, and Antigravity declare it unsupported, and requesting it throws [`UnsupportedCapability`](/docs/errors#unsupportedcapability) rather than pretending. The `supports` check above is both the runtime guard and what makes the option typecheck on a detected agent.
 
 <Callout type="warn">
   There is no middle setting. A run without `readOnly` has the CLI’s full
@@ -174,17 +174,19 @@ await agent.run("Add input validation to the signup form.", {
 - **`cwd`**: the directory the agent works in; defaults to the current process’s working directory
 - **`model`**: a model name in the CLI’s own vocabulary, listed on each [adapter page](/docs/adapters) and by [`agent.models()`](#check-credentials-before-you-run) where the CLI can list them
 - **`effort`**: how hard the model should think, from `"none"` to `"max"` and beyond; where a CLI’s vocabulary is closed, `capabilities.reasoningEfforts` lists the accepted values and anything else throws before the run starts
-- **`systemPrompt`**: extra system-level instructions, appended to the CLI’s own system prompt where a flag for that exists and folded into the prompt as a preamble where it does not; the emulated form has observably weaker adherence
+- **`systemPrompt`**: extra system-level instructions; on a CLI without a system-prompt flag AnyAgent folds them into the prompt as a preamble, where adherence is weaker
 - **`env`**: extra environment variables, merged over the parent process’s environment
 
-Every capability-gated option, baseline or extension, is checked against the agent’s capabilities before any process spawns. When the agent is not known in advance, guard a baseline option on `agent.capabilities`:
+Every option is checked against the agent’s capabilities before any process spawns. When the agent is not known in advance, guard an option on `agent.capabilities`, and remember that model names are each CLI’s own vocabulary:
 
 ```ts
-const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
+const wantsOpus = agent.adapter.meta.id === "claude-code";
+const opts =
+  wantsOpus && agent.capabilities.modelSelection ? { model: "opus" } : {};
 await agent.run("Review the error handling in src/api/.", opts);
 ```
 
-For the extension options (`readOnly`, `effort`, `mcp`, `resume`), guard with `agent.supports()` as shown in [Keep a run read-only](#keep-a-run-read-only): it answers the same question and narrows the agent’s type so the options compile.
+For `readOnly`, `effort`, `mcp`, and `resume`, guard with `agent.supports()` as shown in [Keep a run read-only](#keep-a-run-read-only): it answers the same question and narrows the agent’s type so the options compile.
 
 ## Resume a session
 
@@ -202,7 +204,7 @@ if (review.sessionId) {
 }
 ```
 
-The `if` matters twice over: `resume: undefined` does not throw, it starts a fresh session, and `sessionId` is honestly absent on CLIs that never reveal one headless (goose and Cline today; each [adapter page](/docs/adapters) says which).
+The `if` guard matters: `resume: undefined` starts a fresh session rather than throwing, and `sessionId` is absent on CLIs that never reveal one headless (goose and Cline today; each [adapter page](/docs/adapters) says which).
 
 ## Attach MCP servers
 
@@ -224,7 +226,7 @@ if (agent.supports("mcp")) {
 }
 ```
 
-The option means exactly those servers: on Claude Code, the one built-in adapter that declares `mcp` today, the adapter also passes `--strict-mcp-config` so servers from the user’s own config stay out of the run. On the CLIs that route MCP through their own config files, reach it through [escape hatches](/docs/escape-hatches); each adapter page says which route applies.
+The option means exactly those servers: servers from the end user’s own configuration stay out of the run. On the CLIs that route MCP through their own config files instead, reach it through [escape hatches](/docs/escape-hatches); each [adapter page](/docs/adapters) says which route applies.
 
 ## Test without a CLI
 

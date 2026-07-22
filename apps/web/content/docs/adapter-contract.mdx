@@ -1,0 +1,108 @@
+---
+title: Adapter contract
+description: "The types an adapter implements to support a new CLI: Adapter, Invocation, OutputSource, the ndjson helper, and the conformance suite."
+full: true
+---
+
+This page is the reference for adapter authors: the contract a new CLI adapter implements and the helpers that make it testable. If you are building on top of AnyAgent rather than adding CLI support, you want the [API reference](/docs/api) instead. [Adding an adapter](/docs/adding-an-adapter) is the step-by-step guide this page backs.
+
+Adapter authors import from two subpaths beyond the core: `ndjsonParser` from `anyagent/ndjson` and `runConformance` from `anyagent/conformance`.
+
+```ts
+import { ndjsonParser } from "anyagent/ndjson";
+import { runConformance } from "anyagent/conformance";
+```
+
+## Adapter
+
+The contract for supporting one agent CLI. An adapter is data plus pure functions: it describes how to invoke its CLI and how to read its output, while the core does all I/O. `buildInvocation` is pure and must never launch a process. `parse` must end with exactly one `done` event and, under `strict`, throw `Parse` on any unrecognized shape. `authStatus` and `listModels` answer the discovery questions from the [`SystemProbe`](/docs/api#systemprobe) and are required exactly when the matching capability is declared. `detect` is optional and replaces default detection entirely; omit it unless default detection cannot find your CLI.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="Adapter"
+/>
+
+## AdapterMeta
+
+How an adapter identifies itself. `id` is the stable machine name such as `"claude-code"`, `name` the human-readable one, and `bin` the executable names to look for on `PATH` in priority order, where the first one found wins.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="AdapterMeta"
+/>
+
+## DetectionSpec
+
+How detection reads a CLI’s version once its binary is found. An adapter sets these only when its CLI deviates from the defaults: `versionCommand` defaults to `["--version"]`, and `versionRegex` defaults to the first `x.y.z` triple in whatever the command prints.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="DetectionSpec"
+/>
+
+## Detection
+
+The raw result of checking for one agent, produced by built-in detection or a custom `Adapter.detect`. Unlike [`DetectResult`](/docs/api#detectresult) it also covers the not-found case: when the binary is not on `PATH`, `installed` is `false` and `path` is absent. `detect` drops those and returns only `DetectResult`s, so you meet this type only when writing an adapter with its own `detect`.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="Detection"
+/>
+
+## Invocation
+
+A fully-resolved command line: what `buildInvocation` returns and what the core spawns. `env` is merged over the parent process’s environment rather than replacing it. `input`, when present, is written to the child’s stdin, which is then closed; this is how prompts reach CLIs that read them from a pipe.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="Invocation"
+/>
+
+## OutputSource
+
+The process output an adapter’s `parse` reads. Consume either `lines()` for newline-delimited JSON (NDJSON) adapters or `text()` for plain-text adapters, never both, since the underlying stdout stream is read once. `stderr()` resolves complete only once `exitCode` has settled. The core calls `close()` when a consumer abandons a stream early.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="OutputSource"
+/>
+
+## ndjsonParser and NdjsonSpec
+
+`ndjsonParser`, from `anyagent/ndjson`, builds an `Adapter.parse` from an `NdjsonSpec`, so an NDJSON adapter only writes its event mapping: `init` creates the per-run accumulator, `map` turns one raw JSON object into normalized event(s) or `undefined` to ignore it, and `finalize` builds the terminal `RunResult`. The parser supplies what every NDJSON adapter shares: a malformed line throws `Parse` naming the offending text, a nonzero exit throws the descriptive `Invocation` error, and the stream ends with exactly one `done`.
+
+```ts
+const ndjsonParser: <Ctx>(spec: NdjsonSpec<Ctx>) => Adapter["parse"];
+```
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/ndjson.ts"
+  name="NdjsonSpec"
+/>
+
+## AnyAgentError.wrap
+
+The static `AnyAgentError.wrap(err, code?)` normalizes an unknown thrown value into an [`AnyAgentError`](/docs/api#anyagenterror). It returns the value unchanged if it is already an `AnyAgentError`, otherwise it builds a new one carrying the original as `raw`. The `code` argument defaults to `"Invocation"`. You need it when writing an adapter, not when handling errors.
+
+```ts
+const wrap: (err: unknown, code?: AnyAgentErrorCode) => AnyAgentError;
+```
+
+## Conformance suite
+
+`anyagent/conformance` is the executable half of the adapter contract, for adapter test suites. `runConformance` takes an adapter and recorded stdout fixtures and asserts the invariants every adapter must uphold: exactly one terminal `done` per stream, `result.text` equal to the concatenated deltas, a `sessionId` consistent with the `session` event, a valid invocation for whatever the capabilities declare, and an `UnsupportedCapability` throw for everything they do not, including `authStatus()` and `models()` on a `false` capability.
+
+```ts
+const runConformance: (
+  adapter: Adapter,
+  opts: ConformanceOptions
+) => Promise<void>;
+```
+
+`ConformanceOptions.fixtures` maps a scenario name to the raw stdout its CLI would emit. Two helpers make fixtures runnable offline: `sourceFromBody(body)` wraps a recorded stdout body as an [`OutputSource`](#outputsource) with a clean zero exit, and `fixedRunner(body)` is a drop-in runner that replays it, so conformance drives adapters from fixtures, never subprocesses. [Adding an adapter](/docs/adding-an-adapter) shows the suite in a test file.
+
+## Next steps
+
+- [Adding an adapter](/docs/adding-an-adapter): implement, record, and verify a new adapter end to end
+- [API reference](/docs/api): the caller-facing types this contract feeds
+- [Supported agents](/docs/adapters): the adapters that already implement this contract

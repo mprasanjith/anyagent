@@ -8,7 +8,7 @@ Detect the coding-agent CLI your end user already has installed and drive it thr
 npm i anyagent
 ```
 
-Zero runtime dependencies. Node.js 18+ or Bun, ESM only. Built-in adapters cover Claude Code, Codex, opencode, Kilo Code, Pi, goose, and Cline, each importable from its own subpath (`anyagent/claude-code`, `anyagent/codex`, …).
+Zero runtime dependencies. Node.js 18+ or Bun, ESM only. Built-in adapters cover Claude Code, Codex, opencode, Kilo Code, Pi, goose, Cline, Gemini CLI, Antigravity, and Cursor, each importable from its own subpath (`anyagent/claude-code`, `anyagent/codex`, …).
 
 ## Use
 

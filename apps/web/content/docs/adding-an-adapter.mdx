@@ -19,12 +19,12 @@ Per-CLI facts collected during audits live in the harness audit at `docs/specs/h
 
 ## Implement the contract
 
-Implement the [`Adapter`](/docs/api#adapter) interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. The interface has five required members plus three optional ones:
+Implement the [`Adapter`](/docs/adapter-contract#adapter) interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. The interface has five required members plus three optional ones:
 
 ```ts
 export interface Adapter<C extends Capabilities = Capabilities> {
   meta: AdapterMeta; // id, display name, binary names on PATH
-  detection: DetectionSpec; // version command and regex; omit for defaults
+  detection: DetectionSpec; // version command and regex; {} accepts defaults
   capabilities: C; // which RunOptions this CLI honors
   detect?: (probe: VersionProbe) => Promise<Detection>;
   authStatus?: (probe: SystemProbe) => Promise<AuthStatus>;
@@ -53,7 +53,7 @@ Pipe the prompt through `Invocation.input` rather than a positional argument. `i
 
 ## Use ndjsonParser for NDJSON CLIs
 
-When the CLI streams newline-delimited JSON, one JSON object per line, build `parse` from `ndjsonParser`, as most built-in adapters do. The parser owns everything those adapters share: decoding each line, buffering events into the result, throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
+When the CLI streams newline-delimited JSON, one JSON object per line, build `parse` from `ndjsonParser`, as eight of the ten built-in adapters do. The parser owns everything those adapters share: decoding each line, buffering events into the result, throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
 
 ```ts
 import { AnyAgentError } from "./errors.js";
@@ -165,6 +165,6 @@ Declare `false` for anything you have not verified against real output. Honest c
 
 ## Next steps
 
-- [API reference: the adapter contract](/docs/api#adapter-contract): the `Adapter`, `Invocation`, and `OutputSource` types in full
-- [How AnyAgent works](/docs/how-it-works): the thin-core, pure-adapter architecture the contract enforces
+- [Adapter contract](/docs/adapter-contract): the `Adapter`, `Invocation`, and `OutputSource` types in full
+- [How AnyAgent works](/docs/how-it-works): the caller experience your adapter upholds
 - [Claude Code](/docs/adapters/claude-code): how the reference adapter presents to callers

@@ -1,27 +1,31 @@
 ---
 title: Cline
-description: How the cline adapter invokes the Cline CLI’s cline binary, and what each run option maps to.
+description: "Use Cline through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `cline` adapter drives `cline --json --auto-approve true`; import `cline` from `anyagent/cline`. The Cline CLI is Apache-2.0 open source and bring-your-own-key (BYOK): configure a provider once with `cline auth -p openai -k your_api_key_here` (openrouter, anthropic, openai, and gemini all work). `readOnly`, `resume`, and model listing are undeclared, and requesting them throws; system prompts and structured output are emulated. The full grid is on the [support matrix](/docs/adapters).
+The `cline` adapter drives `cline --json --auto-approve true`, detected as the `cline` binary on `PATH`; import `cline` from `anyagent/cline`. The Cline CLI is Apache-2.0 open source and bring-your-own-key (BYOK): configure a provider once with `cline auth -p openai -k your_api_key_here` (openrouter, anthropic, openai, and gemini all work).
 
-## How options map to flags
+## What you can ask for
 
-Every run executes `cline --json --auto-approve true` with the prompt as a positional argument. [Run options](/docs/api#run-options) append flags:
+`model` and `effort` (closed vocabulary: `none`, `low`, `medium`, `high`, `xhigh`) work on the CLI’s own flags. `systemPrompt` and `schema` work too, provided by AnyAgent. `readOnly`, `resume`, `mcp`, and model listing are undeclared, and requesting them throws. The full grid is on the [support matrix](/docs/adapters).
 
-| Option   | Flag                                                                              |
-| -------- | ---------------------------------------------------------------------------------- |
-| `model`  | `-m <model>`                                                                      |
-| `effort` | `--thinking <level>`, closed vocabulary: `none`, `low`, `medium`, `high`, `xhigh` |
+No read-only run exists: headless Cline auto-approves every tool, and plan mode still executes shell commands (verified writing a file through `run_commands`). `authStatus()` reads the provider settings file and never runs the CLI, whose `config` subcommand needs a TTY.
 
-## Quirks
+## Good to know
 
-- Auto-approval is Cline’s own headless default; the adapter pins it explicitly so the behavior holds if the default ever changes.
-- No read-only run exists: headless Cline auto-approves every tool, and plan mode still executes shell commands (verified writing a file through `run_commands`), so `readOnly: true` throws.
-- `resume` is undeclared: `--id` is broken in headless JSON mode upstream, and no session id is revealed, so `result.sessionId` stays absent; carry context forward in the next prompt instead.
+- No session id is revealed headless and `--id` is broken in headless JSON mode upstream, so `result.sessionId` stays absent; carry context forward in the next prompt instead.
 - The prompt must be positional (piped stdin is not read reliably), so a prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches); a single-word prompt is misparsed as a command name.
-- A `systemPrompt` is emulated because Cline’s `-s` replaces the system prompt entirely; reach `-s` via `extraArgs` if replacement is what you want.
-- `authStatus()` reads the provider settings file, trying `CLINE_PROVIDER_SETTINGS_PATH`, then `$CLINE_DATA_DIR/settings/providers.json`, then `$CLINE_DIR/data/settings/providers.json`, then `~/.cline/data/settings/providers.json`; it never runs the CLI, whose `config` subcommand needs a TTY.
+- `systemPrompt` is provided by AnyAgent because Cline’s `-s` replaces the system prompt entirely; reach `-s` via `extraArgs` if replacement is what you want.
 - Verified tool names normalize: `run_commands` surfaces as `bash`, `read_files` as `read`, `apply_patch` as `edit`.
-- Plain-text notices Cline prints mid-stream (“AI SDK Warning …”) are filtered before parsing, in strict mode too.
 - Usage arrives in the final `run_result`, including cache line items and cost; a `finishReason` other than `"completed"` throws `Invocation` with Cline’s own message.
+
+## Under the hood
+
+Every run executes `cline --json --auto-approve true` with the prompt as a positional argument. Auto-approval is Cline’s own headless default; the adapter pins it explicitly so the behavior holds if the default ever changes. [Run options](/docs/api#run-options) append flags:
+
+| Option   | Flag                 |
+| -------- | -------------------- |
+| `model`  | `-m <model>`         |
+| `effort` | `--thinking <level>` |
+
+`authStatus()` tries `CLINE_PROVIDER_SETTINGS_PATH`, then `$CLINE_DATA_DIR/settings/providers.json`, then `$CLINE_DIR/data/settings/providers.json`, then `~/.cline/data/settings/providers.json`. Plain-text notices Cline prints mid-stream (“AI SDK Warning …”) are filtered before parsing, in strict mode too.

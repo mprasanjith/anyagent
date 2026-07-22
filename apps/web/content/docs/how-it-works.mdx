@@ -1,23 +1,19 @@
 ---
 title: How AnyAgent works
-description: "The mental model behind AnyAgent: a baseline that works everywhere, capability-gated extensions, unattended runs, one process per prompt, and native payloads kept on raw."
+description: "The mental model behind AnyAgent: one process per prompt, capabilities you check before you ask, unattended runs, and native detail kept on raw."
 ---
 
-AnyAgent runs a prompt by launching the coding-agent CLI installed on the machine and translating its output into normalized events. This page builds that mental model in six ideas: a baseline surface that works on every agent, extensions gated by capabilities, unattended runs, detection that observes rather than chooses, one process per prompt, and a `raw` field that keeps every native detail reachable. Understand these and the rest of the API follows.
+AnyAgent runs a prompt by launching the coding-agent CLI installed on the machine and translating its output into normalized events. This page gives you the mental model in five parts: what a run is, how to know what an agent can do, why runs are unattended, how detection and sessions behave, and where the native detail lives.
 
-## A baseline that works on every agent
+## A run is one CLI process
 
-The baseline surface models what every supported CLI provides: a prompt goes in, events stream out, and a final answer comes back, in a directory you choose, on a model you name, cancellable, with token usage on success. That is [`BaselineRunOptions`](/docs/api#baselinerunoptions), and code typed against it runs on every supported agent unchanged; the compiler enforces the portability.
+Every `run` or `runStream` call launches the agent’s CLI once, in its non-interactive mode, and the process exits when the agent finishes. There is no daemon and no state shared between calls: two runs are two independent processes.
 
-Two baseline members deserve a note, because AnyAgent’s core supplies them where a CLI’s flags do not. `schema` produces a validated JSON reply on all agents, and `systemPrompt` reaches all agents; the next section explains how the native-versus-emulated split works.
+The CLI runs exactly as the end user’s own terminal would run it, with their login, their configuration, and their subscription. That is why AnyAgent needs no API keys, and why a run bills the end user’s account rather than yours.
 
-Each CLI still has native capabilities outside the surface, such as bidirectional sessions or finer sandbox flags. Those stay reachable through [escape hatches](/docs/escape-hatches) instead of widening the surface.
+## Check what an agent can do before you ask
 
-## Capabilities gate the extensions
-
-Beyond the baseline sit the extensions: `readOnly`, `effort`, `mcp`, and `resume` exist only on some agents. Each is gated by the agent’s [`Capabilities`](/docs/api#capabilities), the machine-readable answer to “what does this agent support”. Requesting an extension an agent does not declare throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
-
-The gate lives in the types too. An agent created from an adapter factory, `create(claudeCode())`, carries that adapter’s literal capabilities, so an unsupported option is a compile error. An agent from `detect()` could be anything, so only the baseline is typed until you ask:
+Agents differ: `readOnly`, `effort`, `mcp`, and `resume` exist only on some CLIs. `agent.supports()` tells you before you ask, and inside a `true` branch the options also typecheck:
 
 ```ts
 if (agent.supports("readOnly", "effort")) {
@@ -25,47 +21,33 @@ if (agent.supports("readOnly", "effort")) {
 }
 ```
 
-`supports()` is one gesture that is both the runtime check and the compile-time unlock: inside the `true` branch, those options typecheck.
+Requesting an option the agent does not support throws `AnyAgentError` with `code: "UnsupportedCapability"` before any process spawns, so a wrong assumption fails at the call site rather than mid-run. When you create an agent from a specific adapter, `create(claudeCode())`, the same mistake fails to compile.
 
-Every gating field is one of three values, which the reference calls [`CapabilitySupport`](/docs/api#capabilitysupport):
+Some options work on every agent even where the CLI has no flag for them, because AnyAgent provides the behavior itself: a `schema` produces a validated JSON reply everywhere, and a `systemPrompt` reaches every agent. You ask for these the same way regardless; where the provided form behaves differently from the CLI’s own, the docs for that option say so. The [support matrix](/docs/adapters) shows what every agent declares.
 
-- `"native"`: the CLI has its own flag, and the adapter maps your request onto it.
-- `"emulated"`: the CLI has no such flag, so the core provides the behavior itself, identically on every agent that declares it. A system prompt folded into the prompt text on a CLI without an append-system flag is emulated; on Claude Code the same request is native.
-- `false`: unavailable, and requesting it throws `UnsupportedCapability`.
-
-Both `"native"` and `"emulated"` are truthy, so `capabilities.systemPrompt` reads the same way regardless of how the feature is provided. You ask for an emulated capability exactly as you ask for a native one. The tier is still observable where it matters: an emulated system prompt travels as a prompt preamble, and its adherence is observably weaker than a native system-role append. The docs say so wherever it applies rather than papering over it.
-
-Two capability fields answer discovery questions instead of gating options: `authStatus` and `modelListing` are `"native"` (the CLI answers itself), `"probed"` (best-effort heuristics over credential files and environment variables; a hint, not a guarantee), or `false` (the method throws, because no honest answer exists). `agent.authStatus()` never verifies credentials with a paid model call. What each CLI declares is on the [support matrix](/docs/adapters).
+Two methods answer discovery questions rather than gate options: `agent.authStatus()` reports whether the CLI looks signed in, and `agent.models()` lists the models it accepts. Neither ever makes a paid model call, and on some CLIs the answer is a best-effort read of local credentials rather than the CLI’s own word; [Check credentials before you run](/docs/run-agents#check-credentials-before-you-run) covers how much to trust it.
 
 ## Every run is unattended
 
-`run()` and `runStream()` have no channel for answering an approval prompt: headless, nothing can say “yes” mid-run. So every run executes with the most autonomy its CLI offers, and a permission setting that waits for approval cannot exist on this surface.
+`run()` and `runStream()` have no channel for answering an approval prompt: headless, nothing can say “yes” mid-run. So every run executes with the most autonomy its CLI offers, and there is no permission setting that waits for approval.
 
-The one restriction is `readOnly: true`, with a strict contract: nothing on the machine changes. No file writes, no shell. An agent whose CLI cannot guarantee that declares `readOnly: false` and throws rather than approximating; goose and Cline do today. Harness-specific modes between the two extremes stay reachable via [`extraArgs`](/docs/escape-hatches).
+The one restriction is `readOnly: true`, with a strict contract: nothing on the machine changes. No file writes, no shell. An agent whose CLI cannot guarantee that declares `readOnly` unsupported and throws rather than approximating. Harness-specific modes between the two extremes stay reachable via [`extraArgs`](/docs/escape-hatches).
 
-[Run agents](/docs/run-agents#keep-a-run-read-only) covers what this means for how you scope prompts.
+Because no one can intervene, the prompt carries the safety: [Run agents](/docs/run-agents#run-a-prompt-and-read-the-result) shows how to scope one.
 
-## Detection observes, never chooses
+## Detection observes, you choose
 
 `detect()` checks the machine’s `PATH` for each supported CLI and returns one result per install, carrying the binary’s path, the reported version, and the agent’s capabilities. The order of results carries no ranking, so picking an agent is your product decision; [Run agents](/docs/run-agents) covers the patterns.
 
-The version is for display only. AnyAgent targets current CLIs and never changes behavior based on the version it reads, and an agent whose version probe fails still works, with `version` left absent.
-
-## One process per prompt
-
-Every `run` or `runStream` call launches the agent’s CLI once, in its non-interactive mode, and the process exits when the agent finishes. There is no daemon and no state shared between calls: two runs are two independent processes.
-
-The CLI runs exactly as the end user’s own terminal would run it, with their login, their configuration, and their subscription. That is why AnyAgent needs no API keys, and why a run bills the end user’s account rather than yours.
-
-Conversation state lives with the CLI, so continuing a conversation across runs takes a session id passed as `resume`. Abandoning a run is safe too: when you break out of a `runStream` loop early, AnyAgent terminates the process for you.
+The version is for display only. AnyAgent targets current CLIs and never changes behavior based on the version it reads.
 
 ## One event stream, native detail on raw
 
-Whatever the CLI prints, you receive the same event vocabulary: `session`, `text-delta`, `reasoning-delta`, `tool-call`, `tool-result`, `file-change`, `usage`, and a final `done` carrying the `RunResult`; [`AgentEvent`](/docs/api#agentevent) lists each one’s fields. How much text one `text-delta` carries varies by agent, from a token to a whole message, but concatenating every delta’s `text` always reproduces `RunResult.text` exactly.
+Whatever the CLI prints, you receive the same event vocabulary: `session`, `text-delta`, `reasoning-delta`, `tool-call`, `tool-result`, `file-change`, `usage`, and a final `done` carrying the `RunResult`; [`AgentEvent`](/docs/api#agentevent) lists each one’s fields. Concatenating every delta’s `text` reproduces `RunResult.text` exactly.
 
-Normalization keeps the fields your code branches on uniform, and it keeps every CLI-specific detail reachable. Tool events carry the shared [`ToolName`](/docs/api#toolname) vocabulary on `name` and the CLI’s own name on `nativeName`. Every event carries the CLI’s untouched native payload on its `raw` field, and `RunResult.raw` holds the final native payload for anything the normalized fields leave out.
+Normalization never discards anything: every event carries the CLI’s untouched payload on its `raw` field, and tool events carry the CLI’s own tool name on `nativeName` beside the shared one on `name`.
 
-Session resume is the everyday case. The `session` event surfaces the id early, and the same id lands on `RunResult.sessionId`, so continuing a conversation is two lines:
+Conversation state lives with the CLI, so continuing a conversation across runs takes a session id passed as `resume`:
 
 ```ts
 const first = await agent.run("Start reviewing this repo.");
@@ -75,10 +57,10 @@ if (first.sessionId) {
 }
 ```
 
-`sessionId` is absent on CLIs that never reveal one headless; each adapter page says whether its CLI does.
+`sessionId` is absent on CLIs that never reveal one headless; each [adapter page](/docs/adapters) says whether its CLI does.
 
 ## Next steps
 
 - [Run agents](/docs/run-agents): the workflow this model backs, from detection to a finished run
-- [Escape hatches](/docs/escape-hatches): reach native capabilities the surface does not model
+- [Escape hatches](/docs/escape-hatches): reach native capabilities the interface does not cover
 - [API reference](/docs/api): every type and option

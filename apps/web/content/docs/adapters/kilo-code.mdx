@@ -1,11 +1,24 @@
 ---
 title: Kilo Code
-description: How the kilo-code adapter invokes the Kilo CLI, which shares the opencode surface it forked.
+description: "Use the Kilo CLI through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `kilo-code` adapter drives the Kilo CLI through `kilo run --format json`; import `kiloCode` from `anyagent/kilo-code`. Kilo’s CLI is an opencode fork with the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode); the sharing is verified against recorded `kilo` output, not assumed from the lineage. Kilo is bring-your-own-key (BYOK) with standard provider env vars, or works through a Kilo account (`kilo auth login`); neither changes a flag here. The full grid is on the [support matrix](/docs/adapters).
+The `kilo-code` adapter drives the Kilo CLI through `kilo run --format json`; import `kiloCode` from `anyagent/kilo-code`. Kilo’s CLI is an opencode fork with the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode); the sharing is verified against recorded `kilo` output, not assumed from the lineage. Kilo is bring-your-own-key (BYOK) with standard provider env vars, or works through a Kilo account (`kilo auth login`); neither changes a flag here.
 
-## How options map to flags
+## What you can ask for
+
+`readOnly`, `model` (as `"provider/model"`), `effort` (a provider-defined variant name, passed verbatim), and `resume` all work on the CLI’s own switches. `systemPrompt` and `schema` work too, provided by AnyAgent. MCP is a config-file concern for Kilo, reachable via [`extraArgs`](/docs/escape-hatches). The full grid is on the [support matrix](/docs/adapters).
+
+`models()` runs `kilo models`, and every printed `provider/model` id is valid verbatim as `model`. `authStatus()` reads `~/.local/share/kilo/auth.json` plus the provider key env vars: a hint rather than a guarantee.
+
+## Good to know
+
+- Detection looks for `kilo`, then `kilocode`, on `PATH`; the first found wins.
+- Kilo names its thinking stream `reasoning`; those events map to `reasoning-delta`.
+- The session id is surfaced once, on first sight, and lands on `result.sessionId`.
+- Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
+
+## Under the hood
 
 Every run executes `kilo run --format json --auto` with the prompt piped over stdin. `--auto` is always passed: the default is the CLI’s maximum unattended autonomy, and `readOnly` confines it rather than dropping the flag. [Run options](/docs/api#run-options) append flags:
 
@@ -13,16 +26,7 @@ Every run executes `kilo run --format json --auto` with the prompt piped over st
 | ---------------- | ------------------------------------------------------------ |
 | `readOnly: true` | env `KILO_PERMISSION={"bash":"deny","edit":"deny"}`         |
 | `model`          | `--model <provider/model>`                                  |
-| `effort`         | `--variant <name>`, a provider-defined name passed verbatim |
+| `effort`         | `--variant <name>`                                          |
 | `resume`         | `--session <sessionId>`                                     |
 
-## Quirks
-
-- Detection looks for `kilo`, then `kilocode`, on `PATH`; the first found wins.
-- The adapter owns the `KILO_PERMISSION` env var: a caller-supplied value under that key is overridden, so it can never weaken the read-only contract.
-- The deny matrix uses category keys (the CLI silently ignores per-tool-name keys), and `webfetch` stays allowed: it reads the web and changes nothing on the machine.
-- `authStatus()` reads `~/.local/share/kilo/auth.json` plus the provider key env vars, a hint rather than a guarantee.
-- `models()` runs `kilo models`; every printed `provider/model` id is valid verbatim as `model`.
-- Kilo names its thinking stream `reasoning`; those events map to `reasoning-delta`.
-- The session id is surfaced once, on first sight, and lands on `result.sessionId`.
-- Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
+The adapter owns the `KILO_PERMISSION` env var: a caller-supplied value under that key is overridden, so it can never weaken the read-only contract. The deny matrix uses category keys (the CLI silently ignores per-tool-name keys), and `webfetch` stays allowed: it reads the web and changes nothing on the machine.

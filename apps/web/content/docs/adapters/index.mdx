@@ -1,22 +1,20 @@
 ---
 title: Supported agents
-description: Every coding-agent CLI AnyAgent drives, with each adapter’s capabilities side by side and a page per adapter for its quirks.
+description: Every coding-agent CLI AnyAgent drives, with each adapter’s capabilities side by side and a page per adapter.
 ---
 
 These are the agent CLIs AnyAgent supports. `detect()` scans for all of them in the order below, and each has its own subpath export for targeting it directly. The table is rendered from each adapter’s own `Capabilities` declaration, so it always matches what the code enforces.
 
 <CapabilityMatrix />
 
-A `native` capability maps onto the CLI’s own flag; an `emulated` one is provided by AnyAgent’s core, identically on every agent that declares it; `—` means requesting it throws `UnsupportedCapability` before anything spawns. [How AnyAgent works](/docs/how-it-works) explains the split.
+How to read the grid: `native` means the CLI provides the capability itself, `emulated` means AnyAgent provides the behavior identically on every agent that declares it, and `—` means requesting it throws `UnsupportedCapability` before anything spawns. You ask for an emulated capability exactly as you ask for a native one.
 
-Two columns answer discovery questions rather than gating run options. Auth status and Models read `native` when the CLI answers itself, and `probed` when AnyAgent reads the CLI’s credential files and environment variables instead: a hint, not a guarantee. Pi’s model list is credential-filtered, so it names this machine’s usable models rather than a catalog.
+Auth status and Models answer discovery questions rather than gating run options: `native` means the CLI answers itself, and `probed` means AnyAgent reads the CLI’s credential files and environment variables instead, a hint rather than a guarantee.
 
-Structured output is native on Claude Code and emulated elsewhere; the contract is the same either way: a validated value on `result.json`, with one retry. Read-only reads `—` on goose, Cline, and Antigravity because none of the three can guarantee that nothing on the machine changes (Antigravity's plan mode still writes into its own scratch directories), so `readOnly: true` throws instead of pretending.
-
-Everything else CLI-specific lives on the adapter’s page: the native flag behind each run option, plus a quirks list covering session-id behavior, accounting oddities, and error semantics. The pages share one shape, so a fact about one agent sits in the same place on every other. An adapter ships only against recorded real CLI output, never a guessed schema.
+Everything else CLI-specific lives on the adapter’s page: what you can ask for, behavior worth knowing, and the flags underneath. The pages share one shape, so a fact about one agent sits in the same place on every other.
 
 ## Next steps
 
 - [Run agents](/docs/run-agents): scan the machine and choose among the agents installed on it
-- [Escape hatches](/docs/escape-hatches): reach native capabilities the unified surface does not model
+- [Escape hatches](/docs/escape-hatches): reach native capabilities the unified interface does not cover
 - [Adding an adapter](/docs/adding-an-adapter): bring another CLI into this list
