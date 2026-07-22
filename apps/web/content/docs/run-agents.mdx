@@ -1,9 +1,9 @@
 ---
 title: Run agents
-description: Detect the agents on the end user’s machine, pick one, and run a prompt with the options and permission level your feature needs.
+description: Detect the agents on the end user’s machine, pick one, and run a prompt with the options your feature needs.
 ---
 
-This page covers the core workflow: find the agents installed on the end user’s machine, pick one, and run a prompt with the options and permission level your feature needs. Every snippet that runs a prompt assumes at least one [supported agent](/docs/adapters) is installed and signed in.
+This page covers the core workflow: find the agents installed on the end user’s machine, pick one, and run a prompt with the options your feature needs. Every snippet that runs a prompt assumes at least one [supported agent](/docs/adapters) is installed and signed in.
 
 ## Find what is installed
 
@@ -25,7 +25,7 @@ Claude Code 2.0.31 at /home/sam/.local/bin/claude
 Codex 0.48.0 at /usr/local/bin/codex
 ```
 
-Each result carries the agent’s `id`, `name`, `path`, reported `version`, its capability table, and the adapter that drives it; [`DetectResult`](/docs/api#detectresult) lists the fields. The order of results carries no preference, so which agent to run is your product decision.
+Each result carries the agent’s `id`, `name`, `path`, reported `version`, its capabilities, and the adapter that drives it; [`DetectResult`](/docs/api#detectresult) lists the fields. The order of results carries no preference, so which agent to run is your product decision.
 
 ## Choose which agent to run
 
@@ -78,11 +78,32 @@ import { claudeCode } from "anyagent/claude-code";
 const agent = create(claudeCode());
 ```
 
-Creating an agent from an adapter never checks that the CLI is installed, so a missing binary surfaces as an [`Invocation` error](/docs/errors#invocation) on the first run.
+Creating an agent from an adapter never checks that the CLI is installed, so a missing binary surfaces as an [`Invocation` error](/docs/errors#invocation) on the first run. An agent created this way is also typed to its adapter’s exact capabilities, so an option the CLI does not support fails to compile instead of at runtime.
+
+## Check credentials before you run
+
+An installed CLI is not necessarily a signed-in one. `agent.authStatus()` answers whether credentials are configured, without ever making a paid model call:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode());
+const auth = await agent.authStatus();
+
+if (auth.state === "unauthenticated") {
+  console.error("Claude Code is installed but not signed in. Run: claude login");
+  process.exit(1);
+}
+```
+
+How much to trust the answer depends on `agent.capabilities.authStatus`: `"native"` means the CLI answered itself, while `"probed"` means AnyAgent read the CLI’s credential files and environment variables, a hint rather than a guarantee. Treat `"unknown"` as “worth trying a run”; it comes back when, for example, the key lives in an OS keyring the probe cannot read.
+
+`agent.models()` answers the second discovery question: which models this agent accepts, each [`ModelInfo.id`](/docs/api#modelinfo) valid verbatim as the `model` option on the same agent. Both methods throw [`UnsupportedCapability`](/docs/errors#unsupportedcapability) on an agent whose capabilities declare them `false`, so guard with `agent.capabilities.authStatus` and `.modelListing` when the agent is not known in advance; the [support matrix](/docs/adapters) shows who answers what.
 
 ## Run a prompt and read the result
 
-`agent.run(prompt, opts)` sends one prompt and resolves with a [`RunResult`](/docs/api#runresult) when the agent finishes. Write a scoped prompt: name the files the agent should touch, state the goal, and forbid what it must leave alone, so the end user reviews a small diff instead of a surprise:
+`agent.run(prompt, opts)` sends one prompt and resolves with a [`RunResult`](/docs/api#runresult) when the agent finishes. The run is unattended: the agent edits files and runs commands with the most autonomy its CLI offers, and nothing can approve or reject an action mid-run. So write a scoped prompt: name the files the agent should touch, state the goal, and forbid what it must leave alone, so the end user reviews a small diff instead of a surprise:
 
 ```ts
 import { create } from "anyagent";
@@ -94,28 +115,43 @@ const prompt =
   "acme.config.ts with sensible defaults, and wire it into the app entry " +
   "point. Only edit files in this repo. Do not run git commit or git push.";
 
-const result = await agent.run(prompt, { permission: "edit" });
+const result = await agent.run(prompt);
 console.log(result.text);
 ```
 
-`result.text` is the agent’s final answer; `events`, `usage`, and `raw` carry the full event list, the token accounting, and the CLI’s untouched final payload. Holding a `RunResult` means the run succeeded, because every failure [throws instead](/docs/errors). For runs longer than a few seconds, show progress with [`runStream`](/docs/streaming) rather than waiting silently.
+`result.text` is the agent’s final answer; `events`, `usage`, `sessionId`, and `raw` carry the full event list, the token accounting, the resume handle, and the CLI’s untouched final payload. Holding a `RunResult` means the run succeeded, because every failure [throws instead](/docs/errors). For runs longer than a few seconds, show progress with [`runStream`](/docs/streaming) rather than waiting silently.
 
-## Set a permission level
+## Keep a run read-only
 
-Every run carries one permission level bounding what the agent may do to the working directory, passed as `RunOptions.permission`:
+`readOnly: true` is the one restriction you can place on a run, and its contract is strict: nothing on the machine changes. No file writes, no shell commands. Use it for analysis and reporting features, where a retry or a wandering agent must stay side-effect free:
 
-- **`read`**: the agent inspects files and answers, but changes nothing
-- **`edit`** (the default): the agent creates and modifies files, while the CLI’s own guardrails still gate riskier actions like shell commands
-- **`auto`**: every action is auto-approved and the agent runs unattended
+```ts
+import { create, detect } from "anyagent";
 
-Match the level to your feature: `read` for analysis and reporting, `edit` for tools that change code.
+const [found] = await detect();
+if (!found) {
+  throw new Error("No supported coding agent found.");
+}
+
+const agent = create(found);
+if (agent.supports("readOnly")) {
+  const report = await agent.run("Audit the error handling in src/api/.", {
+    readOnly: true,
+  });
+  console.log(report.text);
+}
+```
+
+Not every CLI can make that guarantee: goose, Cline, and Antigravity declare it unsupported, and requesting it throws [`UnsupportedCapability`](/docs/errors#unsupportedcapability) rather than pretending. The `supports` check above is both the runtime guard and what makes the option typecheck on a detected agent.
 
 <Callout type="warn">
-  `auto` disables the CLI’s own confirmation prompts, so the agent approves
-  every action itself. Reserve it for sandboxed or disposable environments.
+  There is no middle setting. A run without `readOnly` has the CLI’s full
+  autonomy, file edits and shell included, with every approval prompt disabled.
+  Scope the prompt, and point it at a directory you can restore. [How AnyAgent
+  works](/docs/how-it-works#every-run-is-unattended) explains why no middle
+  exists; harness-specific modes stay reachable via
+  [`extraArgs`](/docs/escape-hatches).
 </Callout>
-
-Not every CLI offers every level; the [support matrix](/docs/adapters) shows who offers what. Asking for a missing level throws [`UnsupportedCapability`](/docs/errors#unsupportedcapability) before anything spawns, so guard with `capabilities.permissionLevels.includes("read")` when the agent is not known in advance. [How AnyAgent works](/docs/how-it-works) explains how three levels map onto each CLI’s native flags.
 
 ## Tune the run
 
@@ -129,26 +165,32 @@ const agent = create(claudeCode());
 await agent.run("Add input validation to the signup form.", {
   cwd: "/home/sam/projects/acme-app",
   model: "opus",
+  effort: "high",
   systemPrompt: "Follow the Acme SDK conventions in docs/conventions.md.",
   env: { ACME_ENV: "development" },
 });
 ```
 
 - **`cwd`**: the directory the agent works in; defaults to the current process’s working directory
-- **`model`**: a model name in the CLI’s own vocabulary, listed on each [adapter page](/docs/adapters)
-- **`systemPrompt`**: appended to the CLI’s own system prompt, never replacing it
+- **`model`**: a model name in the CLI’s own vocabulary, listed on each [adapter page](/docs/adapters) and by [`agent.models()`](#check-credentials-before-you-run) where the CLI can list them
+- **`effort`**: how hard the model should think, from `"none"` to `"max"` and beyond; where a CLI’s vocabulary is closed, `capabilities.reasoningEfforts` lists the accepted values and anything else throws before the run starts
+- **`systemPrompt`**: extra system-level instructions; on a CLI without a system-prompt flag AnyAgent folds them into the prompt as a preamble, where adherence is weaker
 - **`env`**: extra environment variables, merged over the parent process’s environment
 
-`cwd`, `model`, `systemPrompt`, `resume`, `mcp`, and `schema` are capability-gated: AnyAgent checks each against the agent’s capability table before any process spawns. When the agent is not known in advance, guard the option:
+Every option is checked against the agent’s capabilities before any process spawns. When the agent is not known in advance, guard an option on `agent.capabilities`, and remember that model names are each CLI’s own vocabulary:
 
 ```ts
-const opts = agent.capabilities.modelSelection ? { model: "opus" } : {};
+const wantsOpus = agent.adapter.meta.id === "claude-code";
+const opts =
+  wantsOpus && agent.capabilities.modelSelection ? { model: "opus" } : {};
 await agent.run("Review the error handling in src/api/.", opts);
 ```
 
+For `readOnly`, `effort`, `mcp`, and `resume`, guard with `agent.supports()` as shown in [Keep a run read-only](#keep-a-run-read-only): it answers the same question and narrows the agent’s type so the options compile.
+
 ## Resume a session
 
-To continue a prior conversation, pass its session id as `resume`. The id lives on the previous run’s `raw` payload under a CLI-specific key, named on each adapter page:
+To continue a prior conversation, pass its session id as `resume`. The id is on the previous run’s `sessionId`, and streams surface it early as a [`session` event](/docs/api#agentevent) so you can persist it before the run ends:
 
 ```ts
 import { create } from "anyagent";
@@ -156,14 +198,13 @@ import { claudeCode } from "anyagent/claude-code";
 
 const agent = create(claudeCode());
 const review = await agent.run("Review this repo for unhandled rejections.");
-const { session_id } = review.raw as { session_id?: string };
 
-if (session_id) {
-  await agent.run("Fix the issues you found.", { resume: session_id });
+if (review.sessionId) {
+  await agent.run("Fix the issues you found.", { resume: review.sessionId });
 }
 ```
 
-The `if` matters: `resume: undefined` does not throw, it starts a fresh session.
+The `if` guard matters: `resume: undefined` starts a fresh session rather than throwing, and `sessionId` is absent on CLIs that never reveal one headless (goose and Cline today; each [adapter page](/docs/adapters) says which).
 
 ## Attach MCP servers
 
@@ -178,13 +219,14 @@ if (!found) {
 }
 
 const agent = create(found);
-const opts = found.capabilities.mcp
-  ? { mcp: { db: { command: "npx", args: ["acme-db-mcp"] } } }
-  : {};
-await agent.run("Describe the database schema this app expects.", opts);
+if (agent.supports("mcp")) {
+  await agent.run("Describe the database schema this app expects.", {
+    mcp: { db: { command: "npx", args: ["acme-db-mcp"] } },
+  });
+}
 ```
 
-When a CLI routes MCP through its own config instead, its adapter page says so; reach it through [escape hatches](/docs/escape-hatches).
+The option means exactly those servers: servers from the end user’s own configuration stay out of the run. On the CLIs that route MCP through their own config files instead, reach it through [escape hatches](/docs/escape-hatches); each [adapter page](/docs/adapters) says which route applies.
 
 ## Test without a CLI
 
@@ -203,7 +245,7 @@ const installed = await detect({ probe });
 // One result: Claude Code 2.0.31, without touching PATH.
 ```
 
-Pass `adapters` alongside `probe` to scan a subset or include a custom adapter; see [`DetectOptions`](/docs/api#detect).
+Pass `adapters` alongside `probe` to scan a subset or include a custom adapter; see [`DetectOptions`](/docs/api#detect). `create(found, { probe })` takes the richer [`SystemProbe`](/docs/api#systemprobe), which adds env, home-dir, and file reads, so tests can simulate credentials and drive `authStatus()` and `models()` with zero subprocesses.
 
 ## Next steps
 

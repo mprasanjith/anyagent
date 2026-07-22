@@ -1,11 +1,16 @@
-import { opencodeFamilyAdapter } from "./internal/opencode-family.js";
+import {
+  type OpencodeFamilyCapabilities,
+  opencodeFamilyAdapter,
+} from "./internal/opencode-family.js";
 import type { Adapter } from "./types.js";
 
 /**
- * The adapter for opencode (`opencode`). `edit` runs the CLI's default
- * behavior (its own permission config applies); `auto` auto-approves.
- * `resume` continues a session, whose id comes from
- * `RunResult.raw.sessionId` of a prior run.
+ * The adapter for opencode (`opencode`). A run gets the CLI's full unattended
+ * autonomy by default; `readOnly: true` denies file edits and shell for the
+ * run — the adapter owns the `OPENCODE_PERMISSION` env var to guarantee that,
+ * so a value you pass in `env` under that key is overridden. `resume`
+ * continues a session using the id from `RunResult.sessionId`; `effort`
+ * passes a provider-defined variant name to the CLI verbatim.
  *
  * ```ts
  * import { create } from "anyagent";
@@ -15,15 +20,15 @@ import type { Adapter } from "./types.js";
  * ```
  *
  * Models use opencode's `provider/model` form (e.g.
- * `"openrouter/openai/gpt-4o-mini"`). System prompts, MCP servers, and
- * per-tool permissions live in opencode.json rather than flags; reach them
- * via config or `extraArgs`. There is no read-only level — a config-denied
- * permission can hang a non-interactive run waiting for an approval that
- * never comes.
+ * `"openrouter/openai/gpt-4o-mini"`); `models()` lists every id the CLI
+ * accepts. `authStatus()` answers from opencode's credential store and the
+ * standard provider key env vars — a hint, not a guarantee. System prompts,
+ * MCP servers, and per-tool permissions live in opencode.json rather than
+ * flags; reach them via config or `extraArgs`.
  */
-export const opencode = (): Adapter =>
+export const opencode = (): Adapter<OpencodeFamilyCapabilities> =>
   opencodeFamilyAdapter({
-    bin: ["opencode"],
-    id: "opencode",
-    name: "opencode",
+    dataDir: "opencode",
+    meta: { bin: ["opencode"], id: "opencode", name: "opencode" },
+    permissionEnv: "OPENCODE_PERMISSION",
   });

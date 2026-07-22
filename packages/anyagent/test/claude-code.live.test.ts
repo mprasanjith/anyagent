@@ -13,10 +13,12 @@ live(
   "live: claude answers a trivial prompt",
   async () => {
     const agent = create(claudeCode());
-    const res = await agent.run(PROMPT, { permission: "read" });
+    const res = await agent.run(PROMPT, { readOnly: true });
     expect(res.text.toLowerCase()).toContain("pong");
-    // Real-output check: the parser extracted usage from the result event.
+    // Real-output check: the parser extracted usage and the session id from
+    // the result event.
     expect(typeof res.usage?.outputTokens).toBe("number");
+    expect(typeof res.sessionId).toBe("string");
   },
   60_000
 );
@@ -29,7 +31,7 @@ live(
   "live: real output parses clean under strict mode",
   async () => {
     const adapter = claudeCode();
-    const inv = adapter.buildInvocation(PROMPT, { permission: "read" });
+    const inv = adapter.buildInvocation(PROMPT, { readOnly: true });
     const source = spawnAndStream(inv);
     let sawText = false;
     let finalText: string | undefined;

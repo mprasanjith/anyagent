@@ -2,18 +2,20 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { runConformance } from "../src/conformance.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { pi } from "../src/pi.js";
 import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
-import { sourceFromBody } from "./fake-adapter.js";
+import { fakeSystemProbe, sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>
   sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
 
+const fixture = (name: string): string =>
+  readFileSync(path.join(import.meta.dir, "fixtures/pi", name), "utf-8");
+
 const fixtureSource = (name: string): OutputSource =>
-  sourceFromBody(
-    readFileSync(path.join(import.meta.dir, "fixtures/pi", name), "utf-8")
-  );
+  sourceFromBody(fixture(name));
 
 const collectSource = async (
   src: OutputSource,
@@ -29,29 +31,34 @@ const collectSource = async (
 
 const collect = (name: string) => collectSource(fixtureSource(name));
 
-test("buildInvocation maps json mode, print mode, and the prompt positional", () => {
-  const inv = pi().buildInvocation("hi there", { permission: "edit" });
-  expect(inv.command).toBe("pi");
-  expect(inv.args.slice(0, 3)).toEqual(["--mode", "json", "-p"]);
-  // Pi has no stdin form; the prompt is the trailing positional.
-  expect(inv.args.at(-1)).toBe("hi there");
-  expect(inv.input).toBeUndefined();
-});
-
 const argAfter = (inv: { args: string[] }, flag: string): string | undefined =>
   inv.args[inv.args.indexOf(flag) + 1];
 
-test("read restricts the toolset; edit and auto stay default", () => {
-  const ro = pi().buildInvocation("x", { permission: "read" });
+test("buildInvocation pipes the prompt via stdin, never as a positional", () => {
+  const inv = pi().buildInvocation("hi there", {});
+  expect(inv.command).toBe("pi");
+  expect(inv.args.slice(0, 3)).toEqual(["--mode", "json", "-p"]);
+  expect(inv.input).toBe("hi there");
+  expect(inv.args).not.toContain("hi there");
+});
+
+test("readOnly restricts the toolset; the default leaves it alone", () => {
+  const ro = pi().buildInvocation("x", { readOnly: true });
   expect(argAfter(ro, "--tools")).toBe("read");
-  // Pi never prompts for approval, so edit and auto are both the
-  // default toolset.
-  expect(pi().buildInvocation("x", { permission: "edit" }).args).not.toContain(
+  expect(pi().buildInvocation("x", {}).args).not.toContain("--tools");
+  expect(pi().buildInvocation("x", { readOnly: false }).args).not.toContain(
     "--tools"
   );
-  expect(pi().buildInvocation("x", { permission: "auto" }).args).not.toContain(
-    "--tools"
-  );
+});
+
+test("effort maps to --thinking, spelling our none as pi's off", () => {
+  expect(
+    argAfter(pi().buildInvocation("x", { effort: "none" }), "--thinking")
+  ).toBe("off");
+  expect(
+    argAfter(pi().buildInvocation("x", { effort: "high" }), "--thinking")
+  ).toBe("high");
+  expect(pi().buildInvocation("x", {}).args).not.toContain("--thinking");
 });
 
 test("buildInvocation emits every optional flag and passes cwd/env", () => {
@@ -59,15 +66,14 @@ test("buildInvocation emits every optional flag and passes cwd/env", () => {
     cwd: "/work",
     env: { FOO: "bar" },
     model: "openrouter/openai/gpt-4o-mini",
-    permission: "edit",
     resume: "11111111-2222-4333-8444-555555555555",
     systemPrompt: "be brief",
   });
-  const at = (flag: string): string | undefined =>
-    inv.args[inv.args.indexOf(flag) + 1];
-  expect(at("--model")).toBe("openrouter/openai/gpt-4o-mini");
-  expect(at("--append-system-prompt")).toBe("be brief");
-  expect(at("--session-id")).toBe("11111111-2222-4333-8444-555555555555");
+  expect(argAfter(inv, "--model")).toBe("openrouter/openai/gpt-4o-mini");
+  expect(argAfter(inv, "--append-system-prompt")).toBe("be brief");
+  expect(argAfter(inv, "--session-id")).toBe(
+    "11111111-2222-4333-8444-555555555555"
+  );
   expect(inv.cwd).toBe("/work");
   expect(inv.env).toEqual({ FOO: "bar" });
 });
@@ -81,22 +87,34 @@ test("parses a simple answer from token-level deltas with usage", async () => {
   expect(events.at(-1)?.type).toBe("done");
 });
 
-test("raw exposes the session id for resume", async () => {
-  const { result } = await collect("simple.jsonl");
-  const raw = result?.raw as { sessionId?: string; turnEnd?: unknown };
-  expect(typeof raw.sessionId).toBe("string");
-  expect(raw.turnEnd).toBeDefined();
+test("the session event carries the id that lands on result.sessionId", async () => {
+  const { events, result } = await collect("simple.jsonl");
+  const sessions = events.filter((e) => e.type === "session");
+  expect(sessions).toHaveLength(1);
+  const [session] = sessions;
+  expect(session?.type === "session" && session.sessionId).toBe(
+    "019f2f92-2f46-71e3-8cd6-084d1c6d7c06"
+  );
+  expect(result?.sessionId).toBe("019f2f92-2f46-71e3-8cd6-084d1c6d7c06");
 });
 
-test("parses toolCall blocks and toolResult messages", async () => {
+test("parses toolCall blocks and toolResult messages with callId pairing", async () => {
   const { events } = await collect("tools.jsonl");
   const call = events.find((e) => e.type === "tool-call");
   const res = events.find((e) => e.type === "tool-result");
-  expect(call?.type === "tool-call" && call.name).toBe("read");
-  expect(res?.type === "tool-result" && res.name).toBe("read");
-  expect(res?.type === "tool-result" && JSON.stringify(res.output)).toContain(
-    "petrichor"
-  );
+  expect(call?.type).toBe("tool-call");
+  expect(res?.type).toBe("tool-result");
+  if (call?.type !== "tool-call" || res?.type !== "tool-result") {
+    return;
+  }
+  // Pi's built-in names are already the shared vocabulary.
+  expect(call.name).toBe("read");
+  expect(call.nativeName).toBe("read");
+  expect(res.name).toBe("read");
+  expect(res.nativeName).toBe("read");
+  expect(typeof call.callId).toBe("string");
+  expect(res.callId).toBe(call.callId);
+  expect(JSON.stringify(res.output)).toContain("petrichor");
 });
 
 test("the edit fixture surfaces a write or edit tool call", async () => {
@@ -115,6 +133,21 @@ test("strict mode tolerates every recorded real shape", async () => {
       )
     )
   ).resolves.toHaveLength(3);
+});
+
+test("strict mode tolerates pi's named housekeeping event types", async () => {
+  const { result } = await collectSource(
+    bodySource([
+      { id: "s1", type: "session" },
+      { type: "compaction_start" },
+      { type: "compaction_end" },
+      { type: "auto_retry_start" },
+      { type: "agent_settled" },
+      { type: "queue_update" },
+    ]),
+    true
+  );
+  expect(result?.sessionId).toBe("s1");
 });
 
 test("a turn with stopReason error throws despite pi's zero exit code", async () => {
@@ -160,6 +193,14 @@ test("usage sums across turns", async () => {
   expect(result?.usage?.costUsd).toBeCloseTo(0.3);
 });
 
+test("cache and reasoning tokens are mapped and summed from turn_end", async () => {
+  const { result } = await collect("tools.jsonl");
+  // The recorded run's second turn reports cacheRead 1152.
+  expect(result?.usage?.cacheReadTokens).toBe(1152);
+  expect(result?.usage?.cacheWriteTokens).toBe(0);
+  expect(result?.usage?.reasoningTokens).toBe(0);
+});
+
 test("strict mode throws on unknown top-level, update, and block types", async () => {
   await expect(
     collectSource(bodySource([{ type: "mystery" }]), true)
@@ -186,6 +227,88 @@ test("strict mode throws on unknown top-level, update, and block types", async (
       true
     )
   ).rejects.toMatchObject({ code: "Parse" });
+});
+
+test("authStatus reads providers from auth.json", async () => {
+  const probe = fakeSystemProbe({
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/home/fake/.pi/agent/auth.json"
+          ? JSON.stringify({
+              anthropic: { type: "oauth" },
+              zai: { key: "k", type: "api_key" },
+            })
+          : undefined
+      ),
+  });
+  const status = await pi().authStatus?.(probe);
+  expect(status?.state).toBe("authenticated");
+  expect(status?.providers?.toSorted()).toEqual(["anthropic", "zai"]);
+});
+
+test("authStatus counts provider env vars as credentials", async () => {
+  const probe = fakeSystemProbe({ env: { OPENROUTER_API_KEY: "sk-x" } });
+  const status = await pi().authStatus?.(probe);
+  expect(status?.state).toBe("authenticated");
+  expect(status?.providers).toEqual(["openrouter"]);
+});
+
+test("authStatus reports unauthenticated on a bare machine", async () => {
+  const status = await pi().authStatus?.(fakeSystemProbe());
+  expect(status?.state).toBe("unauthenticated");
+  expect(status?.providers).toEqual([]);
+});
+
+test("authStatus survives a corrupt auth.json and still reads env vars", async () => {
+  const probe = fakeSystemProbe({
+    env: { ANTHROPIC_API_KEY: "sk-x" },
+    readFile: () => Promise.resolve("not json"),
+  });
+  const status = await pi().authStatus?.(probe);
+  expect(status?.state).toBe("authenticated");
+  expect(status?.providers).toEqual(["anthropic"]);
+});
+
+test("listModels parses the recorded pi --list-models table", async () => {
+  const probe = fakeSystemProbe({
+    exec: (bin, args) => {
+      expect(bin).toBe("pi");
+      expect(args).toEqual(["--list-models"]);
+      return Promise.resolve({
+        code: 0,
+        stderr: "",
+        stdout: fixture("list-models.txt"),
+      });
+    },
+  });
+  const models = await pi().listModels?.(probe);
+  expect(models?.length).toBeGreaterThan(20);
+  const first = models?.[0];
+  // The id is provider/model verbatim, the pattern pi's --model accepts.
+  expect(first?.id).toBe("anthropic/claude-fable-5");
+  expect(first?.provider).toBe("anthropic");
+  // The header row must not parse as a model.
+  expect(models?.some((m) => m.provider === "provider")).toBe(false);
+  expect(models?.some((m) => m.id === "zai/glm-5.2")).toBe(true);
+});
+
+test("listModels throws Invocation when the CLI fails", async () => {
+  const probe = fakeSystemProbe({
+    exec: () => Promise.resolve({ code: 1, stderr: "boom", stdout: "" }),
+  });
+  await expect(pi().listModels?.(probe)).rejects.toMatchObject({
+    code: "Invocation",
+  });
+});
+
+test("pi passes conformance", async () => {
+  await runConformance(pi(), {
+    fixtures: {
+      edit: fixture("edit.jsonl"),
+      simple: fixture("simple.jsonl"),
+      tools: fixture("tools.jsonl"),
+    },
+  });
 });
 
 test("nonzero exit after valid output fails loud instead of returning it", async () => {

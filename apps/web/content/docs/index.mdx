@@ -3,25 +3,25 @@ title: Introduction
 description: Detect the coding-agent CLI a machine already has installed and drive it through one interface.
 ---
 
-AnyAgent is a TypeScript library that detects which of the [supported agents](/docs/adapters) a machine already has installed and drives it through one interface.
-
-You call `detect()` and `run()`; AnyAgent translates them into the right flags and output parsing for whichever CLI it found. It’s an ESM module with zero runtime dependencies and runs on Node.js 18+ and Bun.
+AnyAgent is a TypeScript library that detects which of the [supported agents](/docs/adapters) a machine already has installed and drives it through one interface. You call `detect()` and `run()`; AnyAgent handles the flags and output parsing for whichever CLI it found. It’s an ESM module with zero runtime dependencies and runs on Node.js 18+ and Bun.
 
 ## Why it exists
 
-AnyAgent lets your tool use the coding agent your end user already has. Prompts run on their agent, under their login, on their subscription, so you collect no API keys and pay no inference bills.
+If your tool needs a coding agent to do its work, AnyAgent lets it use the one your end user already has. Prompts run on their agent, under their login, on their subscription, so you collect no API keys and pay no inference bills.
 
-## Who this is for
-
-AnyAgent suits tools that run a defined task against the end user’s own project:
+That fits tools that run a defined task against the end user’s own project:
 
 - **Setup wizards**: an `init` command that wires your SDK into the user’s codebase
 - **Migration and codemod runners**: apply a framework upgrade across a repo
 - **Generators**: produce changelogs, tests, or docs from the current source
 
-AnyAgent drives CLIs; it does not call model APIs itself. A machine with no supported CLI installed has nothing to run, so a shipped tool needs a fallback path; [Run agents](/docs/run-agents) covers it.
+## What AnyAgent does not do
+
+AnyAgent drives CLIs; it does not call model APIs itself, and it does not install agents. A machine with no supported CLI installed has nothing to run, so a shipped tool needs a fallback path; [Run agents](/docs/run-agents#handle-a-machine-with-no-agent) covers it.
 
 ## Where to start
+
+Pick the page that matches where you are:
 
 - [Quickstart](/docs/quickstart): install the package, detect an agent, and run a first prompt
 - [How AnyAgent works](/docs/how-it-works): the mental model behind the API

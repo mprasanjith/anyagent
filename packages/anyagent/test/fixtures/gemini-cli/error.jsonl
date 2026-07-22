@@ -1,0 +1,5 @@
+{"type":"init","timestamp":"2026-07-22T00:03:08.228Z","session_id":"e57cb6ba-93f0-4c34-98dd-109c072de569","model":"gemini-2.5-flash"}
+{"type":"message","timestamp":"2026-07-22T00:03:08.229Z","role":"user","content":"Read the file secret.txt in the current directory and reply with only the hidden word it contains."}
+{"type":"tool_use","timestamp":"2026-07-22T00:03:10.169Z","tool_name":"read_file","tool_id":"read_file__nap7ez18","parameters":{"file_path":"secret.txt"}}
+{"type":"tool_result","timestamp":"2026-07-22T00:03:10.193Z","tool_id":"read_file__nap7ez18","status":"success","output":""}
+{"type":"result","timestamp":"2026-07-22T00:03:10.344Z","status":"error","error":{"type":"unknown","message":"[API Error: An unknown error occurred.]"},"stats":{"total_tokens":11794,"input_tokens":11605,"output_tokens":20,"cached":0,"input":11605,"duration_ms":0,"tool_calls":1,"models":{"gemini-3.5-flash":{"total_tokens":11794,"input_tokens":11605,"output_tokens":20,"cached":0,"input":11605}}}}

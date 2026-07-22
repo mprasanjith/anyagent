@@ -11,8 +11,9 @@ import type {
   RunResult,
 } from "../src/types.js";
 import {
-  fakeBinaryPerms,
+  fakeClosedEffort,
   fakeStreaming,
+  fakeSystemProbe,
   fakeText,
   runnerFromFixture,
 } from "./fake-adapter.js";
@@ -63,14 +64,141 @@ test("non-streaming adapter synthesizes a single delta", async () => {
   expect(res.text).toBe("the answer");
 });
 
-test("requesting read on a binary-perms adapter throws UnsupportedCapability", async () => {
-  const agent = new AgentImpl(
-    fakeBinaryPerms,
-    runnerFromFixture('{"t":"end"}')
-  );
-  await expect(agent.run("q", { permission: "read" })).rejects.toMatchObject({
+test("readOnly: true on an adapter that declares it false throws before spawning", async () => {
+  const agent = new AgentImpl(fakeText, runnerFromFixture("ok"));
+  await expect(agent.run("q", { readOnly: true })).rejects.toMatchObject({
     code: "UnsupportedCapability",
   });
+});
+
+test("readOnly: false is the default spelled out and never throws", async () => {
+  const agent = new AgentImpl(fakeText, runnerFromFixture("ok"));
+  const res = await agent.run("q", { readOnly: false });
+  expect(res.text).toBe("ok");
+});
+
+test("run() rejects an effort outside the adapter's closed vocabulary", async () => {
+  const agent = new AgentImpl(
+    fakeClosedEffort,
+    runnerFromFixture('{"t":"text","v":"ok"}\n{"t":"end"}')
+  );
+  await expect(agent.run("q", { effort: "medium" })).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
+  const res = await agent.run("q", { effort: "low" });
+  expect(res.text).toBe("ok");
+});
+
+test("supports() reflects capability truthiness and ANDs multiple keys", () => {
+  const streaming = new AgentImpl(fakeStreaming, runnerFromFixture(""));
+  expect(streaming.supports("effort", "mcp", "readOnly", "resume")).toBe(true);
+
+  // fakeText: mcp is available, effort/readOnly/resume are false.
+  const text = new AgentImpl(fakeText, runnerFromFixture(""));
+  expect(text.supports("mcp")).toBe(true);
+  expect(text.supports("effort")).toBe(false);
+  expect(text.supports("readOnly")).toBe(false);
+  expect(text.supports("resume")).toBe(false);
+  // One false key fails the whole set.
+  expect(text.supports("mcp", "effort")).toBe(false);
+});
+
+test("supports() treats an emulated capability as available", () => {
+  const emulated: Adapter = {
+    ...fakeText,
+    capabilities: { ...fakeText.capabilities, effort: "emulated" },
+  };
+  const agent = new AgentImpl(emulated, runnerFromFixture(""));
+  expect(agent.supports("effort")).toBe(true);
+});
+
+test("authStatus() and models() throw UnsupportedCapability on a false capability", async () => {
+  const agent = new AgentImpl(fakeText, runnerFromFixture(""));
+  await expect(agent.authStatus()).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
+  await expect(agent.models()).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
+});
+
+test("a declared discovery capability with a missing impl throws, never crashes", async () => {
+  const liar: Adapter = {
+    ...fakeText,
+    capabilities: {
+      ...fakeText.capabilities,
+      authStatus: "probed",
+      modelListing: "native",
+    },
+  };
+  const agent = new AgentImpl(liar, runnerFromFixture(""));
+  await expect(agent.authStatus()).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
+  await expect(agent.models()).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
+});
+
+// An adapter whose discovery reads the machine only through the probe, so a
+// test can prove the injected probe is what the impl received.
+const probeReader: Adapter = {
+  ...fakeStreaming,
+  authStatus: (probe) =>
+    Promise.resolve({
+      method: probe.env.FAKE_METHOD,
+      state: probe.env.FAKE_TOKEN ? "authenticated" : "unauthenticated",
+    }),
+  listModels: async (probe) => {
+    const file = await probe.readFile("/models.txt");
+    return (file ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map((id) => ({ id }));
+  },
+};
+
+test("authStatus() and models() delegate to the adapter with the injected probe", async () => {
+  const probe = fakeSystemProbe({
+    env: { FAKE_METHOD: "api-key", FAKE_TOKEN: "t" },
+    readFile: (p) => Promise.resolve(p === "/models.txt" ? "m1,m2" : undefined),
+  });
+  const agent = new AgentImpl(probeReader, runnerFromFixture(""), probe);
+  expect(await agent.authStatus()).toEqual({
+    method: "api-key",
+    state: "authenticated",
+  });
+  expect((await agent.models()).map((m) => m.id)).toEqual(["m1", "m2"]);
+});
+
+test("create({ probe }) hands the probe to discovery", async () => {
+  const agent = create(probeReader, {
+    probe: fakeSystemProbe({ env: { FAKE_TOKEN: "t" } }),
+  });
+  expect((await agent.authStatus()).state).toBe("authenticated");
+  const bare = create(probeReader, { probe: fakeSystemProbe() });
+  expect((await bare.authStatus()).state).toBe("unauthenticated");
+});
+
+test("create() accepts an adapter directly", () => {
+  const agent = create(fakeStreaming);
+  expect(agent.adapter).toBe(fakeStreaming);
+  expect(agent.capabilities).toBe(fakeStreaming.capabilities);
+  expect(agent.raw.buildInvocation("hi").args).toEqual(["-p", "hi"]);
+});
+
+test("create() accepts a DetectResult and builds an agent for its adapter", () => {
+  const detected: DetectResult = {
+    adapter: fakeStreaming,
+    capabilities: fakeStreaming.capabilities,
+    id: "fake-stream",
+    name: "Fake Stream",
+    path: "/usr/bin/fake-stream",
+    version: "1.0.0",
+  };
+  const agent = create(detected);
+  expect(agent.adapter).toBe(fakeStreaming);
+  expect(agent.capabilities).toBe(fakeStreaming.capabilities);
 });
 
 test("breaking out of runStream early terminates the underlying process", async () => {
@@ -127,20 +255,6 @@ test("run() throws Parse when the adapter never yields a done event", async () =
     code: "Parse",
     message: expect.stringContaining("no terminal done"),
   });
-});
-
-test("create() accepts a DetectResult and builds an agent for its adapter", () => {
-  const detected: DetectResult = {
-    adapter: fakeStreaming,
-    capabilities: fakeStreaming.capabilities,
-    id: "fake-stream",
-    name: "Fake Stream",
-    path: "/usr/bin/fake-stream",
-    version: "1.0.0",
-  };
-  const agent = create(detected);
-  expect(agent.adapter).toBe(fakeStreaming);
-  expect(agent.capabilities).toBe(fakeStreaming.capabilities);
 });
 
 test("raw.spawn wires prompt to stdin and merges env into the child", async () => {

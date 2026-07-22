@@ -3,36 +3,38 @@ import { ndjsonParser } from "./ndjson.js";
 import type {
   Adapter,
   AgentEvent,
-  CapabilityTable,
+  AuthStatus,
+  Capabilities,
   Invocation,
-  PermissionLevel,
+  ModelInfo,
   RunOptions,
+  SystemProbe,
   Usage,
 } from "./types.js";
 
-const CAPS: CapabilityTable = {
+const CAPS = {
+  authStatus: "native",
   cwd: "native",
+  // No reasoningEfforts list on purpose: Codex's effort vocabulary is open
+  // and per-model — models() reports each model's accepted values, and the
+  // CLI itself is the authority on validity.
+  effort: "native",
   // MCP servers reach Codex only through `-c mcp_servers.*` config overrides,
   // which we have not verified against real output; use extraArgs or raw.
   mcp: false,
+  modelListing: "native",
   modelSelection: "native",
-  permissionLevels: ["read", "edit", "auto"],
+  readOnly: "native",
   sessionResume: "native",
   streaming: "native",
-  // Codex has a native `--output-schema` path, but it is unverified against
-  // recorded real output, so core emulation applies until fixtures exist;
-  // flipping to "native" is a recorded-fixture follow-up.
+  // Deliberately emulated: `--output-schema` speaks a restricted JSON Schema
+  // dialect (every field required, `format`/`pattern` ignored), so native
+  // acceptance would depend on the caller's schema.
   structuredOutput: "emulated",
   // `codex exec` has no append-system-prompt flag; the core folds the system
   // prompt into the prompt text instead.
   systemPrompt: "emulated",
-};
-
-const SANDBOX_MODE: Record<PermissionLevel, string> = {
-  auto: "danger-full-access",
-  edit: "workspace-write",
-  read: "read-only",
-};
+} as const satisfies Capabilities;
 
 interface Ctx {
   text: string[];
@@ -44,19 +46,25 @@ interface Ctx {
 // biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
 
+const num = (v: unknown): number | undefined =>
+  typeof v === "number" ? v : undefined;
+
+const str = (v: unknown): string | undefined =>
+  typeof v === "string" ? v : undefined;
+
 const usageFrom = (obj: Json): Usage | undefined => {
   const u = obj.usage;
   if (!u) {
     return;
   }
-  // Codex's input_tokens folds cache reads in; subtract to report uncached
-  // input like the other adapters. Exact native accounting stays on raw.
-  const cached =
-    typeof u.cached_input_tokens === "number" ? u.cached_input_tokens : 0;
+  // Codex's native accounting folds cache reads into input_tokens and
+  // reasoning into output_tokens; `Usage` keeps the provider's accounting,
+  // so cacheReadTokens/reasoningTokens are the folded shares, not additions.
   return {
-    inputTokens:
-      typeof u.input_tokens === "number" ? u.input_tokens - cached : undefined,
-    outputTokens: u.output_tokens,
+    cacheReadTokens: num(u.cached_input_tokens),
+    inputTokens: num(u.input_tokens),
+    outputTokens: num(u.output_tokens),
+    reasoningTokens: num(u.reasoning_output_tokens),
   };
 };
 
@@ -65,16 +73,20 @@ const mapItemStarted = (obj: Json, strict: boolean): AgentEvent | undefined => {
   switch (item.type) {
     case "command_execution": {
       return {
+        callId: str(item.id),
         input: item.command,
-        name: "command_execution",
+        name: "bash",
+        nativeName: "command_execution",
         raw: obj,
         type: "tool-call",
       };
     }
     case "file_change": {
       return {
+        callId: str(item.id),
         input: item.changes,
         name: "file_change",
+        nativeName: "file_change",
         raw: obj,
         type: "tool-call",
       };
@@ -108,7 +120,9 @@ const mapItemCompleted = (
     }
     case "command_execution": {
       return {
-        name: "command_execution",
+        callId: str(item.id),
+        name: "bash",
+        nativeName: "command_execution",
         output: item.aggregated_output,
         raw: obj,
         type: "tool-result",
@@ -116,13 +130,17 @@ const mapItemCompleted = (
     }
     case "file_change": {
       return {
+        callId: str(item.id),
         name: "file_change",
+        nativeName: "file_change",
         output: item.changes,
         raw: obj,
         type: "tool-result",
       };
     }
-    // Reasoning has no normalized event; error items are advisory warnings —
+    // Reasoning items are tolerated but never appeared in recorded real
+    // output (only reasoning_output_tokens did), so no reasoning-delta is
+    // synthesized from unobserved shapes. Error items are advisory warnings —
     // fatal failures arrive as top-level `error`/`turn.failed` instead.
     case "reasoning":
     case "error": {
@@ -140,9 +158,10 @@ const mapItemCompleted = (
 const parse = ndjsonParser<Ctx>({
   finalize: (ctx) => ({
     events: [],
-    // Codex has no single final payload; compose one so the thread id needed
-    // for `resume` is reachable alongside the native turn.completed event.
+    // Codex has no single final payload; compose one so the native
+    // turn.completed event stays reachable next to the thread id.
     raw: { threadId: ctx.threadId, turnCompleted: ctx.turn },
+    sessionId: ctx.threadId,
     text: ctx.text.join(""),
     usage: ctx.usage,
   }),
@@ -151,8 +170,12 @@ const parse = ndjsonParser<Ctx>({
     const obj = raw as Json;
     switch (obj.type) {
       case "thread.started": {
+        // The thread id is the resume handle; surface it once, early.
+        if (typeof obj.thread_id !== "string" || ctx.threadId) {
+          return;
+        }
         ctx.threadId = obj.thread_id;
-        return;
+        return { raw: obj, sessionId: obj.thread_id, type: "session" };
       }
       case "turn.started":
       case "item.updated": {
@@ -196,18 +219,11 @@ const parse = ndjsonParser<Ctx>({
 });
 
 const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
-  const level = opts.permission ?? "edit";
-  const sandbox = SANDBOX_MODE[level];
-  if (!sandbox) {
-    throw new AnyAgentError(
-      "UnsupportedCapability",
-      `codex cannot honor permission "${level}"`
-    );
-  }
+  const sandbox = opts.readOnly ? "read-only" : "danger-full-access";
   // `codex exec resume` has no --sandbox flag, only `-c` config overrides, so
-  // the resume form sets the sandbox through config. Either way the level is
-  // always passed explicitly — exec defaults to read-only, which would
-  // silently under-honor the SDK's `edit` default.
+  // the resume form sets the sandbox through config. Either way the sandbox
+  // is always passed explicitly — exec defaults to read-only, which would
+  // silently under-honor the SDK's full-autonomy default.
   const args = opts.resume
     ? [
         "exec",
@@ -221,6 +237,10 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   if (opts.model) {
     args.push("--model", opts.model);
   }
+  if (opts.effort !== undefined) {
+    // Verbatim pass-through; the CLI is the authority on per-model validity.
+    args.push("-c", `model_reasoning_effort="${opts.effort}"`);
+  }
   // The `-` positional makes Codex read the prompt from stdin, so a large
   // prompt never hits the OS argv size limit.
   args.push("-");
@@ -233,11 +253,83 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   };
 };
 
+const AUTH_METHODS: readonly (readonly [RegExp, string])[] = [
+  [/chatgpt/i, "chatgpt"],
+  [/api key/i, "api-key"],
+];
+
+const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
+  let res: { stdout: string; stderr: string; code: number };
+  try {
+    res = await probe.exec("codex", ["login", "status"]);
+  } catch {
+    return { state: "unknown" };
+  }
+  // Exit 0 when logged in, nonzero when not; the verdict text ("Logged in
+  // using ChatGPT") prints to stderr, so both streams are read.
+  const text = `${res.stdout}\n${res.stderr}`.trim();
+  if (res.code !== 0) {
+    return { raw: text, state: "unauthenticated" };
+  }
+  const method = AUTH_METHODS.find(([re]) => re.test(text))?.[1];
+  return { method, raw: text, state: "authenticated" };
+};
+
+const effortsOf = (model: Json): string[] | undefined => {
+  const levels = model.supported_reasoning_levels;
+  if (!Array.isArray(levels)) {
+    return;
+  }
+  const efforts = levels
+    .map((level: Json) => level?.effort)
+    .filter((effort: unknown): effort is string => typeof effort === "string");
+  return efforts.length ? efforts : undefined;
+};
+
+const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
+  let res: { stdout: string; stderr: string; code: number };
+  try {
+    res = await probe.exec("codex", ["debug", "models"]);
+  } catch (error) {
+    throw AnyAgentError.wrap(error);
+  }
+  if (res.code !== 0) {
+    throw new AnyAgentError(
+      "Invocation",
+      `codex debug models exited ${res.code}`,
+      { stderr: res.stderr }
+    );
+  }
+  let parsed: Json;
+  try {
+    parsed = JSON.parse(res.stdout);
+  } catch (error) {
+    // biome-ignore lint/style/useErrorCause: AnyAgentError carries the original on `raw`, its documented cause field.
+    throw new AnyAgentError("Parse", "codex debug models did not print JSON", {
+      raw: error,
+    });
+  }
+  const models: Json[] = Array.isArray(parsed?.models) ? parsed.models : [];
+  return (
+    models
+      // `visibility: "hide"` marks internal models Codex's own picker omits.
+      .filter((model) => model.visibility !== "hide")
+      .filter((model) => typeof model.slug === "string")
+      .map((model) => ({
+        id: model.slug as string,
+        raw: model,
+        reasoningEfforts: effortsOf(model),
+      }))
+  );
+};
+
 /**
- * The adapter for the Codex CLI (`codex`). Permission levels map onto
- * Codex's sandbox levels (`read-only` / `workspace-write` /
- * `danger-full-access`); `resume` continues a prior thread, whose id comes
- * from `RunResult.raw.threadId` of a prior run.
+ * The adapter for the Codex CLI (`codex`). A default run has full unattended
+ * autonomy (Codex's `danger-full-access` sandbox); `readOnly: true` confines
+ * it to the `read-only` sandbox instead. `resume` continues a prior thread
+ * using the id from {@link RunResult.sessionId}; `effort` passes through to
+ * the CLI, whose accepted values are per-model — `models()` lists them.
+ * `authStatus()` asks `codex login status`.
  *
  * ```ts
  * import { create } from "anyagent";
@@ -248,12 +340,16 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  *
  * MCP servers are not supported on headless Codex; Codex's `-c` config
  * overrides can reach them via `extraArgs` or `agent.raw`. System prompts
- * have no native flag and are emulated.
+ * have no native flag and are emulated. Structured output stays emulated on
+ * purpose: Codex's `--output-schema` accepts only a restricted schema
+ * dialect, so whether it worked would depend on your schema.
  */
-export const codex = (): Adapter => ({
+export const codex = (): Adapter<typeof CAPS> => ({
+  authStatus,
   buildInvocation,
   capabilities: CAPS,
   detection: {},
+  listModels,
   meta: { bin: ["codex"], id: "codex", name: "Codex" },
   parse,
 });

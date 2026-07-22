@@ -1,52 +1,36 @@
 ---
 title: Claude Code
-description: How the claude-code adapter detects, invokes, and parses the Claude Code CLI, and what each run option maps to.
+description: "Use Claude Code through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `claude-code` adapter drives the Claude Code CLI in headless mode, detected as the `claude` binary on `PATH`. It supports streaming, all three permission levels, model selection, session resume, MCP servers, system prompts, and `cwd`. The full capability table is on the [support matrix](/docs/adapters).
+The `claude-code` adapter drives the Claude Code CLI in headless mode, detected as the `claude` binary on `PATH`; import `claudeCode` from `anyagent/claude-code`.
 
-Import the factory from the `anyagent/claude-code` subpath and hand it to `create`:
+## What you can ask for
 
-```ts
-import { create } from "anyagent";
-import { claudeCode } from "anyagent/claude-code";
+Every run option works, on the CLI’s own flags: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own system prompt, never replacing it), `resume`, `mcp`, and `schema`. The full grid is on the [support matrix](/docs/adapters).
 
-const agent = create(claudeCode());
-const result = await agent.run("summarize this repo");
-```
+`authStatus()` asks `claude auth status --json`, so the answer is the CLI’s own word. `models()` throws: the CLI has no listing mechanism.
 
-One capability is emulated rather than native: Claude Code has its own schema flag for structured output, but it is not yet verified against recorded output, so the core appends your schema to the prompt and parses the reply. See [Get structured output](/docs/structured-output).
+## Good to know
 
-## How options map to flags
+- The session id lands on `result.sessionId`; pass it back as `resume` to continue the conversation.
+- `mcp` means exactly the servers you passed: servers from the end user’s own configuration stay out of the run.
+- With a `schema`, the model answers through the CLI’s structured-output path and emits no other text, so `result.text` is the serialized JSON reply; validation and the one retry still apply.
+- One `text-delta` carries a whole assistant text block; thinking blocks stream as `reasoning-delta`.
+- `usage` follows the provider’s accounting: cache reads and writes are separate line items on `cacheReadTokens` and `cacheWriteTokens`, and `costUsd` is set.
 
-Every run executes `claude -p --output-format stream-json --verbose` with a `--permission-mode` flag set from the permission level. The prompt travels over stdin rather than as a positional argument, so a large prompt never exceeds the OS argv size limit. Your [run options](/docs/api#runoptions) append further flags:
+## Under the hood
 
-| Option               | Flag                                                               |
-| -------------------- | ------------------------------------------------------------------ |
-| `permission: "read"` | `--permission-mode default`                                        |
-| `permission: "edit"` | `--permission-mode acceptEdits`                                    |
-| `permission: "auto"` | `--permission-mode bypassPermissions`                              |
-| `model`              | `--model <name>`, in Claude Code’s own vocabulary such as `"opus"` |
-| `systemPrompt`       | `--append-system-prompt <text>`, which appends and never replaces  |
-| `resume`             | `--resume <sessionId>`                                             |
-| `mcp`                | `--mcp-config <json>`, the servers under an `mcpServers` key       |
+Every run executes `claude -p --output-format stream-json --verbose --permission-mode bypassPermissions`, the unattended default, with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
 
-`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
+| Option           | Flag                                                                             |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `readOnly: true` | `--permission-mode manual` plus `--disallowedTools Bash,Edit,NotebookEdit,Write` |
+| `model`          | `--model <name>`                                                                 |
+| `effort`         | `--effort <level>`                                                               |
+| `systemPrompt`   | `--append-system-prompt <text>`                                                  |
+| `resume`         | `--resume <sessionId>`                                                           |
+| `mcp`            | `--mcp-config <json>` plus `--strict-mcp-config`                                 |
+| `schema`         | `--json-schema <json>`                                                           |
 
-## What the stream produces
-
-Claude Code emits whole assistant messages, so one `text-delta` carries a message’s full text block rather than a token. Tool use maps to `tool-call`, and its result to `tool-result`.
-
-Thinking blocks produce no normalized event, and each event’s `raw` holds only its own content block, so reasoning appears nowhere on the normalized stream. To capture it, drive the CLI through [`agent.raw`](/docs/escape-hatches).
-
-Claude Code reports a session id in its final payload: read `session_id` from `result.raw` and pass it back as `resume`; see [Resume a session](/docs/run-agents#resume-a-session).
-
-## Usage reporting
-
-Claude Code reports cost, so `costUsd` is set alongside the token counts. `inputTokens` counts uncached input only; cache reads and writes stay as separate line items on `result.raw`, so read the raw payload when you need exact cache accounting.
-
-## Next steps
-
-- [Supported agents](/docs/adapters): every adapter’s capabilities side by side
-- [Escape hatches](/docs/escape-hatches): reach native Claude Code flags through `extraArgs` or `agent.raw`
-- [Codex](/docs/adapters/codex): the same sections for the Codex CLI
+`readOnly` is enforced twice on purpose: `manual` mode already denies unattended mutations, and the mutating built-in tools are also denied by name, so the guarantee holds even if the mode’s semantics drift upstream.

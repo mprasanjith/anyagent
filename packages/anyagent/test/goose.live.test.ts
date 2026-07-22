@@ -8,9 +8,9 @@ import { liveEnabled } from "./live-helper.js";
 const live = test.skipIf(!(await liveEnabled("goose")));
 
 const PROMPT = "Reply with exactly the word: pong";
-// Goose reads its provider from GOOSE_PROVIDER/config; the model rides the
-// --model flag, e.g. GOOSE_PROVIDER=openrouter OPENROUTER_API_KEY=…
-// ANYAGENT_GOOSE_MODEL=openai/gpt-4o-mini.
+// The model splits at the first slash into --provider/--model, e.g.
+// ANYAGENT_GOOSE_MODEL=openrouter/openai/gpt-4o-mini (with the provider's
+// key env var set); a bare model leaves the provider to goose's config.
 const MODEL = process.env.ANYAGENT_GOOSE_MODEL;
 
 live(
@@ -33,10 +33,7 @@ live(
   "live: real output parses clean under strict mode",
   async () => {
     const adapter = goose();
-    const inv = adapter.buildInvocation(
-      PROMPT,
-      MODEL ? { model: MODEL, permission: "edit" } : { permission: "edit" }
-    );
+    const inv = adapter.buildInvocation(PROMPT, MODEL ? { model: MODEL } : {});
     const source = spawnAndStream(inv);
     let sawText = false;
     let finalText: string | undefined;
@@ -52,4 +49,16 @@ live(
     expect(typeof finalText).toBe("string");
   },
   120_000
+);
+
+// Free (no LLM call): `goose info -v` is the probe behind authStatus.
+live(
+  "live: authStatus answers from goose info without a paid run",
+  async () => {
+    const status = await create(goose()).authStatus();
+    expect(["authenticated", "unauthenticated", "unknown"]).toContain(
+      status.state
+    );
+  },
+  30_000
 );

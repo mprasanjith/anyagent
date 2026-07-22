@@ -19,7 +19,7 @@ live(
     const res = await agent.run(PROMPT, MODEL ? { model: MODEL } : {});
     expect(res.text.toLowerCase()).toContain("pong");
     expect(typeof res.usage?.outputTokens).toBe("number");
-    expect(typeof (res.raw as { sessionId?: string }).sessionId).toBe("string");
+    expect(typeof res.sessionId).toBe("string");
   },
   120_000
 );
@@ -30,10 +30,7 @@ live(
   "live: real output parses clean under strict mode",
   async () => {
     const adapter = kiloCode();
-    const inv = adapter.buildInvocation(
-      PROMPT,
-      MODEL ? { model: MODEL, permission: "edit" } : { permission: "edit" }
-    );
+    const inv = adapter.buildInvocation(PROMPT, MODEL ? { model: MODEL } : {});
     const source = spawnAndStream(inv);
     let sawText = false;
     let finalText: string | undefined;

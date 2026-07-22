@@ -15,16 +15,19 @@ Never let a shipped tool commit or push on the user’s behalf. Scope every prom
 
 A run can take minutes, and a silent one looks hung: stream events to the user as the agent works, and wire an `AbortSignal` to Ctrl+C so cancelling is clean. [Stream progress](/docs/streaming) covers both.
 
-Every failure throws `AnyAgentError` with one of four codes, so a `switch` on `err.code` is exhaustive error handling. Give each code a message a stranger could act on, and log `argv` and `stderr` on `Invocation` failures so bug reports are actionable. [Handle errors](/docs/errors#turn-each-code-into-a-message-for-the-end-user) has the full branch-by-branch example.
+Every failure throws `AnyAgentError` with one of five codes, so a `switch` on `err.code` is exhaustive error handling. Give each code a message a stranger could act on, and log `argv` and `stderr` on `Invocation` failures so bug reports are actionable. [Handle errors](/docs/errors#turn-each-code-into-a-message-for-the-end-user) has the full branch-by-branch example.
 
 ## Before you ship
 
+Confirm every item before release:
+
 - Detect first, and handle the none-installed case with a message that names a supported CLI and its setup steps
+- Check [`authStatus()`](/docs/run-agents#check-credentials-before-you-run) where the agent supports it, and tell the user when the CLI is installed but not signed in
 - Tell the user which agent runs and that it draws on their login and subscription
 - Ask which agent to use when more than one is installed
 - Scope the prompt: name the files, keep changes local, forbid commits and pushes
-- Run at `permission: "edit"` for tools that change code, `read` for analysis, never `auto` outside a sandbox
-- Handle all four error codes with messages a stranger can act on
+- Use [`readOnly: true`](/docs/run-agents#keep-a-run-read-only) for analysis features; a default run edits files and runs shell commands unattended, so reserve it for tasks where the user asked for code changes
+- Handle all five error codes with messages a stranger can act on
 - Bound run time with `AbortSignal.timeout` so a hung CLI cannot hang your tool
 - Pin nothing to agent versions; `version` is for display, and AnyAgent targets current CLIs
 - Test with each supported CLI installed and with none, using a [fake probe](/docs/run-agents#test-without-a-cli) in CI
@@ -32,6 +35,6 @@ Every failure throws `AnyAgentError` with one of four codes, so a `switch` on `e
 
 ## Next steps
 
-- [Run agents](/docs/run-agents): detection, choice, options, and permission levels
+- [Run agents](/docs/run-agents): detection, choice, options, and read-only runs
 - [Stream progress](/docs/streaming): progress rendering and cancellation
 - [Handle errors](/docs/errors): each code and the message it deserves

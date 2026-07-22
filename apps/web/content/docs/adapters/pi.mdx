@@ -1,57 +1,33 @@
 ---
 title: Pi
-description: How the pi adapter detects and invokes the Pi CLI’s pi binary, and what each run option maps to.
+description: "Use Pi through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `pi` adapter drives the Pi CLI as `pi --mode json -p`, mapping Pi’s session, turn, and message NDJSON stream onto AnyAgent’s normalized events. Pi streams token-level deltas, so `text-delta` events are fine-grained rather than whole messages, and Pi extends through its own extension system rather than MCP, so the `mcp` option is unsupported. Pi is MIT-licensed and pure bring-your-own-key (BYOK): it reads provider keys from around 20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, …), so it needs no subscription or account. The full capability table is on the [support matrix](/docs/adapters).
+The `pi` adapter drives the Pi CLI as `pi --mode json -p`, detected as the `pi` binary on `PATH`; import `pi` from `anyagent/pi`. Pi is MIT-licensed and pure bring-your-own-key (BYOK), reading provider keys from around 20 env vars (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, …).
 
-Import the factory from the `anyagent/pi` subpath and hand it to `create`:
+## What you can ask for
 
-```ts
-import { create } from "anyagent";
-import { pi } from "anyagent/pi";
+`readOnly`, `model` (as `"provider/model"`), `effort` (closed vocabulary: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt`, and `resume` all work on the CLI’s own flags. `schema` works too, provided by AnyAgent. Pi extends through its own extension system rather than MCP, so `mcp` is unsupported and requesting it throws. The full grid is on the [support matrix](/docs/adapters).
 
-const agent = create(pi());
-const result = await agent.run("summarize this repo", {
-  model: "openrouter/openai/gpt-5.2",
-});
-```
+`models()` (`pi --list-models`) is credential-filtered: it names this machine’s usable models, not a catalog, and every id is valid verbatim as `model`. `authStatus()` reads `~/.pi/agent/auth.json` plus the provider key env vars: a hint rather than a guarantee.
 
-Detection looks for a `pi` binary on `PATH` and reads the version from `pi --version`.
+## Good to know
 
-## How options map to flags
+- Pi has no approval prompts and always runs autonomously; `readOnly` restricts the toolset to the `read` tool, the CLI’s own guarantee.
+- Pi’s `session` event opens the stream, and the id lands on `result.sessionId`; `resume` creates the session if it is missing.
+- `text-delta` events are token-level, and `thinking_delta` updates map to `reasoning-delta`; Pi’s built-in tool names already match the shared vocabulary.
+- Usage arrives per turn, including cache line items, reasoning tokens, and cost.
 
-Every run executes `pi --mode json -p`. Pi takes the prompt as a positional argument and has no stdin form, so a prompt larger than the OS argv limit needs [`agent.raw`](/docs/escape-hatches). Your [run options](/docs/api#runoptions) append further flags:
+## Under the hood
 
-| Option               | Flag                            |
-| -------------------- | ------------------------------- |
-| `permission: "read"` | `--tools read`                  |
-| `permission: "edit"` | none, the default toolset       |
-| `permission: "auto"` | none, same as `edit`            |
-| `model`              | `--model <pattern>`             |
-| `systemPrompt`       | `--append-system-prompt <text>` |
-| `resume`             | `--session-id <id>`             |
+Every run executes `pi --mode json -p` with the prompt piped over stdin. [Run options](/docs/api#run-options) append flags:
 
-Pi has no approval prompts at all and always runs autonomously, so `edit` and `auto` are the same thing. `read` restricts the toolset to the `read` tool rather than sandboxing.
+| Option           | Flag                                                 |
+| ---------------- | ----------------------------------------------------- |
+| `readOnly: true` | `--tools read`                                       |
+| `model`          | `--model <provider/model>`                           |
+| `effort`         | `--thinking <level>`; `"none"` is sent as Pi’s `off` |
+| `systemPrompt`   | `--append-system-prompt <text>`                      |
+| `resume`         | `--session-id <id>`                                  |
 
-`cwd` and `env` are not flags: they become the spawned process’s working directory and extra environment variables. [`extraArgs`](/docs/escape-hatches) appends after every flag above, so a native flag there can override what `permission` set.
-
-## What the stream produces
-
-`text-delta` events carry individual tokens from Pi’s message-update events. Tool calls surface when their arguments are complete, and each tool result arrives as its own message carrying the tool’s name.
-
-Pi has no single final payload, so the adapter composes one carrying the session id: read `sessionId` from `result.raw` and pass it back as `resume`; see [Resume a session](/docs/run-agents#resume-a-session).
-
-## Usage reporting
-
-Pi reports `inputTokens`, `outputTokens`, and `costUsd` per turn: each `turn_end` yields a `usage` event carrying that turn’s share, and `result.usage` carries the totals summed across the run.
-
-## Errors
-
-Pi exits 0 even when a turn fails, so the adapter never trusts the exit code: a turn ending with `stopReason: "error"`, or a top-level `error` event, throws [`AnyAgentError`](/docs/errors) with `code: "Invocation"` and Pi’s own message.
-
-## Next steps
-
-- [Supported agents](/docs/adapters): every adapter’s capabilities side by side
-- [Escape hatches](/docs/escape-hatches): reach Pi’s extensions and native flags through `extraArgs` or `agent.raw`
-- [goose](/docs/adapters/goose): the same sections for another BYOK CLI
+Pi exits 0 even when a turn fails, so the adapter reads errors from the stream: `stopReason: "error"` or a top-level `error` event throws `Invocation` with Pi’s own message.

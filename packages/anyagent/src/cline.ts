@@ -3,22 +3,30 @@ import { ndjsonParser } from "./ndjson.js";
 import type {
   Adapter,
   AgentEvent,
-  CapabilityTable,
+  AuthStatus,
+  Capabilities,
   Invocation,
   OutputSource,
   RunOptions,
+  SystemProbe,
+  ToolName,
+  Usage,
 } from "./types.js";
 
-const CAPS: CapabilityTable = {
+const CAPS = {
+  // Never exec for auth: cline's config subcommand needs a TTY headless.
+  authStatus: "probed",
   cwd: "native",
+  effort: "native",
   // MCP servers are `cline mcp` config, not a per-run flag.
   mcp: false,
+  modelListing: false,
   modelSelection: "native",
-  // No `read` level: cline's plan mode still executes shell commands
-  // (verified writing a file through run_commands), so it cannot honestly
-  // stand in for `read`. Headless cline auto-approves every tool, which
-  // makes `edit` and `auto` the same thing.
-  permissionLevels: ["edit", "auto"],
+  // Headless cline auto-approves every tool and plan mode still executes
+  // shell commands (verified writing a file through run_commands), so
+  // nothing-changes cannot be guaranteed.
+  readOnly: false,
+  reasoningEfforts: ["none", "low", "medium", "high", "xhigh"],
   // `--id` resume is broken in cline's headless JSON mode (the prompt is
   // never accepted alongside it), so resume stays undeclared.
   sessionResume: false,
@@ -28,7 +36,7 @@ const CAPS: CapabilityTable = {
   // the system prompt into the prompt text, preserving the append semantics
   // RunOptions.systemPrompt promises.
   systemPrompt: "emulated",
-};
+} as const satisfies Capabilities;
 
 interface Ctx {
   raw?: unknown;
@@ -37,6 +45,24 @@ interface Ctx {
 
 // biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
 type Json = any;
+
+// Only the tool names verified in recorded output map to the shared
+// vocabulary; anything else keeps its native name, per the ToolName contract.
+const TOOL_NAMES: Record<string, ToolName> = {
+  apply_patch: "edit",
+  read_files: "read",
+  run_commands: "bash",
+};
+
+const toolName = (native: string): ToolName => TOOL_NAMES[native] ?? native;
+
+const mapUsage = (u: Json): Usage => ({
+  cacheReadTokens: u.cacheReadTokens,
+  cacheWriteTokens: u.cacheWriteTokens,
+  costUsd: u.totalCost,
+  inputTokens: u.inputTokens,
+  outputTokens: u.outputTokens,
+});
 
 const mapAgentEvent = (
   obj: Json,
@@ -60,8 +86,10 @@ const mapAgentEvent = (
     case "content_start": {
       if (ev.contentType === "tool") {
         return {
+          callId: ev.toolCallId,
           input: ev.input,
-          name: ev.toolName,
+          name: toolName(ev.toolName),
+          nativeName: ev.toolName,
           raw: obj,
           type: "tool-call",
         };
@@ -80,7 +108,9 @@ const mapAgentEvent = (
     case "content_end": {
       if (ev.contentType === "tool") {
         return {
-          name: ev.toolName,
+          callId: ev.toolCallId,
+          name: toolName(ev.toolName),
+          nativeName: ev.toolName,
           output: ev.output,
           raw: obj,
           type: "tool-result",
@@ -115,13 +145,7 @@ const innerParse = ndjsonParser<Ctx>({
       events: [],
       raw: ctx.raw,
       text: ctx.text.join(""),
-      usage: u
-        ? {
-            costUsd: u.totalCost,
-            inputTokens: u.inputTokens,
-            outputTokens: u.outputTokens,
-          }
-        : undefined,
+      usage: u ? mapUsage(u) : undefined,
     };
   },
   init: () => ({ text: [] }),
@@ -144,17 +168,7 @@ const innerParse = ndjsonParser<Ctx>({
         }
         ctx.raw = obj;
         const u = obj.usage;
-        return u
-          ? {
-              raw: obj,
-              type: "usage",
-              usage: {
-                costUsd: u.totalCost,
-                inputTokens: u.inputTokens,
-                outputTokens: u.outputTokens,
-              },
-            }
-          : undefined;
+        return u ? { raw: obj, type: "usage", usage: mapUsage(u) } : undefined;
       }
       default: {
         if (strict) {
@@ -186,18 +200,16 @@ const parse: Adapter["parse"] = (source, opts) =>
   innerParse(jsonLinesOnly(source), opts);
 
 const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
-  const level = opts.permission ?? "edit";
-  if (level === "read") {
-    throw new AnyAgentError(
-      "UnsupportedCapability",
-      'cline cannot honor permission "read"'
-    );
-  }
   // Auto-approval is cline's headless default; passing it explicitly keeps
-  // the behavior pinned if that default ever changes.
+  // the behavior pinned if that default ever changes. `readOnly: true` never
+  // reaches here — the capability is declared false, so the core throws
+  // before the invocation is built.
   const args = ["--json", "--auto-approve", "true"];
   if (opts.model) {
     args.push("-m", opts.model);
+  }
+  if (opts.effort) {
+    args.push("--thinking", opts.effort);
   }
   // The prompt must be a positional: cline's headless mode does not read a
   // piped prompt reliably. A prompt larger than the OS argv limit needs
@@ -212,10 +224,56 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   };
 };
 
+// Provider settings live at <data>/settings/providers.json. Precedence,
+// live-verified on 3.0.46: CLINE_PROVIDER_SETTINGS_PATH names the exact
+// file; CLINE_DATA_DIR is the data dir itself; CLINE_DIR keeps the data/
+// level; then the default under the home directory. First existing file
+// wins.
+const providersPaths = (probe: SystemProbe): string[] => {
+  const paths: string[] = [];
+  if (probe.env.CLINE_PROVIDER_SETTINGS_PATH) {
+    paths.push(probe.env.CLINE_PROVIDER_SETTINGS_PATH);
+  }
+  if (probe.env.CLINE_DATA_DIR) {
+    paths.push(`${probe.env.CLINE_DATA_DIR}/settings/providers.json`);
+  }
+  if (probe.env.CLINE_DIR) {
+    paths.push(`${probe.env.CLINE_DIR}/data/settings/providers.json`);
+  }
+  paths.push(`${probe.homedir()}/.cline/data/settings/providers.json`);
+  return paths;
+};
+
+const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
+  // Candidates are read concurrently; precedence is decided by list order —
+  // the first path with a readable file wins.
+  const paths = providersPaths(probe);
+  const bodies = await Promise.all(paths.map((p) => probe.readFile(p)));
+  const index = bodies.findIndex((b) => b !== undefined);
+  const body = bodies[index];
+  if (body === undefined) {
+    return { state: "unauthenticated" };
+  }
+  let parsed: Json;
+  try {
+    parsed = JSON.parse(body);
+  } catch (error) {
+    return {
+      raw: { error: String(error), path: paths[index] },
+      state: "unknown",
+    };
+  }
+  const providers = Object.keys(parsed?.providers ?? {});
+  return providers.length > 0
+    ? { providers, raw: parsed, state: "authenticated" }
+    : { raw: parsed, state: "unauthenticated" };
+};
+
 /**
  * The adapter for Cline's CLI (`cline`). Cline is BYOK: configure a provider once via
  * `cline auth -p <provider> -k <key>` (e.g. openrouter), or pass `-P`/`-k`
- * per run through `extraArgs`.
+ * per run through `extraArgs`. `authStatus()` reports which providers are
+ * configured, read from cline's provider settings.
  *
  * ```ts
  * import { create } from "anyagent";
@@ -224,13 +282,16 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
  * const result = await create(cline()).run("summarize this repo");
  * ```
  *
- * Headless cline auto-approves every tool, so `edit` and `auto` are
- * equivalent and there is no `read` level (plan mode still executes
- * shell commands). Session resume is undeclared: `--id` is broken in headless
- * JSON mode upstream. System prompts have no append flag (`-s` replaces) and
- * are emulated. A failed run throws `AnyAgentError` with cline's own message.
+ * Headless cline auto-approves every tool and cannot guarantee a read-only
+ * run, so `readOnly: true` throws. Reasoning effort is native with a closed
+ * vocabulary (`none` through `xhigh`). Session resume is undeclared: `--id`
+ * is broken in headless JSON mode upstream, and no session id is revealed —
+ * `RunResult.sessionId` stays absent. System prompts have no append flag
+ * (`-s` replaces) and are emulated. A failed run throws `AnyAgentError` with
+ * cline's own message.
  */
-export const cline = (): Adapter => ({
+export const cline = (): Adapter<typeof CAPS> => ({
+  authStatus,
   buildInvocation,
   capabilities: CAPS,
   detection: {},

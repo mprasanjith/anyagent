@@ -18,13 +18,13 @@ live(
     const agent = create(pi());
     const res = await agent.run(PROMPT, {
       ...(MODEL ? { model: MODEL } : {}),
-      permission: "read",
+      readOnly: true,
     });
     expect(res.text.toLowerCase()).toContain("pong");
     // Real-output check: usage summed from turn_end events.
     expect(typeof res.usage?.outputTokens).toBe("number");
     // The session id must be reachable for resume.
-    expect(typeof (res.raw as { sessionId?: string }).sessionId).toBe("string");
+    expect(typeof res.sessionId).toBe("string");
   },
   120_000
 );
@@ -39,7 +39,7 @@ live(
     const adapter = pi();
     const inv = adapter.buildInvocation(PROMPT, {
       ...(MODEL ? { model: MODEL } : {}),
-      permission: "read",
+      readOnly: true,
     });
     const source = spawnAndStream(inv);
     let sawText = false;
@@ -56,4 +56,17 @@ live(
     expect(typeof finalText).toBe("string");
   },
   120_000
+);
+
+// Free of model calls: --list-models only reads local credential state, so
+// this doubles as the drift check for the table parser.
+live(
+  "live: models() returns usable provider/model ids",
+  async () => {
+    const models = await create(pi()).models();
+    expect(models.length).toBeGreaterThan(0);
+    expect(models.every((m) => m.id.includes("/"))).toBe(true);
+    expect(models.every((m) => typeof m.provider === "string")).toBe(true);
+  },
+  30_000
 );

@@ -3,7 +3,7 @@ title: Errors
 description: "Every AnyAgentError code: when it fires, what it carries, and how to turn it into a message your end user can act on."
 ---
 
-Everything AnyAgent throws is one class, `AnyAgentError`, with four `code` values and no subclass tree. Find the code you hit in its section below. Results never hide failures: holding a `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story.
+Everything AnyAgent throws is one class, `AnyAgentError`, with five `code` values and no subclass tree. Find the code you hit in its section below. Results never hide failures: holding a `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story.
 
 ## Catch and branch on the code
 
@@ -33,16 +33,21 @@ try {
 
 ## UnsupportedCapability
 
-You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`, `schema`) its capability table does not declare, or a permission level it does not offer. It fires before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
+You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`, `schema`, `effort`, `readOnly`) its capabilities do not declare, an `effort` value outside a closed vocabulary, or a discovery method (`authStatus()`, `models()`) it has no answer for. It fires before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
 
-The message names the agent and the missing capability, in one of two shapes:
+The message names the agent and the missing capability:
 
 ```txt
-codex does not support a system prompt
-some-cli does not support permission level "read" (offers: edit, auto)
+codex does not support MCP config
+goose cannot guarantee a read-only run
+cline does not accept effort "ultra" (accepts: none, low, medium, high, xhigh)
 ```
 
-Drop the option, or read `agent.capabilities` first and degrade the feature when it is missing. [Run agents](/docs/run-agents#tune-the-run) shows the capability guard, and the [support matrix](/docs/adapters) shows what every CLI declares.
+Drop the option, or check first and degrade the feature when it is missing: `agent.supports()` for `readOnly`, `effort`, `mcp`, and `resume`; `agent.capabilities` for the rest. [Run agents](/docs/run-agents#tune-the-run) shows both guards, and the [support matrix](/docs/adapters) shows what every CLI declares.
+
+## InvalidOptions
+
+The options contradict each other, on any agent: a dependent option was passed without its prerequisite. Like `UnsupportedCapability` it fires before any process spawns, but the fix is different: this is not a gap in one CLI, it is a call that could never be valid, so correct the options at the call site rather than degrading per agent.
 
 ## Invocation
 
@@ -58,7 +63,7 @@ The CLI ran, but its output did not match the shape the adapter expects, or the 
 
 ## Aborted
 
-Your `AbortSignal` fired and the underlying process was terminated, whether from a user cancelling or an `AbortSignal.timeout` expiring. In a shipped tool that is usually the end user stopping a run on purpose, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming#cancel-a-run) shows how to wire the signal to Ctrl+C.
+Your `AbortSignal` fired and the underlying process was terminated, whether from a user cancelling or an `AbortSignal.timeout` expiring. In a shipped tool that means the end user stopped the run or your own timeout fired, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming#cancel-a-run) shows how to wire the signal to Ctrl+C.
 
 ## Diagnostic fields
 
@@ -109,6 +114,9 @@ try {
         `${agent.adapter.meta.name} cannot do that: ${err.message}`
       );
       break;
+    case "InvalidOptions":
+      console.error(`acme init passed contradictory options: ${err.message}`);
+      break;
     case "Invocation":
       console.error(
         "The agent failed to run. Check that it is installed and signed in."
@@ -128,7 +136,7 @@ try {
 }
 ```
 
-Each branch gives the end user something to act on: cancellation exits quietly, a capability gap names the agent, a run failure points at install and login, and a parse failure asks for a report with the validation detail attached.
+Each branch gives the end user something to act on: cancellation exits quietly, a capability gap names the agent, contradictory options name the tool at fault, a run failure points at install and login, and a parse failure asks for a report with the validation detail attached.
 
 ## Next steps
 

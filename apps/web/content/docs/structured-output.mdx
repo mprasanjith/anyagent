@@ -3,7 +3,7 @@ title: Get structured output
 description: Pass a JSON Schema to a run, read the parsed value from RunResult.json, and handle the validation and retry path.
 ---
 
-Pass a JSON Schema to `agent.run()` and AnyAgent returns the agent’s reply parsed and validated against it, on `RunResult.json`. This page shows how to describe the shape you want, read the parsed value, and handle a reply that never matches. It works identically on every supported agent: the capability is [emulated](/docs/how-it-works) everywhere today, with the core appending your schema to the prompt and extracting a JSON value from the reply, whether it comes back bare, fenced, or embedded in prose.
+Pass a JSON Schema to `agent.run()` and AnyAgent returns the agent’s reply parsed and validated against it, on `RunResult.json`. This page shows how to describe the shape you want, read the parsed value, and handle a reply that never matches. The contract is identical on every supported agent: a validated value on `result.json`, with one retry, whether the reply comes back bare, fenced, or embedded in prose.
 
 ## Describe the shape with a JSON Schema
 
@@ -36,7 +36,7 @@ const agent = create(found);
 const result = await agent.run(
   "Inspect this repo and report its runtime dependencies and the command " +
     "that runs its tests.",
-  { schema, permission: "read" }
+  { schema }
 );
 
 const { dependencies, testCommand } = result.json as {
@@ -52,16 +52,18 @@ console.log(testCommand, dependencies);
 bun test [ 'react', 'zod', 'hono' ]
 ```
 
-The cast is yours to trust. AnyAgent validates the essential JSON Schema keywords and ignores the rest ([the reference lists which](/docs/api#runoptions)), and the TypeScript type is an assertion you write, so validate further yourself when a field carries meaning the schema cannot capture.
+The cast is yours to trust. AnyAgent validates the essential JSON Schema keywords and ignores the rest ([the reference lists which](/docs/api#baselinerunoptions)), and the TypeScript type is an assertion you write, so validate further yourself when a field carries meaning the schema cannot capture.
 
 ## Handle a reply that never matches
 
-When the first reply fails to parse or validate, the core retries once. It re-asks the agent with the failed reply and the specific errors quoted, then validates the second reply. A successful retry returns normally, with the corrected value on `result.json`; the result’s `usage`, `events`, and `raw` then describe the retry run only, so the first attempt’s tokens are not in the totals.
+When the first reply fails to parse or validate, AnyAgent retries once. It re-asks the agent with the failed reply and the specific errors quoted, then validates the second reply. A successful retry returns normally, with the corrected value on `result.json`; the result’s `usage`, `events`, and `raw` then describe the retry run only, so the first attempt’s tokens are not in the totals.
 
 <Callout type="warn">
   The retry is a second full agent run. On an agent that edits files, a run
-  whose first reply fails validation acts on your repo twice. Prefer
-  `permission: "read"` for extraction tasks so a retry stays side-effect free.
+  whose first reply fails validation acts on your repo twice. For extraction
+  tasks, pair `schema` with a [read-only
+  run](/docs/run-agents#keep-a-run-read-only) where the agent supports one, so
+  a retry stays side-effect free.
 </Callout>
 
 When the retry also fails, `run()` throws `AnyAgentError` with `code: "Parse"`. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. Each error carries a JSON path, so `$.user.name: expected string, got number` tells you which field came back wrong:
@@ -79,7 +81,6 @@ const agent = create(found);
 try {
   const result = await agent.run("Report this repo's dependencies.", {
     schema,
-    permission: "read",
   });
   console.log(result.json);
 } catch (err) {
@@ -98,7 +99,7 @@ try {
 
 ## Guard structured output on unknown agents
 
-`capabilities.structuredOutput` guards the schema option. Every built-in adapter declares it `"emulated"` today, so a schema works on all of them; a future `"native"` mapping would change how the reply is produced, not how you ask for it. When you drive a custom adapter that might not declare it, check first:
+`capabilities.structuredOutput` guards the schema option. Every built-in adapter declares it, so a schema works on all of them; how each CLI produces the reply is on its [adapter page](/docs/adapters), and it never changes how you ask. When you drive a custom adapter that might not declare the capability, check first:
 
 ```ts
 const opts = agent.capabilities.structuredOutput ? { schema } : {};
@@ -111,4 +112,4 @@ Requesting a schema on an adapter that declares `structuredOutput: false` throws
 
 - [Run agents](/docs/run-agents): the other `RunOptions` fields in context
 - [Handle errors](/docs/errors): the `Parse` and `UnsupportedCapability` codes in full
-- [How AnyAgent works](/docs/how-it-works): native versus emulated capabilities
+- [How AnyAgent works](/docs/how-it-works): the mental model behind capabilities

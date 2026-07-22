@@ -62,6 +62,18 @@
     "./pi": {
       "types": "./dist/pi.d.ts",
       "import": "./dist/pi.js"
+    },
+    "./antigravity": {
+      "types": "./dist/antigravity.d.ts",
+      "import": "./dist/antigravity.js"
+    },
+    "./cursor": {
+      "types": "./dist/cursor.d.ts",
+      "import": "./dist/cursor.js"
+    },
+    "./gemini-cli": {
+      "types": "./dist/gemini-cli.d.ts",
+      "import": "./dist/gemini-cli.js"
     }
   },
   "scripts": {

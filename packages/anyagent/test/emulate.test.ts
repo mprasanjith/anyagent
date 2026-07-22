@@ -1,21 +1,20 @@
 import { expect, test } from "bun:test";
 
 import { applyEmulations } from "../src/internal/emulate.js";
-import type {
-  Adapter,
-  CapabilitySupport,
-  CapabilityTable,
-} from "../src/types.js";
+import type { Adapter, Capabilities, CapabilitySupport } from "../src/types.js";
 
 const adapterWith = (
   systemPrompt: CapabilitySupport,
   structuredOutput: CapabilitySupport
 ): Adapter => {
-  const caps: CapabilityTable = {
+  const caps: Capabilities = {
+    authStatus: false,
     cwd: "native",
+    effort: false,
     mcp: "native",
+    modelListing: false,
     modelSelection: "native",
-    permissionLevels: ["edit"],
+    readOnly: false,
     sessionResume: "native",
     streaming: "native",
     structuredOutput,

@@ -1,13 +1,13 @@
 ---
 title: Escape hatches
-description: Reach native CLI capabilities the unified surface does not model, from adding one flag to owning the whole process.
+description: Reach native CLI capabilities the unified interface leaves out, from adding one flag to owning the whole process.
 ---
 
-The unified surface models what most agent CLIs share, so every CLI can do things it leaves out: bidirectional sessions, per-tool allow lists, finer permission flags. AnyAgent gives you three ways down to a CLI’s native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
+The unified interface covers what the supported CLIs have in common, so every CLI can do things it leaves out: bidirectional sessions, per-tool allow lists, harness-specific permission modes. AnyAgent gives you three ways down to a CLI’s native capabilities, in increasing order of control: `extraArgs`, `agent.raw.buildInvocation`, and `agent.raw.spawn`.
 
 ## Add native flags with extraArgs
 
-`RunOptions.extraArgs` appends native CLI flags to the argv while everything else stays the same: you keep the normalized event stream and the lifecycle management. Reach for it when the surface almost fits and one flag closes the gap.
+`RunOptions.extraArgs` appends native CLI flags to the argv while everything else stays the same: you keep the normalized event stream and the lifecycle management. Reach for it when the interface almost fits and one flag closes the gap.
 
 ```ts
 import { create } from "anyagent";
@@ -15,13 +15,13 @@ import { claudeCode } from "anyagent/claude-code";
 
 const agent = create(claudeCode());
 const result = await agent.run("Generate API docs from the source.", {
-  extraArgs: ["--disallowed-tools", "Bash"],
+  extraArgs: ["--permission-mode", "acceptEdits"],
 });
 ```
 
-Here a docs-generation feature blocks the agent from running shell commands with a flag native to Claude Code, one the surface does not model.
+Here a run pins Claude Code’s `acceptEdits` mode, one of the harness-specific middle grounds between `readOnly` and the unattended default that the interface deliberately leaves out.
 
-Two caveats apply: the flags are adapter-specific, so you own their correctness for the CLI you target, and they are appended after the flags AnyAgent builds, without validation, so a flag here can override what `permission` set. Prefer a typed option whenever one exists; the [adapter pages](/docs/adapters) and the CLI’s own docs cover the rest.
+Two caveats apply: the flags are adapter-specific, so you own their correctness for the CLI you target, and they are appended after the flags AnyAgent builds, without validation, so a flag here can override what a typed option set; that is exactly what the example above relies on. Prefer a typed option whenever one exists; the [adapter pages](/docs/adapters) and the CLI’s own docs cover the rest.
 
 ## Get the exact command with agent.raw.buildInvocation
 
@@ -32,13 +32,16 @@ import { create } from "anyagent";
 import { claudeCode } from "anyagent/claude-code";
 
 const agent = create(claudeCode());
-const inv = agent.raw.buildInvocation("Fix the build.", { permission: "edit" });
+const inv = agent.raw.buildInvocation("Audit the auth flow.", {
+  readOnly: true,
+});
 
 console.log(inv.command, inv.args.join(" "));
-// claude -p --output-format stream-json --verbose --permission-mode acceptEdits
+// claude -p --output-format stream-json --verbose --permission-mode manual
+//   --disallowedTools Bash,Edit,NotebookEdit,Write
 ```
 
-Unlike `run` and `runStream`, both `raw` calls skip capability validation and [emulation](/docs/how-it-works): an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`, and an emulated option such as a system prompt on a CLI without the flag is not folded into the prompt for you. Check `agent.capabilities` yourself when it matters.
+Unlike `run` and `runStream`, both `raw` calls skip capability validation and the behaviors AnyAgent provides: an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`, and a system prompt on a CLI without a system-prompt flag is not folded into the prompt for you. Check `agent.capabilities` yourself when it matters.
 
 ## Own the process with agent.raw.spawn
 
@@ -49,7 +52,7 @@ import { create } from "anyagent";
 import { claudeCode } from "anyagent/claude-code";
 
 const agent = create(claudeCode());
-const child = agent.raw.spawn("Explain the auth flow.", { permission: "read" });
+const child = agent.raw.spawn("Explain the auth flow.", { readOnly: true });
 
 child.stdout?.pipe(process.stdout);
 child.on("exit", (code) => console.log(`agent exited with ${code}`));
@@ -63,14 +66,14 @@ Pick the smallest hatch that solves your problem:
 
 | You need                                             | Reach for                   |
 | ---------------------------------------------------- | --------------------------- |
-| One native flag the surface does not model           | `extraArgs`                 |
+| One native flag the interface leaves out             | `extraArgs`                 |
 | The exact argv, for logging or running it elsewhere  | `agent.raw.buildInvocation` |
 | To own the process: custom parsing, bidirectional IO | `agent.raw.spawn`           |
 
-Before you rebuild event parsing on top of `spawn` for a supported CLI, check the normalized stream first. Every event’s `raw` field carries the untouched native payload, so what you are after may already be there without leaving the surface.
+Before you rebuild event parsing on top of `spawn` for a supported CLI, check the normalized stream first. Every event’s `raw` field carries the untouched native payload, so what you are after may already be there.
 
 ## Next steps
 
-- [How AnyAgent works](/docs/how-it-works): why the surface leaves native capabilities out
-- [Run agents](/docs/run-agents#set-a-permission-level): what `permission` sets before `extraArgs` can override it
-- [API reference](/docs/api): the `RunOptions`, `Invocation`, and `RawHandle` types
+- [How AnyAgent works](/docs/how-it-works): why the interface leaves native capabilities out
+- [Run agents](/docs/run-agents#keep-a-run-read-only): the read-only contract that `extraArgs` can override
+- [API reference](/docs/api): the `RunOptions` and `RawHandle` types

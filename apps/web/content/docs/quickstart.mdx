@@ -11,10 +11,8 @@ This page takes you from install to a working script: detect a coding agent inst
 
 You need:
 
-- Node.js 22.18 or later, or Bun, to run the TypeScript example directly
+- Node.js 22.18 or later, or Bun, so the example `.ts` file runs without a build step; AnyAgent itself runs on Node.js 18 or later
 - At least one [supported agent](/docs/adapters) installed and signed in
-
-AnyAgent itself runs on Node.js 18 or later; the newer version only matters for running a `.ts` file without a build step.
 
 ## Install
 
@@ -38,15 +36,19 @@ if (!first) {
 }
 
 const agent = create(first);
+if (!agent.supports("readOnly")) {
+  throw new Error(`${first.name} cannot guarantee a read-only run.`);
+}
+
 const result = await agent.run(
   "List the scripts in package.json and what each one does.",
-  { permission: "read" }
+  { readOnly: true }
 );
 
 console.log(result.text);
 ```
 
-`detect()` scans your `PATH` and returns every supported agent it finds, and `create()` wraps the first result in a runnable handle. The prompt runs with `read` permission, so the agent inspects files without changing anything.
+`detect()` scans your `PATH` and returns every supported agent it finds, and `create()` wraps the first result in a runnable handle. `agent.supports("readOnly")` confirms this agent can guarantee a read-only run, and `readOnly: true` then confines it to reading, so the agent inspects files without changing anything.
 
 ## Run the script
 

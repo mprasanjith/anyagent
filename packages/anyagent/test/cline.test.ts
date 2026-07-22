@@ -3,17 +3,25 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { cline } from "../src/cline.js";
+import { runConformance } from "../src/conformance.js";
+import { create } from "../src/index.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
-import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
-import { sourceFromBody } from "./fake-adapter.js";
+import type {
+  AgentEvent,
+  OutputSource,
+  RunResult,
+  SystemProbe,
+} from "../src/types.js";
+import { fakeSystemProbe, sourceFromBody } from "./fake-adapter.js";
 
 const bodySource = (lines: unknown[]): OutputSource =>
   sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
 
+const fixture = (name: string): string =>
+  readFileSync(path.join(import.meta.dir, "fixtures/cline", name), "utf-8");
+
 const fixtureSource = (name: string): OutputSource =>
-  sourceFromBody(
-    readFileSync(path.join(import.meta.dir, "fixtures/cline", name), "utf-8")
-  );
+  sourceFromBody(fixture(name));
 
 const collectSource = async (
   src: OutputSource,
@@ -37,7 +45,7 @@ const RESULT_OK = {
 };
 
 test("buildInvocation maps json mode, pinned auto-approve, and the prompt positional", () => {
-  const inv = cline().buildInvocation("hi there", { permission: "edit" });
+  const inv = cline().buildInvocation("hi there", {});
   expect(inv.command).toBe("cline");
   expect(inv.args.slice(0, 3)).toEqual(["--json", "--auto-approve", "true"]);
   // cline's headless mode does not read a piped prompt reliably; positional.
@@ -45,30 +53,40 @@ test("buildInvocation maps json mode, pinned auto-approve, and the prompt positi
   expect(inv.input).toBeUndefined();
 });
 
-test("edit and auto build the same auto-approved invocation", () => {
-  const edit = cline().buildInvocation("x", { permission: "edit" });
-  const auto = cline().buildInvocation("x", { permission: "auto" });
-  expect(edit.args).toEqual(auto.args);
-});
-
-test("read throws UnsupportedCapability (plan mode still runs commands)", () => {
-  expect(() => cline().buildInvocation("x", { permission: "read" })).toThrow(
-    expect.objectContaining({ code: "UnsupportedCapability" })
-  );
-});
-
 test("buildInvocation emits the model flag and passes cwd/env", () => {
   const inv = cline().buildInvocation("hi there", {
     cwd: "/work",
     env: { FOO: "bar" },
     model: "openai/gpt-4o-mini",
-    permission: "edit",
   });
   const at = (flag: string): string | undefined =>
     inv.args[inv.args.indexOf(flag) + 1];
   expect(at("-m")).toBe("openai/gpt-4o-mini");
   expect(inv.cwd).toBe("/work");
   expect(inv.env).toEqual({ FOO: "bar" });
+});
+
+test("effort rides --thinking and is absent when not asked for", () => {
+  const inv = cline().buildInvocation("hi there", { effort: "high" });
+  expect(inv.args[inv.args.indexOf("--thinking") + 1]).toBe("high");
+  expect(cline().buildInvocation("hi there", {}).args).not.toContain(
+    "--thinking"
+  );
+});
+
+test("an effort outside the closed vocabulary throws before spawn", async () => {
+  const agent = create(cline());
+  await expect(
+    agent.run("two words", { effort: "ultra" })
+  ).rejects.toMatchObject({ code: "UnsupportedCapability" });
+});
+
+test("readOnly: true throws UnsupportedCapability (cline cannot guarantee it)", async () => {
+  const agent = create(cline());
+  await expect(
+    // @ts-expect-error readOnly is a compile error on cline's literal table; this asserts the runtime gate behind it.
+    agent.run("two words", { readOnly: true })
+  ).rejects.toMatchObject({ code: "UnsupportedCapability" });
 });
 
 test("parses a simple text answer with usage from run_result", async () => {
@@ -80,21 +98,68 @@ test("parses a simple text answer with usage from run_result", async () => {
   expect(events.at(-1)?.type).toBe("done");
 });
 
-test("parses tool content into tool-call and tool-result", async () => {
+test("run_result cache accounting lands on the cache token fields", async () => {
+  const { result } = await collect("tools.jsonl");
+  expect(result?.usage?.cacheReadTokens).toBe(3584);
+  expect(result?.usage?.cacheWriteTokens).toBe(0);
+});
+
+test("no session event is emitted and sessionId stays absent", async () => {
+  const { events, result } = await collect("simple.jsonl");
+  expect(events.some((e) => e.type === "session")).toBe(false);
+  expect(result?.sessionId).toBeUndefined();
+});
+
+test("tool content maps normalized name, native name, and callId", async () => {
   const { events } = await collect("tools.jsonl");
   const call = events.find((e) => e.type === "tool-call");
   const res = events.find((e) => e.type === "tool-result");
-  expect(call?.type === "tool-call" && call.name).toBe("read_files");
-  expect(res?.type === "tool-result" && res.name).toBe("read_files");
+  if (call?.type !== "tool-call" || res?.type !== "tool-result") {
+    throw new Error("expected a tool-call and a tool-result");
+  }
+  expect(call.name).toBe("read");
+  expect(call.nativeName).toBe("read_files");
+  expect(typeof call.callId).toBe("string");
+  expect(res.name).toBe("read");
+  expect(res.nativeName).toBe("read_files");
+  expect(res.callId).toBe(call.callId);
+});
+
+test("a tool outside the shared vocabulary keeps its native name", async () => {
+  const { events } = await collectSource(
+    bodySource([
+      {
+        event: {
+          contentType: "tool",
+          input: {},
+          toolName: "mystery_tool",
+          type: "content_start",
+        },
+        type: "agent_event",
+      },
+      {
+        event: {
+          contentType: "tool",
+          output: {},
+          toolName: "run_commands",
+          type: "content_end",
+        },
+        type: "agent_event",
+      },
+      RESULT_OK,
+    ])
+  );
+  const call = events.find((e) => e.type === "tool-call");
+  const res = events.find((e) => e.type === "tool-result");
+  expect(call?.type === "tool-call" && call.name).toBe("mystery_tool");
+  expect(res?.type === "tool-result" && res.name).toBe("bash");
+  expect(res?.type === "tool-result" && res.nativeName).toBe("run_commands");
 });
 
 test("the tools fixture's stray plain-text notice is filtered, not fatal", async () => {
   // The recorded stream really contains a non-JSON "AI SDK Warning" line on
   // stdout; parsing it proves the filter works on real output.
-  const body = readFileSync(
-    path.join(import.meta.dir, "fixtures/cline", "tools.jsonl"),
-    "utf-8"
-  );
+  const body = fixture("tools.jsonl");
   expect(body.split("\n").some((l) => l.startsWith("AI SDK Warning"))).toBe(
     true
   );
@@ -102,12 +167,17 @@ test("the tools fixture's stray plain-text notice is filtered, not fatal", async
   expect(result?.text.toLowerCase()).toContain("petrichor");
 });
 
-test("the edit fixture surfaces a file-writing tool", async () => {
+test("the edit fixture surfaces a file-writing tool as edit", async () => {
   const { events } = await collect("edit.jsonl");
-  const names = events
-    .filter((e) => e.type === "tool-call")
-    .map((e) => (e.type === "tool-call" ? e.name : ""));
-  expect(names.length).toBeGreaterThan(0);
+  const calls = events.filter((e) => e.type === "tool-call");
+  expect(
+    calls.some(
+      (e) =>
+        e.type === "tool-call" &&
+        e.name === "edit" &&
+        e.nativeName === "apply_patch"
+    )
+  ).toBe(true);
 });
 
 test("strict mode tolerates every recorded real shape", async () => {
@@ -193,5 +263,144 @@ test("nonzero exit after valid output fails loud instead of returning it", async
   });
   await expect(collectSource(src)).rejects.toMatchObject({
     code: "Invocation",
+  });
+});
+
+const HOME_PROVIDERS = "/home/fake/.cline/data/settings/providers.json";
+
+const providersBody = (...names: string[]): string =>
+  JSON.stringify({
+    providers: Object.fromEntries(names.map((n) => [n, { settings: {} }])),
+    version: 1,
+  });
+
+const authWith = (
+  overrides: Partial<SystemProbe>
+): ReturnType<ReturnType<typeof create>["authStatus"]> =>
+  create(cline(), { probe: fakeSystemProbe(overrides) }).authStatus();
+
+test("authStatus falls back to the providers file under the home directory", async () => {
+  const status = await authWith({
+    readFile: (p) =>
+      Promise.resolve(
+        p === HOME_PROVIDERS ? providersBody("openrouter") : undefined
+      ),
+  });
+  expect(status.state).toBe("authenticated");
+  expect(status.providers).toEqual(["openrouter"]);
+});
+
+test("authStatus honors CLINE_PROVIDER_SETTINGS_PATH as the exact file", async () => {
+  const status = await authWith({
+    env: { CLINE_PROVIDER_SETTINGS_PATH: "/elsewhere/prov.json" },
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/elsewhere/prov.json" ? providersBody("anthropic") : undefined
+      ),
+  });
+  expect(status.state).toBe("authenticated");
+  expect(status.providers).toEqual(["anthropic"]);
+});
+
+test("authStatus resolves CLINE_DATA_DIR without the data/ level", async () => {
+  const status = await authWith({
+    env: { CLINE_DATA_DIR: "/data-dir" },
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/data-dir/settings/providers.json"
+          ? providersBody("openai")
+          : undefined
+      ),
+  });
+  expect(status.state).toBe("authenticated");
+  expect(status.providers).toEqual(["openai"]);
+});
+
+test("authStatus resolves CLINE_DIR with the data/ level", async () => {
+  const status = await authWith({
+    env: { CLINE_DIR: "/cline-dir" },
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/cline-dir/data/settings/providers.json"
+          ? providersBody("gemini")
+          : undefined
+      ),
+  });
+  expect(status.state).toBe("authenticated");
+  expect(status.providers).toEqual(["gemini"]);
+});
+
+test("authStatus prefers the exact-file env var when every candidate exists", async () => {
+  const byPath: Record<string, string> = {
+    "/cline-dir/data/settings/providers.json": providersBody("gemini"),
+    "/data-dir/settings/providers.json": providersBody("openai"),
+    "/exact/prov.json": providersBody("anthropic"),
+    [HOME_PROVIDERS]: providersBody("openrouter"),
+  };
+  const status = await authWith({
+    env: {
+      CLINE_DATA_DIR: "/data-dir",
+      CLINE_DIR: "/cline-dir",
+      CLINE_PROVIDER_SETTINGS_PATH: "/exact/prov.json",
+    },
+    readFile: (p) => Promise.resolve(byPath[p]),
+  });
+  expect(status.providers).toEqual(["anthropic"]);
+});
+
+test("authStatus consults every candidate in precedence order and falls through to the last", async () => {
+  const asked: string[] = [];
+  const status = await authWith({
+    env: {
+      CLINE_DATA_DIR: "/data-dir",
+      CLINE_DIR: "/cline-dir",
+      CLINE_PROVIDER_SETTINGS_PATH: "/exact/prov.json",
+    },
+    readFile: (p) => {
+      asked.push(p);
+      return Promise.resolve(
+        p === HOME_PROVIDERS ? providersBody("cline") : undefined
+      );
+    },
+  });
+  expect(asked).toEqual([
+    "/exact/prov.json",
+    "/data-dir/settings/providers.json",
+    "/cline-dir/data/settings/providers.json",
+    HOME_PROVIDERS,
+  ]);
+  expect(status.state).toBe("authenticated");
+  expect(status.providers).toEqual(["cline"]);
+});
+
+test("authStatus is unauthenticated on a providers file with no providers", async () => {
+  const status = await authWith({
+    readFile: (p) =>
+      Promise.resolve(p === HOME_PROVIDERS ? providersBody() : undefined),
+  });
+  expect(status.state).toBe("unauthenticated");
+});
+
+test("authStatus is unauthenticated when no providers file exists", async () => {
+  const status = await authWith({});
+  expect(status.state).toBe("unauthenticated");
+});
+
+test("authStatus is unknown on unparseable JSON, carrying the problem", async () => {
+  const status = await authWith({
+    readFile: (p) =>
+      Promise.resolve(p === HOME_PROVIDERS ? "{not json" : undefined),
+  });
+  expect(status.state).toBe("unknown");
+  expect(status.raw).toBeDefined();
+});
+
+test("conformance holds over the recorded fixtures", async () => {
+  await runConformance(cline(), {
+    fixtures: {
+      edit: fixture("edit.jsonl"),
+      simple: fixture("simple.jsonl"),
+      tools: fixture("tools.jsonl"),
+    },
   });
 });

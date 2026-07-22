@@ -1,22 +1,47 @@
 import { AgentImpl } from "./internal/agent.js";
 import { BUILTINS } from "./internal/builtins.js";
 import { runDetect } from "./internal/detect.js";
-import { realProbe } from "./internal/runtime/spawn.js";
+import {
+  realProbe,
+  realSystemProbe,
+  spawnAndStream,
+} from "./internal/runtime/spawn.js";
 import type {
   Adapter,
   Agent,
+  Capabilities,
   Detection,
   DetectResult,
+  SystemProbe,
   VersionProbe,
 } from "./types.js";
+
+/**
+ * Overrides for {@link create}. `probe` swaps the machine `authStatus()` and
+ * `models()` consult for a fake, letting tests simulate any credentials and
+ * files without touching the real system.
+ */
+export interface CreateOptions {
+  probe?: SystemProbe;
+}
 
 /**
  * Build a runnable {@link Agent}. Accepts either an adapter directly —
  * `create(claudeCode())` when you know which CLI you want — or one of
  * `detect()`'s results when you want whatever is installed.
+ *
+ * From an adapter factory the agent is typed to that adapter's literal
+ * capabilities, so an unsupported option fails to compile; from a
+ * `detect()` result they are dynamic and {@link Agent.supports} is the
+ * honest gate.
  */
-export const create = (source: Adapter | DetectResult): Agent =>
-  new AgentImpl("adapter" in source ? source.adapter : source);
+export const create = <C extends Capabilities = Capabilities>(
+  source: Adapter<C> | DetectResult,
+  opts: CreateOptions = {}
+): Agent<C> => {
+  const adapter = ("adapter" in source ? source.adapter : source) as Adapter<C>;
+  return new AgentImpl(adapter, spawnAndStream, opts.probe ?? realSystemProbe);
+};
 
 /**
  * Overrides for {@link detect}. `adapters` swaps the built-in list for your
@@ -32,7 +57,7 @@ export interface DetectOptions {
 /**
  * Find every supported coding agent installed on this machine. Each result
  * carries the resolved binary path, the reported version, and the adapter's
- * capability table; pass the one you pick to `create()`. The list follows
+ * capabilities; pass the one you pick to `create()`. The list follows
  * the adapter registry order, which carries no ranking — there is no "best"
  * agent — and is empty when nothing is installed.
  *

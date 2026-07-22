@@ -1,75 +1,39 @@
 import { expect, test } from "bun:test";
 
-import {
-  resolvePermission,
-  validateOptions,
-} from "../src/internal/capabilities.js";
-import type { Adapter, CapabilityTable } from "../src/types.js";
+import { validateOptions } from "../src/internal/capabilities.js";
+import type { Adapter, Capabilities } from "../src/types.js";
 
-const full: CapabilityTable = {
+const full: Capabilities = {
+  authStatus: "native",
   cwd: "native",
+  effort: "native",
   mcp: "native",
+  modelListing: "native",
   modelSelection: "native",
-  permissionLevels: ["read", "edit", "auto"],
+  readOnly: "native",
   sessionResume: "native",
   streaming: "native",
   structuredOutput: "native",
   systemPrompt: "native",
 };
 
-const adapterWith = (caps: CapabilityTable, id = "demo"): Adapter =>
+const adapterWith = (caps: Capabilities, id = "demo"): Adapter =>
   ({
     capabilities: caps,
     meta: { bin: [id], id, name: id },
   }) as Adapter;
 
 const fullAdapter = adapterWith(full);
-const limited = adapterWith(
-  {
-    ...full,
-    modelSelection: false,
-    permissionLevels: ["edit", "auto"],
-    sessionResume: false,
-  },
-  "opencode"
-);
-
-test("default permission is edit", () => {
-  expect(resolvePermission({})).toBe("edit");
-  expect(resolvePermission({ permission: "auto" })).toBe("auto");
-});
-
-test("validateOptions accepts a request the adapter fully supports", () => {
-  expect(() =>
-    validateOptions(fullAdapter, {
-      model: "x",
-      permission: "read",
-      resume: "s",
-    })
-  ).not.toThrow();
-});
-
-test("unsupported model selection throws UnsupportedCapability naming the adapter", () => {
-  expect(() => validateOptions(limited, { model: "x" })).toThrow(
-    expect.objectContaining({
-      code: "UnsupportedCapability",
-      message: expect.stringContaining("opencode"),
-    })
-  );
-});
-
-test("throws when requesting a permission level not offered", () => {
-  expect(() => validateOptions(limited, { permission: "read" })).toThrow(
-    expect.objectContaining({ code: "UnsupportedCapability" })
-  );
-});
 
 const bare = adapterWith(
   {
+    authStatus: false,
     cwd: false,
+    effort: false,
     mcp: false,
+    modelListing: false,
     modelSelection: false,
-    permissionLevels: ["edit"],
+    readOnly: false,
     sessionResume: false,
     streaming: "native",
     structuredOutput: false,
@@ -78,20 +42,72 @@ const bare = adapterWith(
   "bare"
 );
 
-const rejects = [
-  ["a system prompt", { systemPrompt: "s" }],
-  ["session resume", { resume: "s" }],
-  ["MCP config", { mcp: {} }],
-  ["a working directory", { cwd: "/tmp" }],
+test("accepts a request the adapter fully supports", () => {
+  expect(() =>
+    validateOptions(fullAdapter, {
+      cwd: "/tmp",
+      effort: "high",
+      mcp: {},
+      model: "x",
+      readOnly: true,
+      resume: "s",
+      schema: {},
+      systemPrompt: "s",
+    })
+  ).not.toThrow();
+});
+
+const gated = [
+  ["model", { model: "x" }],
+  ["systemPrompt", { systemPrompt: "s" }],
+  ["resume", { resume: "s" }],
+  ["mcp", { mcp: {} }],
+  ["cwd", { cwd: "/tmp" }],
+  ["schema", { schema: {} }],
+  ["effort", { effort: "high" }],
 ] as const;
 
-for (const [name, opts] of rejects) {
-  test(`throws UnsupportedCapability for ${name}`, () => {
+for (const [name, opts] of gated) {
+  test(`${name} on a false capability throws UnsupportedCapability`, () => {
     expect(() => validateOptions(bare, opts)).toThrow(
-      expect.objectContaining({
-        code: "UnsupportedCapability",
-        message: expect.stringContaining(name),
-      })
+      expect.objectContaining({ code: "UnsupportedCapability" })
     );
   });
 }
+
+test("an emulated capability admits its option like a native one", () => {
+  const emulated = adapterWith({ ...bare.capabilities, effort: "emulated" });
+  expect(() => validateOptions(emulated, { effort: "high" })).not.toThrow();
+});
+
+test("readOnly: true on a false capability throws UnsupportedCapability", () => {
+  expect(() => validateOptions(bare, { readOnly: true })).toThrow(
+    expect.objectContaining({ code: "UnsupportedCapability" })
+  );
+});
+
+test("readOnly: false or omitted never throws, even without the capability", () => {
+  expect(() => validateOptions(bare, { readOnly: false })).not.toThrow();
+  expect(() => validateOptions(bare, {})).not.toThrow();
+});
+
+const closed = adapterWith(
+  { ...full, reasoningEfforts: ["low", "high"] },
+  "closed"
+);
+
+test("effort outside a declared closed vocabulary throws UnsupportedCapability", () => {
+  expect(() => validateOptions(closed, { effort: "medium" })).toThrow(
+    expect.objectContaining({ code: "UnsupportedCapability" })
+  );
+});
+
+test("effort inside the closed vocabulary passes", () => {
+  expect(() => validateOptions(closed, { effort: "low" })).not.toThrow();
+});
+
+test("an open vocabulary passes any effort through to the CLI", () => {
+  expect(() =>
+    validateOptions(fullAdapter, { effort: "provider-specific-name" })
+  ).not.toThrow();
+});

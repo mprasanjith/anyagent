@@ -13,12 +13,12 @@ live(
   "live: codex answers a trivial prompt",
   async () => {
     const agent = create(codex());
-    const res = await agent.run(PROMPT, { permission: "read" });
+    const res = await agent.run(PROMPT, { readOnly: true });
     expect(res.text.toLowerCase()).toContain("pong");
     // Real-output check: the parser extracted usage from turn.completed.
     expect(typeof res.usage?.outputTokens).toBe("number");
     // The thread id must be reachable for resume.
-    expect(typeof (res.raw as { threadId?: string }).threadId).toBe("string");
+    expect(typeof res.sessionId).toBe("string");
   },
   120_000
 );
@@ -31,7 +31,7 @@ live(
   "live: real output parses clean under strict mode",
   async () => {
     const adapter = codex();
-    const inv = adapter.buildInvocation(PROMPT, { permission: "read" });
+    const inv = adapter.buildInvocation(PROMPT, { readOnly: true });
     const source = spawnAndStream(inv);
     let sawText = false;
     let finalText: string | undefined;
@@ -48,4 +48,22 @@ live(
     expect(typeof finalText).toBe("string");
   },
   120_000
+);
+
+// Discovery is free: no model call is ever made for auth or listing.
+live(
+  "live: authStatus and models answer without a paid run",
+  async () => {
+    const agent = create(codex());
+    const status = await agent.authStatus();
+    expect(["authenticated", "unauthenticated", "unknown"]).toContain(
+      status.state
+    );
+    const models = await agent.models();
+    expect(models.length).toBeGreaterThan(0);
+    for (const m of models) {
+      expect(typeof m.id).toBe("string");
+    }
+  },
+  30_000
 );

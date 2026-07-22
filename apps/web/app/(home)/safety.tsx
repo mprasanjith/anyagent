@@ -6,19 +6,14 @@ import { cn } from "@/lib/cn";
 
 const PRESETS = [
   {
-    desc: "Inspect the codebase. Nothing on disk changes.",
-    id: "read",
-    label: "READ",
+    desc: "Full autonomy on the user's CLI: read, edit, run commands.",
+    id: "default",
+    label: "DEFAULT",
   },
   {
-    desc: "Change files inside the workspace.",
-    id: "edit",
-    label: "EDIT · DEFAULT",
-  },
-  {
-    desc: "Edit and run commands without approval.",
-    id: "auto",
-    label: "AUTO",
+    desc: "Nothing on the machine changes. Agents that can't guarantee it refuse the run.",
+    id: "read-only",
+    label: "READ-ONLY",
   },
 ];
 
@@ -50,8 +45,8 @@ const PresetButton = ({
 };
 
 export const SafetyPresets = () => {
-  const [active, setActive] = useState("edit");
-  const preset = PRESETS.find((p) => p.id === active) ?? PRESETS[1];
+  const [active, setActive] = useState("default");
+  const preset = PRESETS.find((p) => p.id === active) ?? PRESETS[0];
 
   return (
     <div className="mt-10">
