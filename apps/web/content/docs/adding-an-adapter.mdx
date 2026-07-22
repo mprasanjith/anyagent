@@ -19,7 +19,7 @@ Per-CLI facts collected during audits live in the harness audit at `docs/specs/h
 
 ## Implement the contract
 
-Implement the [`Adapter`](/docs/adapter-contract#adapter) interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. The interface has five required members plus three optional ones:
+Implement the [`Adapter`](/docs/adapter-contract#adapter) interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. The interface has five required members plus five optional ones:
 
 ```ts
 export interface Adapter<C extends Capabilities = Capabilities> {
@@ -29,6 +29,8 @@ export interface Adapter<C extends Capabilities = Capabilities> {
   detect?: (probe: VersionProbe) => Promise<Detection>;
   authStatus?: (probe: SystemProbe) => Promise<AuthStatus>;
   listModels?: (probe: SystemProbe) => Promise<ModelInfo[]>;
+  acp?: { command: string[] }; // ACP endpoint to launch; backs session: "native"
+  sessionSeed?: () => SessionSeed; // resume handle up front for CLIs that reveal none headless
   buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
   parse: (
     source: OutputSource,
@@ -37,7 +39,7 @@ export interface Adapter<C extends Capabilities = Capabilities> {
 }
 ```
 
-`meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run; declare it `as const satisfies Capabilities` so the literal types reach your consumers and an unsupported option fails to compile. `detect` replaces default detection entirely; omit it unless the CLI needs one. `authStatus` and `listModels` answer the discovery questions from the [`SystemProbe`](/docs/api#systemprobe), reading files and env or running a credential-status subcommand, never anything that costs a model call; each is required exactly when the matching capability is declared. `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
+`meta` names the adapter and lists the binaries to look for on `PATH`. `detection` tunes the version probe and can be an empty object to accept the defaults. `capabilities` declares which run options the CLI honors, which the core validates before every run; declare it `as const satisfies Capabilities` so the literal types reach your consumers and an unsupported option fails to compile. `detect` replaces default detection entirely; omit it unless the CLI needs one. `authStatus` and `listModels` answer the discovery questions from the [`SystemProbe`](/docs/api#systemprobe), reading files and env or running a credential-status subcommand, never anything that costs a model call; each is required exactly when the matching capability is declared. `acp` declares an ACP endpoint to launch and is what backs a native-tier session; `sessionSeed` supplies a resume handle up front for a CLI that reveals none headless (goose). `buildInvocation` maps a prompt and options to a command; `parse` maps the process output to normalized events.
 
 Read `packages/anyagent/src/claude-code.ts` alongside this page. It is the reference implementation, and a new adapter should mirror its shape.
 
@@ -53,7 +55,7 @@ Pipe the prompt through `Invocation.input` rather than a positional argument. `i
 
 ## Use ndjsonParser for NDJSON CLIs
 
-When the CLI streams newline-delimited JSON, one JSON object per line, build `parse` from `ndjsonParser`, as eight of the ten built-in adapters do. The parser owns everything those adapters share: decoding each line, buffering events into the result, throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
+When the CLI streams newline-delimited JSON, one JSON object per line, build `parse` from `ndjsonParser`, as all ten built-in adapters do. The parser owns everything those adapters share: decoding each line, buffering events into the result, throwing the descriptive `Invocation` error on a nonzero exit, and emitting the terminal `done`. You supply three hooks:
 
 ```ts
 import { AnyAgentError } from "./errors.js";

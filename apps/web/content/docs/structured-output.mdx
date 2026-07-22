@@ -93,9 +93,9 @@ try {
 }
 ```
 
-## Streaming does not parse
+## Streaming a schema run
 
-`runStream()` accepts a `schema` and uses it to shape the prompt, but it yields raw `text-delta` events and never sets `json`. Parsing and the retry happen only in `run()`, which needs the whole reply in hand. Call `run()` when you want a parsed value, and reserve `runStream()` for showing progress. See [Stream progress](/docs/streaming).
+Iterating a schema run yields raw events as they arrive — including both attempts’ events when the automatic retry fires — and the terminal `done` carries the same parsed result awaiting resolves with. Parsing needs the whole reply, so `json` exists only on the final result, never mid-stream. See [Stream progress](/docs/streaming).
 
 ## Guard structured output on unknown agents
 

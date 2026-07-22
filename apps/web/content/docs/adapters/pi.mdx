@@ -7,7 +7,7 @@ The `pi` adapter drives the Pi CLI as `pi --mode json -p`, detected as the `pi` 
 
 ## What you can ask for
 
-`readOnly`, `model` (as `"provider/model"`), `effort` (closed vocabulary: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt`, and `resume` all work on the CLI’s own flags. `schema` works too, provided by AnyAgent. Pi extends through its own extension system rather than MCP, so `mcp` is unsupported and requesting it throws. The full grid is on the [support matrix](/docs/adapters).
+`readOnly`, `model` (as `"provider/model"`), `effort` (closed vocabulary: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt`, `resume`, `forkSession`, and `attachments` all work on the CLI’s own flags. `schema` works too, provided by AnyAgent. Pi extends through its own extension system rather than MCP, so `mcp` is unsupported and requesting it throws. The full grid is on the [support matrix](/docs/adapters).
 
 `models()` (`pi --list-models`) is credential-filtered: it names this machine’s usable models, not a catalog, and every id is valid verbatim as `model`. `authStatus()` reads `~/.pi/agent/auth.json` plus the provider key env vars: a hint rather than a guarantee.
 
@@ -29,5 +29,7 @@ Every run executes `pi --mode json -p` with the prompt piped over stdin. [Run op
 | `effort`         | `--thinking <level>`; `"none"` is sent as Pi’s `off` |
 | `systemPrompt`   | `--append-system-prompt <text>`                      |
 | `resume`         | `--session-id <id>`                                  |
+| `forkSession: true` | `--fork <id>` in place of `--session-id`, branching the resumed session into a new one |
+| `attachments`    | one `@<path>` positional per file, prompt still on stdin |
 
 Pi exits 0 even when a turn fails, so the adapter reads errors from the stream: `stopReason: "error"` or a top-level `error` event throws `Invocation` with Pi’s own message.

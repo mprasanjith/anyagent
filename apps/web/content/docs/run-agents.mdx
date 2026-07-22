@@ -119,7 +119,7 @@ const result = await agent.run(prompt);
 console.log(result.text);
 ```
 
-`result.text` is the agent’s final answer; `events`, `usage`, `sessionId`, and `raw` carry the full event list, the token accounting, the resume handle, and the CLI’s untouched final payload. Holding a `RunResult` means the run succeeded, because every failure [throws instead](/docs/errors). For runs longer than a few seconds, show progress with [`runStream`](/docs/streaming) rather than waiting silently.
+`result.text` is the agent’s final answer; `events`, `usage`, `sessionId`, and `raw` carry the full event list, the token accounting, the resume handle, and the CLI’s untouched final payload. Holding a `RunResult` means the run succeeded, because every failure [throws instead](/docs/errors). For runs longer than a few seconds, show progress by [iterating the run](/docs/streaming) rather than waiting silently.
 
 ## Keep a run read-only
 
@@ -175,6 +175,7 @@ await agent.run("Add input validation to the signup form.", {
 - **`model`**: a model name in the CLI’s own vocabulary, listed on each [adapter page](/docs/adapters) and by [`agent.models()`](#check-credentials-before-you-run) where the CLI can list them
 - **`effort`**: how hard the model should think, from `"none"` to `"max"` and beyond; where a CLI’s vocabulary is closed, `capabilities.reasoningEfforts` lists the accepted values and anything else throws before the run starts
 - **`systemPrompt`**: extra system-level instructions; on a CLI without a system-prompt flag AnyAgent folds them into the prompt as a preamble, where adherence is weaker
+- **`attachments`**: file paths to attach to the prompt, passed on the CLI’s own attachment flag; gated, so guard it with `agent.supports("attachments")` where the agent is not known in advance
 - **`env`**: extra environment variables, merged over the parent process’s environment
 
 Every option is checked against the agent’s capabilities before any process spawns. When the agent is not known in advance, guard an option on `agent.capabilities`, and remember that model names are each CLI’s own vocabulary:
@@ -186,11 +187,11 @@ const opts =
 await agent.run("Review the error handling in src/api/.", opts);
 ```
 
-For `readOnly`, `effort`, `mcp`, and `resume`, guard with `agent.supports()` as shown in [Keep a run read-only](#keep-a-run-read-only): it answers the same question and narrows the agent’s type so the options compile.
+For `readOnly`, `effort`, `mcp`, `resume`, and `attachments`, guard with `agent.supports()` as shown in [Keep a run read-only](#keep-a-run-read-only): it answers the same question and narrows the agent’s type so the options compile.
 
 ## Resume a session
 
-To continue a prior conversation, pass its session id as `resume`. The id is on the previous run’s `sessionId`, and streams surface it early as a [`session` event](/docs/api#agentevent) so you can persist it before the run ends:
+For a conversation spanning several runs, open a session: `agent.session()` threads the continuation for you, and [Run a conversation](/docs/sessions) covers it. The `resume` option underneath is there when you hold a session id from elsewhere: pass it and the run continues that conversation. The id is on a previous run’s `sessionId`, and streams surface it early as a [`session` event](/docs/api#agentevent):
 
 ```ts
 import { create } from "anyagent";

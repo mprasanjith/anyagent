@@ -80,6 +80,15 @@ const ndjsonParser: <Ctx>(spec: NdjsonSpec<Ctx>) => Adapter["parse"];
   name="NdjsonSpec"
 />
 
+## SessionSeed
+
+What the optional `Adapter.sessionSeed` returns, for CLIs that never reveal a session id headless: the handle a session’s later turns resume under, and the options that register it on the first turn (goose: `extraArgs: ["--name", id]`). Adapters whose CLIs reveal an id in their output omit the hook.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="SessionSeed"
+/>
+
 ## AnyAgentError.wrap
 
 The static `AnyAgentError.wrap(err, code?)` normalizes an unknown thrown value into an [`AnyAgentError`](/docs/api#anyagenterror). It returns the value unchanged if it is already an `AnyAgentError`, otherwise it builds a new one carrying the original as `raw`. The `code` argument defaults to `"Invocation"`. You need it when writing an adapter, not when handling errors.

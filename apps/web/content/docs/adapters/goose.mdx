@@ -13,7 +13,7 @@ No read-only run exists because goose has nothing to build one on: its chat mode
 
 ## Good to know
 
-- The headless stream never reveals a session id, so `result.sessionId` stays absent. Resume by name instead: name the first run via `extraArgs: ["--name", "review-1"]`, then pass `resume` with that name.
+- The headless stream never reveals a session id, so `result.sessionId` stays absent and goose sessions are named instead. `agent.session()` generates and threads the name for you; by hand, name the first run via `extraArgs: ["--name", "review-1"]`, then pass `resume` with that name.
 - `model` splits at the first slash only, so an openrouter path like `"openrouter/openai/gpt-5.2"` works verbatim; a bare name leaves the provider to goose’s config.
 - Thinking blocks map to `reasoning-delta`; namespaced tools normalize (`developer__shell` surfaces as `bash`, the text editor’s commands as `write` or `edit` by what they do).
 - Usage reports `inputTokens` and `outputTokens` only.
@@ -28,3 +28,5 @@ Every run executes `goose run --output-format stream-json --quiet -i -`, with `G
 | `model`        | `--provider <provider> --model <model>` from `"provider/model"`; a bare name maps to `--model <name>` alone |
 | `systemPrompt` | `--system <text>`                                                                                            |
 | `resume`       | `--name <name> --resume`                                                                                     |
+
+goose ships an ACP endpoint, `goose acp`; see the [sessions guide](/docs/sessions).
