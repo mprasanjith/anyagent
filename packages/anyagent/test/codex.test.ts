@@ -84,6 +84,38 @@ test("resume with readOnly overrides the sandbox to read-only", () => {
   expect(argAfter(inv.args, "-c")).toBe('sandbox_mode="read-only"');
 });
 
+test("a single attachment rides -i before the stdin positional", () => {
+  const inv = codex().buildInvocation("hi", { attachments: ["/img/a.png"] });
+  expect(argAfter(inv.args, "-i")).toBe("/img/a.png");
+  // Flags stay ahead of the `-` positional so stdin still feeds the prompt.
+  expect(inv.args.at(-1)).toBe("-");
+  expect(inv.args.indexOf("-i")).toBeLessThan(inv.args.indexOf("-"));
+  expect(inv.input).toBe("hi");
+});
+
+test("multiple attachments ride one -i as consecutive values", () => {
+  const inv = codex().buildInvocation("hi", {
+    attachments: ["/img/a.png", "/img/b.jpg", "/img/c.gif"],
+  });
+  const iIndex = inv.args.indexOf("-i");
+  expect(inv.args.slice(iIndex, iIndex + 4)).toEqual([
+    "-i",
+    "/img/a.png",
+    "/img/b.jpg",
+    "/img/c.gif",
+  ]);
+  // Every image precedes the trailing `-` stdin positional.
+  expect(inv.args.at(-1)).toBe("-");
+  expect(iIndex + 3).toBeLessThan(inv.args.length - 1);
+});
+
+test("omitting attachments emits no -i flag", () => {
+  const inv = codex().buildInvocation("hi", {});
+  expect(inv.args).not.toContain("-i");
+  const empty = codex().buildInvocation("hi", { attachments: [] });
+  expect(empty.args).not.toContain("-i");
+});
+
 test("buildInvocation emits the model flag and passes cwd/env", () => {
   const inv = codex().buildInvocation("hi", {
     cwd: "/work",

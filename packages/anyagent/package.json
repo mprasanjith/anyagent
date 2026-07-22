@@ -76,6 +76,10 @@
       "import": "./dist/gemini-cli.js"
     }
   },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.3.0",
+    "zod": "4.4.3"
+  },
   "scripts": {
     "test": "bun test",
     "test:live": "ANYAGENT_LIVE=1 bun test --path-ignore-patterns '' live.test",

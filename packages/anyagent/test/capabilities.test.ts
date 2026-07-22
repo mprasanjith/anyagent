@@ -4,6 +4,7 @@ import { validateOptions } from "../src/internal/capabilities.js";
 import type { Adapter, Capabilities } from "../src/types.js";
 
 const full: Capabilities = {
+  attachments: false,
   authStatus: "native",
   cwd: "native",
   effort: "native",
@@ -11,7 +12,8 @@ const full: Capabilities = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  sessionResume: "native",
+  session: "emulated",
+  sessionFork: false,
   streaming: "native",
   structuredOutput: "native",
   systemPrompt: "native",
@@ -27,6 +29,7 @@ const fullAdapter = adapterWith(full);
 
 const bare = adapterWith(
   {
+    attachments: false,
     authStatus: false,
     cwd: false,
     effort: false,
@@ -34,7 +37,8 @@ const bare = adapterWith(
     modelListing: false,
     modelSelection: false,
     readOnly: false,
-    sessionResume: false,
+    session: false,
+    sessionFork: false,
     streaming: "native",
     structuredOutput: false,
     systemPrompt: false,

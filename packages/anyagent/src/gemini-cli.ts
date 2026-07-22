@@ -15,6 +15,7 @@ import type {
 const CAPS = {
   // Credentials live in ~/.gemini files, provider env vars, or the OS
   // keychain, so the answer is a best-effort probe, not the CLI's own word.
+  attachments: false,
   authStatus: "probed",
   cwd: "native",
   effort: false,
@@ -28,7 +29,14 @@ const CAPS = {
   // NOT used: headless, `exit_plan_mode` self-approves and the agent then
   // writes freely (verified live on 0.46).
   readOnly: "native",
-  sessionResume: "native",
+  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // test/fixtures/acp/gemini-cli.jsonl — initialize on protocolVersion 1, a
+  // session id, an agent_message_chunk streaming "pong", stopReason end_turn.
+  // Surprise vs the ledger: this build of gemini advertises `loadSession: true`,
+  // so the mixed-tier fallback (which triggers when it is absent) never fires —
+  // resume attempts real ACP session/load, still broken upstream (#15502).
+  session: "native",
+  sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
   // No append-system-prompt flag; GEMINI_SYSTEM_MD replaces the built-in
@@ -236,6 +244,7 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * ```
  */
 export const geminiCli = (): Adapter<typeof CAPS> => ({
+  acp: { command: ["gemini", "--acp"] },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

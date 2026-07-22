@@ -10,6 +10,7 @@ import type {
 } from "../src/types.js";
 
 const caps: Capabilities = {
+  attachments: false,
   authStatus: false,
   cwd: "native",
   effort: false,
@@ -17,7 +18,8 @@ const caps: Capabilities = {
   modelListing: false,
   modelSelection: "native",
   readOnly: false,
-  sessionResume: false,
+  session: false,
+  sessionFork: false,
   streaming: "native",
   structuredOutput: false,
   systemPrompt: false,

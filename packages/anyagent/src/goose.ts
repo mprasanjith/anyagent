@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
@@ -12,6 +13,7 @@ import type {
 } from "./types.js";
 
 const CAPS = {
+  attachments: false,
   authStatus: "probed",
   cwd: "native",
   // Reasoning effort on goose is env-only per-provider config, unstable
@@ -26,7 +28,11 @@ const CAPS = {
   // files) and the approve modes hang headless — no honest read-only run
   // exists.
   readOnly: false,
-  sessionResume: "native",
+  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // test/fixtures/acp/goose.jsonl — initialize on protocolVersion 1, a session
+  // id, an agent_message_chunk streaming "pong", and stopReason end_turn.
+  session: "native",
+  sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
   systemPrompt: "native",
@@ -284,18 +290,27 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * const result = await create(goose()).run("summarize this repo");
  * ```
  *
- * Sessions are resumed by name: name the first run yourself via
- * `extraArgs: ["--name", "my-session"]`, then pass that same name as
- * `resume` — goose never reveals a session id headless, so
- * `RunResult.sessionId` stays absent. Goose reports provider errors as
- * ordinary assistant text, so a failed turn returns that text as the reply
- * rather than throwing.
+ * Sessions are resumed by name, and goose never reveals a session id
+ * headless, so `RunResult.sessionId` stays absent. `agent.session()` handles
+ * this for you by generating a name up front; to do it by hand, name the
+ * first run via `extraArgs: ["--name", "my-session"]` and pass that same
+ * name as `resume`. Goose reports provider errors as ordinary assistant
+ * text, so a failed turn returns that text as the reply rather than
+ * throwing.
  */
 export const goose = (): Adapter<typeof CAPS> => ({
+  acp: { command: ["goose", "acp"] },
   authStatus,
   buildInvocation,
   capabilities: CAPS,
   detection: {},
   meta: { bin: ["goose"], id: "goose", name: "goose" },
   parse,
+  // Goose sessions are keyed by name and the headless stream never reveals
+  // one, so the session provides the handle: the first turn registers the
+  // name via --name (without --resume), and later turns resume it.
+  sessionSeed: () => {
+    const id = `anyagent-${randomUUID().slice(0, 8)}`;
+    return { firstRunOptions: { extraArgs: ["--name", id] }, id };
+  },
 });

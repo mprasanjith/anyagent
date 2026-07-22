@@ -44,7 +44,7 @@ test("run() returns final result with concatenated text (streaming adapter)", as
   expect(res.events.some((e) => e.type === "done")).toBe(false);
 });
 
-test("runStream() yields events then a terminal done", async () => {
+test("iterating a run yields events then a terminal done", async () => {
   const agent = new AgentImpl(
     fakeStreaming,
     runnerFromFixture(
@@ -52,10 +52,25 @@ test("runStream() yields events then a terminal done", async () => {
     )
   );
   const types: string[] = [];
-  for await (const ev of agent.runStream("go")) {
+  for await (const ev of agent.run("go")) {
     types.push(ev.type);
   }
   expect(types).toEqual(["text-delta", "tool-call", "done"]);
+});
+
+test("one run serves an iterator and an awaiter at once", async () => {
+  const agent = new AgentImpl(
+    fakeStreaming,
+    runnerFromFixture('{"t":"text","v":"Hi"}\n{"t":"end"}')
+  );
+  const run = agent.run("go");
+  const types: string[] = [];
+  for await (const ev of run) {
+    types.push(ev.type);
+  }
+  const res = await run;
+  expect(types).toEqual(["text-delta", "done"]);
+  expect(res.text).toBe("Hi");
 });
 
 test("non-streaming adapter synthesizes a single delta", async () => {
@@ -201,7 +216,7 @@ test("create() accepts a DetectResult and builds an agent for its adapter", () =
   expect(agent.capabilities).toBe(fakeStreaming.capabilities);
 });
 
-test("breaking out of runStream early terminates the underlying process", async () => {
+test("breaking out of iteration stops watching while the run completes", async () => {
   let closed = false;
   const runner = (): OutputSource => ({
     close: () => {
@@ -217,11 +232,16 @@ test("breaking out of runStream early terminates the underlying process", async 
     text: () => Promise.resolve(""),
   });
   const agent = new AgentImpl(fakeStreaming, runner);
-  for await (const ev of agent.runStream("go")) {
+  const run = agent.run("go");
+  for await (const ev of run) {
     if (ev.type === "text-delta") {
       break;
     }
   }
+  // Breaking stops watching, never the agent: the run completes normally,
+  // and the source is closed by that completion.
+  const res = await run;
+  expect(res.text).toBe("Hi");
   expect(closed).toBe(true);
 });
 

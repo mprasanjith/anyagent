@@ -13,6 +13,7 @@ import type {
 } from "./types.js";
 
 const CAPS = {
+  attachments: "native",
   authStatus: "native",
   cwd: "native",
   // No reasoningEfforts list on purpose: Codex's effort vocabulary is open
@@ -25,7 +26,8 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  sessionResume: "native",
+  session: "emulated",
+  sessionFork: false,
   streaming: "native",
   // Deliberately emulated: `--output-schema` speaks a restricted JSON Schema
   // dialect (every field required, `format`/`pattern` ignored), so native
@@ -240,6 +242,12 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   if (opts.effort !== undefined) {
     // Verbatim pass-through; the CLI is the authority on per-model validity.
     args.push("-c", `model_reasoning_effort="${opts.effort}"`);
+  }
+  if (opts.attachments?.length) {
+    // `-i, --image <FILE>...` takes every path on one occurrence; clap does
+    // not swallow the trailing `-` stdin positional into the list (verified
+    // live on codex 0.144.6), so the images stay before it.
+    args.push("-i", ...opts.attachments);
   }
   // The `-` positional makes Codex read the prompt from stdin, so a large
   // prompt never hits the OS argv size limit.

@@ -26,9 +26,24 @@ import type { Adapter } from "./types.js";
  * MCP servers, and per-tool permissions live in opencode.json rather than
  * flags; reach them via config or `extraArgs`.
  */
-export const opencode = (): Adapter<OpencodeFamilyCapabilities> =>
-  opencodeFamilyAdapter({
+/**
+ * opencode's capabilities: the family's, with sessions live — the ACP
+ * transcript at `test/fixtures/acp/opencode.jsonl` backs the native tier.
+ * Kilo keeps the family's emulated tier until it records its own.
+ */
+export type OpencodeCapabilities = Omit<
+  OpencodeFamilyCapabilities,
+  "session"
+> & { readonly session: "native" };
+
+export const opencode = (): Adapter<OpencodeCapabilities> => {
+  const adapter = opencodeFamilyAdapter({
     dataDir: "opencode",
     meta: { bin: ["opencode"], id: "opencode", name: "opencode" },
     permissionEnv: "OPENCODE_PERMISSION",
   });
+  return {
+    ...adapter,
+    capabilities: { ...adapter.capabilities, session: "native" as const },
+  };
+};

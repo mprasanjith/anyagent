@@ -52,7 +52,7 @@ const checkStreamInvariants = async (
 ): Promise<void> => {
   const agent = new AgentImpl(adapter, fixedRunner(body));
   const events: AgentEvent[] = [];
-  for await (const ev of agent.runStream("conformance prompt")) {
+  for await (const ev of agent.run("conformance prompt")) {
     events.push(ev);
   }
 
@@ -97,7 +97,7 @@ const checkStreamInvariants = async (
 };
 
 const throwsUnsupported = async (
-  call: () => Promise<unknown>
+  call: () => PromiseLike<unknown>
 ): Promise<boolean> => {
   try {
     await call();
@@ -144,14 +144,20 @@ export const runConformance = async (
     );
   }
 
-  const gated: [CapabilitySupport, () => Promise<unknown>, string][] = [
+  const gated: [CapabilitySupport, () => PromiseLike<unknown>, string][] = [
     [caps.modelSelection, runWith({ model: "m" }), "model"],
-    [caps.sessionResume, runWith({ resume: "s" }), "resume"],
+    [caps.session, runWith({ resume: "s" }), "resume"],
     [caps.systemPrompt, runWith({ systemPrompt: "s" }), "systemPrompt"],
     [caps.mcp, runWith({ mcp: {} }), "mcp"],
     [caps.cwd, runWith({ cwd: "/tmp" }), "cwd"],
     [caps.structuredOutput, runWith({ schema: {} }), "schema"],
     [caps.effort, runWith({ effort: "high" }), "effort"],
+    [caps.attachments, runWith({ attachments: ["a.png"] }), "attachments"],
+    [
+      caps.sessionFork,
+      runWith({ forkSession: true, resume: "s" }),
+      "forkSession",
+    ],
   ];
   await Promise.all(
     gated.map(async ([supported, call, label]) => {

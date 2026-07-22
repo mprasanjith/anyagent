@@ -17,6 +17,7 @@ const CAPS = {
   // No status subcommand exists and the OAuth token is not stored in a
   // readable file under ~/.gemini, so auth is inferred from `agy models`
   // output — a heuristic, hence "probed".
+  attachments: false,
   authStatus: "probed",
   cwd: "native",
   effort: "native",
@@ -33,7 +34,8 @@ const CAPS = {
   // mode stays reachable via `extraArgs: ["--mode", "plan"]`.
   readOnly: false,
   reasoningEfforts: ["low", "medium", "high"],
-  sessionResume: "native",
+  session: "emulated",
+  sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
   // No append-system-prompt flag exists; the core folds the system prompt
