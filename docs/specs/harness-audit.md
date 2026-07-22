@@ -357,3 +357,44 @@ bun test packages/anyagent/test/*.live.test.ts
 
 A free Google AI Studio `GEMINI_API_KEY` works the same way for opencode,
 goose, pi, and cline (and for the future gemini-cli adapter).
+
+## M1 implementation findings (2026-07-22)
+
+Facts discovered while building API v2 M1 (all live on this machine unless
+noted; versions: claude 2.1.217, codex 0.144.6, opencode 1.18.3, pi 0.80.6,
+goose 1.43.0, cline 3.0.46 fixtures):
+
+- claude-code: with `--json-schema`, the model answers through a
+  `StructuredOutput` tool_use and emits zero text blocks; the `result` event
+  carries `structured_output` (object) and `result` (its exact
+  serialization). Recorded as `fixtures/claude-code/structured.jsonl`. The
+  current mutating built-ins for a deny list are `Bash,Edit,NotebookEdit,Write`
+  (comma-separated `--disallowedTools` value). 2.1.217 behaves identically to
+  2.1.216 on everything re-checked.
+- codex: `codex login status` prints its verdict to stderr ("Logged in using
+  ChatGPT"), exit 0. `codex debug models` returns one JSON object
+  (`{"models": [...]}`, ~244 KB — mostly embedded prompt text) with 7 models;
+  `supported_reasoning_levels` confirms the open per-model effort vocabulary
+  (sol/terra accept low…max plus ultra); `visibility: "hide"` marks models the
+  CLI's own picker hides (e.g. codex-auto-review). Fixtures prove
+  `input_tokens` folds cache reads in (9633 input / 7552 cached in one step)
+  and reasoning is folded into `output_tokens` — the adapter reports native
+  accounting with the folded shares split out as cacheReadTokens /
+  reasoningTokens.
+- opencode: `opencode models` prints one `provider/model` per line, nothing
+  else, and works unauthenticated (lists the 6 built-in zen models). Fixture
+  `part.callID` (`call_…`) is the tool call/result pairing key; `part.id` is
+  a fallback only.
+- pi: `pi --list-models` prints a whitespace-aligned table
+  (`provider model context max-out thinking images`), credential-filtered.
+  Per-turn usage reports `cacheRead`/`cacheWrite`/`reasoning` alongside
+  input/output/cost (fixture-confirmed nonzero cacheRead).
+- goose: `goose info -v` against an empty config still exits 0 — the
+  unconfigured signal is the *absence* of the `GOOSE_PROVIDER:`/`GOOSE_MODEL:`
+  lines, not the exit code. The 1.43 binary's content-block serde tags include
+  `thinking {thinking, signature}`, `redactedThinking`,
+  `toolConfirmationRequest`, `frontendToolRequest`, `systemNotification`,
+  `image`; only `thinking`/`redactedThinking` were observed headless.
+- cline: fixtures confirm `toolCallId` correlates call/result and
+  `run_result` carries cache read/write tokens; no reasoning-token field
+  exists in any recording.
