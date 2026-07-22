@@ -1,0 +1,29 @@
+---
+title: Cursor
+description: How the cursor adapter invokes the Cursor CLI, and what each run option maps to.
+---
+
+The `cursor` adapter drives the Cursor CLI in headless print mode, detected as the `agent` binary on `PATH` (the legacy `cursor-agent` name also resolves); import `cursor` from `anyagent/cursor`. Auth status and model listing are native; system prompts and structured output are emulated; `mcp` is undeclared — Cursor manages servers through `agent mcp` configuration. The full grid is on the [support matrix](/docs/adapters).
+
+## How options map to flags
+
+Every run executes `agent -p --output-format stream-json --trust --force`, the unattended default, with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
+
+| Option           | Flag                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `readOnly: true` | `--mode plan` in place of `--force`                                                        |
+| `model`          | `--model <id>`, bracket overrides pass through verbatim (`"claude-opus-4-8[context=1m]"`) |
+| `effort`         | compiled into the model’s bracket overrides — `model: "m", effort: "high"` → `--model m[effort=high]` |
+| `resume`         | `--resume <chatId>`                                                                        |
+
+## Quirks
+
+- `--trust` is always passed: a headless run otherwise stalls on the workspace-trust prompt, which nothing in `run()`/`runStream()` can answer.
+- `--force` is deliberate: print mode without it only *proposes* edits, which would silently break the unattended full-autonomy contract. `readOnly` swaps it for plan mode, which is enforced read-only — writes are refused, not just discouraged.
+- `effort` has no standalone flag; it rides in the model id’s brackets, so `effort` without `model` throws `InvalidOptions`. A caller-supplied bracket list gains effort as one more override: `"m[context=1m]"` plus `effort: "high"` becomes `m[context=1m,effort=high]`.
+- Effort and speed variants are also baked into many model ids (`gpt-5.3-codex-low`, `…-high-fast`), so `models()` ids alone cover most tuning.
+- `authStatus()` asks `agent status --format json`; `models()` parses `agent --list-models`, and every id is valid verbatim as `model`.
+- Tool calls arrive in a oneof-style envelope (`readToolCall`, `shellToolCall`, …); the shared names map onto it (`shellToolCall` → `bash`) and everything else keeps the envelope key as its name.
+- Thinking streams natively as `reasoning-delta`; one `text-delta` carries a whole assistant text block.
+- The init event’s session id lands on `result.sessionId`; pass it back as `resume`.
+- Usage is camelCase-native with cache reads and writes as separate line items on `cacheReadTokens` and `cacheWriteTokens`; no cost and no reasoning tokens are reported.

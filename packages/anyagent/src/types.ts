@@ -562,9 +562,12 @@ export interface DetectionSpec {
  * ```
  */
 export interface KnownAgents {
+  antigravity: true;
   "claude-code": true;
   cline: true;
   codex: true;
+  cursor: true;
+  "gemini-cli": true;
   goose: true;
   "kilo-code": true;
   opencode: true;

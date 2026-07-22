@@ -398,3 +398,44 @@ goose 1.43.0, cline 3.0.46 fixtures):
 - cline: fixtures confirm `toolCallId` correlates call/result and
   `run_result` carries cache read/write tokens; no reasoning-token field
   exists in any recording.
+
+## Adapter-build findings for gemini-cli, antigravity, and cursor (2026-07-22)
+
+Discovered while building the three new adapters (gemini 0.46, agy 1.1.5,
+cursor agent 2026.07.17); where these contradict the sections above, these
+win:
+
+- gemini-cli: **plan mode is NOT read-only headless** — the model calls
+  `exit_plan_mode`, which self-approves ("Plan approved"), and a subsequent
+  `write_file` succeeds (reproduced twice). The real no-writes mode is
+  `--approval-mode default`, where mutating tools are structurally
+  unregistered (`write_file`/`run_shell_command` → `tool_not_registered`);
+  the adapter maps `readOnly` there, live-verified with a no-file-appears
+  test. `--resume <uuid>` works with full session ids (the earlier audit only
+  verified `latest`/index). `gemini-2.5-flash-lite` is rejected for new
+  users; free-tier `gemini-3.5-flash` has a 20-requests/day quota. No
+  model-list command exists on 0.46.
+- antigravity: `-p` ignores piped stdin (the next flag would be consumed as
+  the prompt), so prompts must ride argv. `--mode plan` refuses user-path
+  writes but the model still wrote a real file into the always-allowed
+  `~/.gemini/antigravity-cli/scratch/` during a plan run — no read-only
+  guarantee exists, so the adapter declares `readOnly: false`. The audited
+  CANCELED-on-ask behavior no longer reproduces on 1.1.5: a permission ask
+  auto-denies (tool step `state: "ERROR"`) and the run ends SUCCESS, exit 0;
+  the adapter still gates on `result.status`, never the exit code.
+  `agy models` is plain text (11 cross-vendor ids, no JSON flag); ids are
+  verbatim-valid as `--model`. No status subcommand and no readable
+  credential file: the auth probe execs `agy models` and reads the sign-in
+  notice. `--conversation` resume recall verified.
+- cursor: `agent status --format json` EXISTS on 2026.07.17
+  (`{"isAuthenticated": …}`, exit 0, no model call) — the earlier "no status
+  subcommand" note is obsolete; authStatus is native. Effort has no
+  standalone flag: the only surface is the `model[effort=…]` bracket, so the
+  adapter compiles `effort` into the model string and `effort` without
+  `model` throws `InvalidOptions`. Free/Hobby accounts reject named models
+  ("Free plans can only use Auto") — fixtures were recorded with
+  `--model auto`; the stream taxonomy matches the Pro-verified one.
+  `tool_call` events wrap per-tool oneof envelopes
+  (`readToolCall`/`editToolCall`/`shellToolCall`, `call_id` correlates and
+  may contain a literal newline); result usage is camelCase and includes
+  cache read/write tokens.

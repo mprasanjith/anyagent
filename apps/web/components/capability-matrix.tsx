@@ -1,6 +1,9 @@
+import { antigravity } from "anyagent/antigravity";
 import { claudeCode } from "anyagent/claude-code";
 import { cline } from "anyagent/cline";
 import { codex } from "anyagent/codex";
+import { cursor } from "anyagent/cursor";
+import { geminiCli } from "anyagent/gemini-cli";
 import { goose } from "anyagent/goose";
 import { kiloCode } from "anyagent/kilo-code";
 import { opencode } from "anyagent/opencode";
@@ -21,6 +24,9 @@ const ADAPTERS: Adapter[] = [
   pi(),
   goose(),
   cline(),
+  geminiCli(),
+  antigravity(),
+  cursor(),
 ];
 
 const COLUMNS = [

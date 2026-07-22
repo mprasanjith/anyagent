@@ -34,13 +34,16 @@ const ALL = [
   "pi",
   "goose",
   "cline",
+  "gemini-cli",
+  "antigravity",
+  "cursor",
 ] as const;
 
 const byId = new Map(BUILTINS.map((a) => [a.meta.id, a]));
 const capsOf = (id: string): Capabilities | undefined =>
   byId.get(id)?.capabilities;
 
-test("the registry ships all seven builtin adapters", () => {
+test("the registry ships all ten builtin adapters", () => {
   expect([...byId.keys()].sort()).toEqual([...ALL].sort());
 });
 
@@ -64,16 +67,33 @@ test("authStatus is declared available on every builtin", () => {
 });
 
 test("readOnly is truthy exactly where a no-writes run is guaranteed", () => {
-  for (const id of ["claude-code", "codex", "opencode", "kilo-code", "pi"]) {
+  for (const id of [
+    "claude-code",
+    "codex",
+    "opencode",
+    "kilo-code",
+    "pi",
+    "gemini-cli",
+    "cursor",
+  ]) {
     expect(Boolean(capsOf(id)?.readOnly)).toBe(true);
   }
-  for (const id of ["goose", "cline"]) {
+  // goose/cline offer no native guarantee; antigravity's plan mode leaks
+  // writes into its always-allowed scratch dirs (live-verified).
+  for (const id of ["goose", "cline", "antigravity"]) {
     expect(capsOf(id)?.readOnly).toBe(false);
   }
 });
 
-test("modelListing is native exactly on codex, opencode, kilo-code, and pi", () => {
-  const native = new Set(["codex", "opencode", "kilo-code", "pi"]);
+test("modelListing is native exactly where a real list command exists", () => {
+  const native = new Set([
+    "codex",
+    "opencode",
+    "kilo-code",
+    "pi",
+    "antigravity",
+    "cursor",
+  ]);
   for (const id of ALL) {
     expect(capsOf(id)?.modelListing === "native").toBe(native.has(id));
   }

@@ -11,7 +11,7 @@ A `native` capability maps onto the CLI’s own flag; an `emulated` one is provi
 
 Two columns answer discovery questions rather than gating run options. Auth status and Models read `native` when the CLI answers itself, and `probed` when AnyAgent reads the CLI’s credential files and environment variables instead: a hint, not a guarantee. Pi’s model list is credential-filtered, so it names this machine’s usable models rather than a catalog.
 
-Structured output is native on Claude Code and emulated elsewhere; the contract is the same either way: a validated value on `result.json`, with one retry. Read-only reads `—` on goose and Cline because neither CLI can guarantee that nothing on the machine changes, so `readOnly: true` throws instead of pretending.
+Structured output is native on Claude Code and emulated elsewhere; the contract is the same either way: a validated value on `result.json`, with one retry. Read-only reads `—` on goose, Cline, and Antigravity because none of the three can guarantee that nothing on the machine changes (Antigravity's plan mode still writes into its own scratch directories), so `readOnly: true` throws instead of pretending.
 
 Everything else CLI-specific lives on the adapter’s page: the native flag behind each run option, plus a quirks list covering session-id behavior, accounting oddities, and error semantics. The pages share one shape, so a fact about one agent sits in the same place on every other. An adapter ships only against recorded real CLI output, never a guessed schema.
 

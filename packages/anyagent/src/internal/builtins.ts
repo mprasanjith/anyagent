@@ -1,6 +1,9 @@
+import { antigravity } from "../antigravity.js";
 import { claudeCode } from "../claude-code.js";
 import { cline } from "../cline.js";
 import { codex } from "../codex.js";
+import { cursor } from "../cursor.js";
+import { geminiCli } from "../gemini-cli.js";
 import { goose } from "../goose.js";
 import { kiloCode } from "../kilo-code.js";
 import { opencode } from "../opencode.js";
@@ -16,4 +19,7 @@ export const BUILTINS: Adapter[] = [
   pi(),
   goose(),
   cline(),
+  geminiCli(),
+  antigravity(),
+  cursor(),
 ];
