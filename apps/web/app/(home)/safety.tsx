@@ -6,12 +6,12 @@ import { cn } from "@/lib/cn";
 
 const PRESETS = [
   {
-    desc: "Unattended, at the CLI's full autonomy: edit files and run commands.",
+    desc: "Full autonomy on the user's CLI: read, edit, run commands.",
     id: "default",
     label: "DEFAULT",
   },
   {
-    desc: "readOnly: true confines the run to reading. Nothing on the machine changes, or the agent throws instead of pretending.",
+    desc: "Nothing on the machine changes. Agents that can't guarantee it refuse the run.",
     id: "read-only",
     label: "READ-ONLY",
   },

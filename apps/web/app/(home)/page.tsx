@@ -45,8 +45,9 @@ const HARNESSES: {
   { logo: "pi", name: "Pi", status: "shipped" },
   { logo: "goose", name: "Goose", status: "shipped" },
   { logo: "cline", name: "Cline", status: "shipped" },
-  { logo: "gemini", name: "Gemini CLI", status: "soon" },
-  { logo: "cursor", name: "Cursor", status: "soon" },
+  { logo: "gemini", name: "Gemini CLI", slug: "gemini-cli", status: "shipped" },
+  { logo: "antigravity", name: "Antigravity", status: "shipped" },
+  { logo: "cursor", name: "Cursor", status: "shipped" },
   { logo: "copilot", name: "GitHub Copilot", status: "soon" },
   { logo: "droid", name: "Factory droid", status: "soon" },
   { logo: "kiro-cli", name: "Kiro", status: "soon" },
@@ -248,10 +249,11 @@ const Page = () => (
     <Section>
       <SectionTitle>Unattended by design</SectionTitle>
       <Body>
-        Headless runs cannot answer approval prompts, so every run is
-        unattended, and <code>readOnly: true</code> guarantees an analysis run
-        changes nothing. AnyAgent itself adds zero runtime dependencies to your
-        tool.
+        Every run is unattended: the agent works at the full autonomy the user’s
+        CLI allows, which is what lets a setup wizard finish without a human in
+        the loop. When your tool only needs to look, <code>readOnly: true</code>{" "}
+        confines the run to reading. An agent that cannot enforce that refuses
+        the run instead of downgrading it silently.
       </Body>
       <SafetyPresets />
       <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
@@ -267,8 +269,8 @@ const Page = () => (
     <Section>
       <SectionTitle>Whichever agent they have</SectionTitle>
       <Body>
-        Fourteen harnesses audited: seven adapters shipped, seven on the way.
-        For anything else, an adapter is one file.
+        Fifteen harnesses audited: ten adapters shipped, five on the way. For
+        anything else, an adapter is one file.
       </Body>
       <ul className="m-0 mt-10 grid list-none grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-px border border-hm-rule bg-hm-rule p-0">
         {HARNESSES.map((h) => {
