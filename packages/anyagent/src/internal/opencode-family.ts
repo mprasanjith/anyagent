@@ -20,8 +20,9 @@ import type {
 // and the permission env var differ, so each adapter passes its own spec.
 
 const CAPS = {
-  // Probed, not native: `auth list` exits 0 even with zero credentials, so
-  // the credential store and provider env vars are the only honest signals.
+  // `-f, --file  file(s) to attach to message` — an array flag, so each path
+  // repeats it (verified against `opencode run --help`, 1.18.3).
+  attachments: "native",
   authStatus: "probed",
   cwd: "native",
   // `--variant` takes provider-defined names — an open vocabulary, so no
@@ -32,7 +33,11 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  sessionResume: "native",
+  session: "emulated",
+  // `--fork  fork the session before continuing (requires --continue or
+  // --session)` — the core only sends `forkSession` alongside `resume`, which
+  // maps to `--session`, so the prerequisite always holds.
+  sessionFork: "native",
   streaming: "native",
   structuredOutput: "emulated",
   // No per-run append-system-prompt flag (system prompts are config-file /
@@ -230,8 +235,17 @@ const makeBuildInvocation =
     if (opts.resume) {
       args.push("--session", opts.resume);
     }
+    // `--fork` requires --continue or --session; the core only sends
+    // `forkSession` with `resume`, so `--session` above is always present.
+    if (opts.forkSession) {
+      args.push("--fork");
+    }
     if (opts.effort) {
       args.push("--variant", opts.effort);
+    }
+    // `-f, --file` is an array flag: repeat it once per attachment path.
+    for (const file of opts.attachments ?? []) {
+      args.push("-f", file);
     }
     // Single-writer rule (api-v2 §8.1): the permission env var is
     // adapter-owned. Caller env merges first and the adapter's key lands
@@ -325,6 +339,10 @@ export const opencodeFamilyAdapter = (
 ): Adapter<OpencodeFamilyCapabilities> => {
   const command = spec.meta.bin[0] ?? spec.meta.id;
   return {
+    // Both siblings ship an `acp` subcommand (`opencode acp` verified locally,
+    // kilo's documented at the kilo CLI reference); declaring it readies the
+    // shared ACP client without changing today's behavior.
+    acp: { command: [command, "acp"] },
     authStatus: makeAuthStatus(spec.dataDir),
     buildInvocation: makeBuildInvocation(command, spec.permissionEnv),
     capabilities: CAPS,

@@ -7,7 +7,7 @@ The `codex` adapter drives the Codex CLI through its non-interactive `codex exec
 
 ## What you can ask for
 
-`readOnly`, `model`, `effort`, and `resume` map to the CLI’s own flags. `systemPrompt` and `schema` work too, provided by AnyAgent. `codex exec` has no append-system-prompt flag, and its native `--output-schema` accepts a restricted schema dialect (every field required, `format` and `pattern` ignored), so whether a native run worked would depend on your schema. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/escape-hatches). The full grid is on the [support matrix](/docs/adapters).
+`readOnly`, `model`, `effort`, `resume`, and `attachments` map to the CLI’s own flags. `systemPrompt` and `schema` work too, provided by AnyAgent. `codex exec` has no append-system-prompt flag, and its native `--output-schema` accepts a restricted schema dialect (every field required, `format` and `pattern` ignored), so whether a native run worked would depend on your schema. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/escape-hatches). The full grid is on the [support matrix](/docs/adapters).
 
 `authStatus()` asks `codex login status` and `models()` asks `codex debug models`, so both answers are the CLI’s own word.
 
@@ -27,4 +27,5 @@ Every run executes `codex exec --json --sandbox danger-full-access`, the unatten
 | `readOnly: true` | `--sandbox read-only`                                                          |
 | `model`          | `--model <name>`                                                               |
 | `effort`         | `-c model_reasoning_effort="<value>"`, passed through verbatim                 |
+| `attachments`    | `-i <file>…`, every path on one flag, ahead of the `-` stdin positional        |
 | `resume`         | `codex exec resume <threadId>`, with the sandbox set via `-c sandbox_mode="…"` |

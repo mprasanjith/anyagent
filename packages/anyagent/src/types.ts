@@ -83,6 +83,11 @@ export type ToolName =
  */
 export interface Capabilities {
   /**
+   * Whether files can be attached to a prompt. See
+   * {@link ExtensionOptions.attachments}.
+   */
+  attachments: CapabilitySupport;
+  /**
    * Whether {@link Agent.authStatus} can tell if this CLI's credentials are
    * configured, and how trustworthy the answer is.
    */
@@ -127,10 +132,24 @@ export interface Capabilities {
    */
   reasoningEfforts?: readonly string[];
   /**
-   * Whether the agent can pick up an earlier conversation. See
-   * {@link ExtensionOptions.resume}.
+   * How sessions are provided, gating {@link ExtensionOptions.resume} and
+   * {@link Agent.session}:
+   *
+   * - `"native"` — the session holds a live bidirectional channel to the
+   *   agent (no built-in adapter declares this yet).
+   * - `"emulated"` — AnyAgent provides continuity itself: one process per
+   *   turn, threaded through the CLI's own resume mechanism. Turns behave
+   *   identically; only the live-channel members are unavailable.
+   * - `false` — the CLI has no way to continue a conversation; both the
+   *   `resume` option and `session()` throw.
    */
-  sessionResume: CapabilitySupport;
+  session: CapabilitySupport;
+  /**
+   * Whether resuming can branch into a new conversation instead of
+   * continuing the old one. See {@link SessionOptions.fork} and
+   * {@link ExtensionOptions.forkSession}.
+   */
+  sessionFork: CapabilitySupport;
   /**
    * Whether the agent streams its work as it goes. When truthy, `runStream`
    * relays the agent's own live events. When `false`, the CLI only prints a
@@ -306,11 +325,24 @@ export interface BaselineRunOptions {
  */
 export interface ExtensionOptions {
   /**
+   * Paths of files to attach to the prompt, passed on the CLI's own
+   * attachment flags. Gated by {@link Capabilities.attachments}.
+   */
+  attachments: string[];
+  /**
    * How hard the model should think. Gated by {@link Capabilities.effort};
    * where {@link Capabilities.reasoningEfforts} is present the value is
    * checked against it, otherwise it passes through and the CLI judges it.
    */
   effort: ReasoningEffort;
+  /**
+   * With {@link ExtensionOptions.resume}, branch into a new conversation
+   * instead of continuing the old one; the run's `sessionId` is the new
+   * conversation's id. Requires `resume` (`InvalidOptions` without it) and
+   * is gated by {@link Capabilities.sessionFork}. The ergonomic route is
+   * {@link SessionOptions.fork}.
+   */
+  forkSession: boolean;
   /** MCP servers to attach for this run. */
   mcp: McpConfig;
   /**
@@ -335,10 +367,12 @@ export interface ExtensionOptions {
  * field.
  */
 export const EXTENSION_CAPABILITY = {
+  attachments: "attachments",
   effort: "effort",
+  forkSession: "sessionFork",
   mcp: "mcp",
   readOnly: "readOnly",
-  resume: "sessionResume",
+  resume: "session",
 } as const satisfies Record<keyof ExtensionOptions, keyof Capabilities>;
 
 /** The name of one gated run option — the keys of {@link ExtensionOptions}. */
@@ -433,6 +467,15 @@ export type AgentEvent =
       raw?: unknown;
     }
   | { type: "usage"; usage: Usage; raw?: unknown }
+  | {
+      type: "permission-request";
+      requestId: string;
+      name: ToolName;
+      nativeName: string;
+      input: unknown;
+      options: PermissionOption[];
+      raw?: unknown;
+    }
   | { type: "done"; result: RunResult };
 
 /**
@@ -663,6 +706,12 @@ export interface Detection {
  */
 export interface Adapter<C extends Capabilities = Capabilities> {
   /**
+   * How to launch this CLI's ACP (Agent Client Protocol) endpoint, when it
+   * ships one; the shared client does the rest. Declaring it is what backs
+   * `session: "native"`.
+   */
+  acp?: { command: string[] };
+  /**
    * Answer {@link Agent.authStatus} from the probe. Required when `authStatus` is declared
    * available; read files and env, or run a
    * credential-status subcommand — never anything that costs a model call.
@@ -694,6 +743,24 @@ export interface Adapter<C extends Capabilities = Capabilities> {
     source: OutputSource,
     opts: { strict: boolean }
   ) => AsyncGenerator<AgentEvent, RunResult>;
+  /**
+   * Provide a session handle up front, for CLIs that never reveal one
+   * headless. `id` becomes the session's resume handle, and
+   * `firstRunOptions` are merged into the session's first turn so the CLI
+   * registers it (goose: `extraArgs: ["--name", id]`). Later turns pass `id`
+   * back as {@link ExtensionOptions.resume}. Omit when the CLI reveals a
+   * session id in its output.
+   */
+  sessionSeed?: () => SessionSeed;
+}
+
+/**
+ * What {@link Adapter.sessionSeed} returns: the handle a session's later
+ * turns resume under, and the options that register it on the first turn.
+ */
+export interface SessionSeed {
+  firstRunOptions?: RunOptions;
+  id: string;
 }
 
 /**
@@ -719,11 +786,9 @@ export interface RawHandle {
  * A ready-to-run handle on one installed coding agent; get one from
  * `create()`.
  *
- * `run` is the one-shot call — it resolves with the final {@link RunResult}
- * when the agent finishes. `runStream` yields {@link AgentEvent}s as the
- * agent works and ends with a `done` event carrying that same result. If you
- * `break` out of the stream early, the underlying process is killed for you,
- * so abandoning a stream never leaks a running agent.
+ * `run` starts one unattended turn and returns a {@link Run}: await it for
+ * the final {@link RunResult}, iterate it for live {@link AgentEvent}s, or
+ * both. `session` opens a multi-turn conversation.
  *
  * The options a specific agent accepts follow its capabilities `C`: from
  * an adapter factory the capabilities are literal and unsupported options fail to
@@ -732,7 +797,7 @@ export interface RawHandle {
  *
  * ```ts
  * const agent = create(claudeCode());
- * for await (const ev of agent.runStream("explain this repo")) {
+ * for await (const ev of agent.run("explain this repo")) {
  *   if (ev.type === "text-delta") {
  *     process.stdout.write(ev.text);
  *   }
@@ -756,11 +821,7 @@ export interface Agent<C extends Capabilities = Capabilities> {
    */
   models: () => Promise<ModelInfo[]>;
   readonly raw: RawHandle;
-  run: (prompt: string, opts?: RunOptionsFor<C>) => Promise<RunResult>;
-  runStream: (
-    prompt: string,
-    opts?: RunOptionsFor<C>
-  ) => AsyncGenerator<AgentEvent, RunResult>;
+  run: (prompt: string, opts?: RunOptionsFor<C>) => Run;
   /**
    * Check extension support and unlock the matching options in one gesture:
    * at runtime it answers whether every named extension is available on this
@@ -773,7 +834,119 @@ export interface Agent<C extends Capabilities = Capabilities> {
    * }
    * ```
    */
+  /**
+   * Open a session: one conversation spanning many turns. Continuity is the
+   * session's job — each `run` threads the previous turn's resume handle
+   * automatically, and `session.id` is a plain string you can persist and
+   * pass back later as `{ resume }`. Gated by {@link Capabilities.session};
+   * throws `UnsupportedCapability` where it is `false`.
+   *
+   * ```ts
+   * const session = agent.session();
+   * await session.run("Review this repo.");
+   * await session.run("Fix what you found.");
+   * ```
+   */
+  session: (opts?: SessionOptions) => Session<C>;
   supports: <K extends ExtensionKey[]>(
     ...keys: K
   ) => this is Agent<C & SupportedCapabilities<K[number]>>;
+}
+
+/**
+ * One run in flight: what {@link Agent.run} and {@link Session.run} return.
+ * Await it for the final {@link RunResult}, iterate it for live
+ * {@link AgentEvent}s, or do both — the same handle serves every consumer.
+ *
+ * ```ts
+ * const run = agent.run("Review this repo.");
+ * for await (const event of run) {
+ *   render(event);
+ * }
+ * const result = await run;
+ * ```
+ *
+ * The run starts when the call is made and runs to completion unless
+ * `abort()` is called or the run's `signal` fires. Breaking out of an
+ * iteration loop stops watching, never the agent. On a run with a
+ * {@link BaselineRunOptions.schema}, awaiting resolves the parsed result;
+ * iterating yields every attempt's events, and the terminal `done` carries
+ * the same result awaiting resolves with.
+ */
+export interface Run extends Promise<RunResult>, AsyncIterable<AgentEvent> {
+  /** Stop the agent: the process is terminated and the run throws `code: "Aborted"`. */
+  abort: () => void;
+}
+
+/**
+ * One choice an agent offers on a `permission-request` event. The agent
+ * defines its own options; `kind` normalizes the common ones so an approval
+ * UI can group them, and `label` is the agent's own wording.
+ */
+export interface PermissionOption {
+  id: string;
+  kind:
+    | "allow-once"
+    | "allow-always"
+    | "reject-once"
+    | "reject-always"
+    | (string & Record<never, never>);
+  label: string;
+}
+
+/**
+ * Options for {@link Agent.session}. `resume` continues an earlier session
+ * from a persisted {@link Session.id}. `fork` branches: the first turn
+ * carries the CLI's copy-on-resume flag, and `session.id` becomes the new
+ * conversation's id. `fork` requires `resume` (`InvalidOptions` without it)
+ * and is gated by {@link Capabilities.sessionFork}.
+ */
+export interface SessionOptions {
+  fork?: boolean;
+  resume?: string;
+}
+
+/**
+ * The per-turn options a session accepts: everything the agent accepts minus
+ * `resume` and `forkSession`, which the session owns. Passing either anyway
+ * throws `AnyAgentError` (`code: "InvalidOptions"`).
+ */
+export type SessionRunOptionsFor<C extends Capabilities> = Omit<
+  RunOptionsFor<C>,
+  "forkSession" | "resume"
+>;
+
+/** The members {@link Session.supports} gates: the native-tier verbs. */
+export type SessionKey = "respond" | "steer";
+
+/**
+ * One conversation with an agent, spanning many turns; get one from
+ * {@link Agent.session}. `run` mirrors the agent's, with continuity handled
+ * for you, and turns queue: a `run` called while another is in flight spawns
+ * after it, threaded automatically. A failed turn rejects the turns queued
+ * behind it; calling `run` again afterwards retries from the last good
+ * point.
+ *
+ * `id` is the resume handle: `undefined` until the first turn reveals it,
+ * then stable. Persist it anywhere and pass it back as
+ * `agent.session({ resume: id })` to continue the conversation later, from
+ * any process.
+ *
+ * `steer` and `respond` exist on the live tier only
+ * (`Capabilities.session: "native"`); check with `session.supports("steer")`,
+ * the same gesture as {@link Agent.supports}.
+ */
+export interface Session<C extends Capabilities = Capabilities> {
+  readonly agent: Agent<C>;
+  readonly id: string | undefined;
+  /**
+   * Answer a `permission-request` event: pass the id of one of the event's
+   * {@link PermissionOption}s, or `"allow"`/`"deny"` to pick the first
+   * option of the matching kind (`InvalidOptions` when none matches).
+   */
+  respond: (requestId: string, choice: string) => void;
+  run: (prompt: string, opts?: SessionRunOptionsFor<C>) => Run;
+  /** Inject guidance into the running turn. */
+  steer: (text: string) => void;
+  supports: (...keys: SessionKey[]) => boolean;
 }

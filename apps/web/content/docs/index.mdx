@@ -3,7 +3,7 @@ title: Introduction
 description: Detect the coding-agent CLI a machine already has installed and drive it through one interface.
 ---
 
-AnyAgent is a TypeScript library that detects which of the [supported agents](/docs/adapters) a machine already has installed and drives it through one interface. You call `detect()` and `run()`; AnyAgent handles the flags and output parsing for whichever CLI it found. It’s an ESM module with zero runtime dependencies and runs on Node.js 18+ and Bun.
+AnyAgent is a TypeScript library that detects which of the [supported agents](/docs/adapters) a machine already has installed and drives it through one interface. You call `detect()` and `run()`; AnyAgent handles the flags and output parsing for whichever CLI it found. It’s an ESM module with two runtime dependencies (the official ACP SDK and zod) and runs on Node.js 18+ and Bun.
 
 ## Why it exists
 

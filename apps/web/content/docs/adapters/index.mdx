@@ -7,7 +7,7 @@ These are the agent CLIs AnyAgent supports. `detect()` scans for all of them in 
 
 <CapabilityMatrix />
 
-How to read the grid: `native` means the CLI provides the capability itself, `emulated` means AnyAgent provides the behavior identically on every agent that declares it, and `—` means requesting it throws `UnsupportedCapability` before anything spawns. You ask for an emulated capability exactly as you ask for a native one.
+How to read the grid: `native` means the CLI provides the capability itself, `emulated` means AnyAgent provides the behavior identically on every agent that declares it, and `—` means requesting it throws `UnsupportedCapability` before anything spawns. You ask for an emulated capability exactly as you ask for a native one. Sessions read `emulated` where AnyAgent provides the conversation loop itself, one process per turn threaded through the CLI’s own resume mechanism; [Run a conversation](/docs/sessions) covers what that means in practice. Fork shows whether a resumed conversation can branch instead of continuing, and Attachments whether files can ride along with a prompt; both read like any other capability column.
 
 Auth status and Models answer discovery questions rather than gating run options: `native` means the CLI answers itself, and `probed` means AnyAgent reads the CLI’s credential files and environment variables instead, a hint rather than a guarantee.
 

@@ -14,6 +14,7 @@ import type {
 } from "./types.js";
 
 const CAPS = {
+  attachments: false,
   authStatus: "native",
   cwd: "native",
   // No reasoningEfforts list on purpose: effort rides in the model id's
@@ -25,7 +26,11 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  sessionResume: "native",
+  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // test/fixtures/acp/cursor.jsonl — initialize on protocolVersion 1, a session
+  // id, an agent_message_chunk streaming "pong", and stopReason end_turn.
+  session: "native",
+  sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
   // No append-system-prompt flag; the core folds the system prompt into the
@@ -330,6 +335,7 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * Cursor manages them through `agent mcp` configuration.
  */
 export const cursor = (): Adapter<typeof CAPS> => ({
+  acp: { command: ["agent", "acp"] },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

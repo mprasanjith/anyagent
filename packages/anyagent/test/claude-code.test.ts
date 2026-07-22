@@ -106,6 +106,21 @@ test("buildInvocation emits every optional flag and passes cwd/env", () => {
   expect(inv.env).toEqual({ FOO: "bar" });
 });
 
+test("forkSession adds --fork-session alongside --resume", () => {
+  const inv = claudeCode().buildInvocation("x", {
+    forkSession: true,
+    resume: "sess-1",
+  });
+  expect(argAfter(inv.args, "--resume")).toBe("sess-1");
+  expect(inv.args).toContain("--fork-session");
+});
+
+test("a plain resume omits --fork-session", () => {
+  const inv = claudeCode().buildInvocation("x", { resume: "sess-1" });
+  expect(argAfter(inv.args, "--resume")).toBe("sess-1");
+  expect(inv.args).not.toContain("--fork-session");
+});
+
 test("parses a simple text answer with usage and cache accounting", async () => {
   const { events, result } = await collect("simple.jsonl");
   expect(result.text).toBe("pong");

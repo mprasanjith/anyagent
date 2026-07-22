@@ -31,3 +31,5 @@ Every run executes `gemini -p "" --output-format stream-json --skip-trust --appr
 | `resume`         | `--resume <sessionId>`                                                        |
 
 `readOnly` deliberately avoids `--approval-mode plan`: headless, the model can call `exit_plan_mode`, which self-approves, and then write freely. In `default` mode the mutating tools are never registered, so a write is structurally impossible.
+
+Gemini CLI ships an ACP endpoint, `gemini --acp`; see the [sessions guide](/docs/sessions).

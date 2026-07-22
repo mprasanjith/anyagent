@@ -1,0 +1,98 @@
+---
+title: Run a conversation
+description: Open a session, run turns that share one conversation, and continue it later from a persisted id.
+---
+
+A session is one conversation spanning many runs: open it with `agent.session()`, and each `run` continues where the last left off. This page shows how to run turns, stream inside a session, and continue a conversation later, from any process. Continuity is the session's job; you never thread a session id by hand.
+
+## Open a session and run turns
+
+`agent.session()` returns a `Session` whose `run` works like the agent’s own, returning the same awaitable, iterable handle. Each turn is still one unattended CLI process; the session passes the conversation forward between them:
+
+```ts
+import { create, detect } from "anyagent";
+
+const [found] = await detect();
+if (!found) {
+  throw new Error("No supported coding agent found.");
+}
+
+const agent = create(found);
+if (agent.supports("resume")) {
+  const session = agent.session();
+  const review = await session.run("Review this repo for unhandled rejections.");
+  console.log(review.text);
+
+  const fixes = await session.run("Fix the issues you found.");
+  console.log(fixes.text);
+}
+```
+
+The second turn sees the first turn’s conversation, so “the issues you found” needs no restating. Turns queue: a `run` called while another is in flight starts when it settles, threaded automatically, so firing several turns and awaiting them together is safe. A failed turn rejects the turns queued behind it; calling `run` again afterwards retries from the last good point.
+
+## Persist the conversation and continue later
+
+`session.id` is a plain string, set once the first turn reveals it. Store it anywhere, and continue the conversation in a later process with `agent.session({ resume })`:
+
+```ts
+const session = agent.session();
+await session.run("Start reviewing this repo.");
+await save("review-session", session.id);
+
+// Days later, in a new process:
+const resumed = agent.session({ resume: await load("review-session") });
+await resumed.run("Continue with src/.");
+```
+
+Conversation state lives with the CLI, not with AnyAgent, so nothing else needs persisting and a crash between turns loses nothing.
+
+## Stream inside a session
+
+A session turn is the same handle as any run: iterate it for [events](/docs/streaming). The `session` event arrives early, and `session.id` is set the moment it does, so you can persist the handle before the first turn ends:
+
+```ts
+const session = agent.session();
+for await (const event of session.run("Audit the error handling.")) {
+  if (event.type === "text-delta") {
+    process.stdout.write(event.text);
+  }
+}
+```
+
+Pass `systemPrompt` in the first turn’s options when the conversation needs standing instructions; the conversation carries it from there, so later turns need not re-send it.
+
+## Branch a conversation
+
+Where the CLI can copy-on-resume, `fork: true` branches a persisted conversation instead of continuing it: the first turn carries the CLI’s fork flag, and `session.id` becomes the new conversation’s id. `fork` requires `resume` and is gated by `sessionFork` (claude-code, opencode, Kilo Code, and Pi today; the [matrix](/docs/adapters) is current):
+
+```ts
+const mainline = agent.session({ resume: saved });
+const experiment = agent.session({ fork: true, resume: saved });
+```
+
+Resuming one id into two sessions without `fork` is legal but is a relay, not a branch: both continue the same underlying conversation, in whatever order their turns land.
+
+## Live sessions
+
+On opencode, Cursor, goose, and the Gemini CLI, `Capabilities.session` reads `native`: the session holds one live connection to the agent instead of respawning per turn, and `session.steer(text)` injects guidance into the running turn. `session.supports("steer")` is the check-and-narrow guard, and everything else on this page works identically on both tiers:
+
+```ts
+const session = agent.session();
+const turn = session.run("Migrate config/ to TypeScript.");
+if (session.supports("steer")) {
+  session.steer("Skip the legacy directory.");
+}
+await turn;
+```
+
+Live sessions answer their agents’ permission requests themselves (allowing, to keep runs unattended), and surface each as a `permission-request` event you can render; answering them yourself arrives with a later release.
+
+## Agents without sessions
+
+`Capabilities.session` gates everything on this page, and `agent.supports("resume")` is the check-and-narrow guard for it. Cline declares it unavailable, so `agent.session()` throws `UnsupportedCapability` there; every other built-in adapter runs sessions. goose never reveals a session id headless, so its sessions are named instead; the session handles that for you, and `session.id` carries the generated name. The [support matrix](/docs/adapters) shows every agent’s declaration.
+
+## Next steps
+
+- [Run agents](/docs/run-agents): everything about a single turn, including the low-level `resume` option
+- [Stream progress](/docs/streaming): render events live and cancel a run
+- [Ship to production](/docs/production): the checklist before your tool goes out

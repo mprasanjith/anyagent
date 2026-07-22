@@ -51,6 +51,29 @@ test("buildInvocation drives the kilo binary with the shared flags", () => {
   expect(inv.env?.KILO_PERMISSION).toBeUndefined();
 });
 
+test("forkSession and attachments map through the kilo binary", () => {
+  const inv = kiloCode().buildInvocation("hi", {
+    attachments: ["/a/one.png", "/b/two.pdf"],
+    forkSession: true,
+    resume: "ses_abc",
+  });
+  // `--fork` rides with the --session it requires.
+  expect(inv.args).toContain("--fork");
+  expect(inv.args[inv.args.indexOf("--session") + 1]).toBe("ses_abc");
+  // `-f` repeats once per attachment path.
+  const files = inv.args
+    .map((a, i) => (a === "-f" ? inv.args[i + 1] : undefined))
+    .filter((v): v is string => v !== undefined);
+  expect(files).toEqual(["/a/one.png", "/b/two.pdf"]);
+});
+
+test("kilo declares its own acp endpoint and native fork/attachments", () => {
+  const agent = kiloCode();
+  expect(agent.acp).toEqual({ command: ["kilo", "acp"] });
+  expect(agent.capabilities.sessionFork).toBe("native");
+  expect(agent.capabilities.attachments).toBe("native");
+});
+
 test("readOnly sets the deny matrix in KILO_PERMISSION, overriding the caller's", () => {
   const inv = kiloCode().buildInvocation("x", {
     env: { KEEP: "yes", KILO_PERMISSION: '{"*":"allow"}' },

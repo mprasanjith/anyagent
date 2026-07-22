@@ -84,6 +84,55 @@ test("effort passes a provider-defined variant name through verbatim", () => {
   expect(inv.args[inv.args.indexOf("--variant") + 1]).toBe("brainstorm-v2");
 });
 
+test("forkSession adds --fork riding alongside the --session it requires", () => {
+  const inv = opencode().buildInvocation("hi", {
+    forkSession: true,
+    resume: "ses_123",
+  });
+  expect(inv.args).toContain("--fork");
+  // `--fork` needs --continue or --session; the mapped --session satisfies it.
+  expect(inv.args[inv.args.indexOf("--session") + 1]).toBe("ses_123");
+});
+
+test("without forkSession there is no --fork", () => {
+  const inv = opencode().buildInvocation("hi", { resume: "ses_123" });
+  expect(inv.args).not.toContain("--fork");
+});
+
+test("attachments repeat -f once per file", () => {
+  const inv = opencode().buildInvocation("hi", {
+    attachments: ["/a/one.png", "/b/two.pdf"],
+  });
+  const files = inv.args
+    .map((a, i) => (a === "-f" ? inv.args[i + 1] : undefined))
+    .filter((v): v is string => v !== undefined);
+  expect(files).toEqual(["/a/one.png", "/b/two.pdf"]);
+});
+
+test("fork and attachments compose with model, session, and variant", () => {
+  const inv = opencode().buildInvocation("hi", {
+    attachments: ["/x/note.txt"],
+    effort: "high",
+    forkSession: true,
+    model: "openrouter/openai/gpt-4o-mini",
+    resume: "ses_123",
+  });
+  expect(inv.args[inv.args.indexOf("--model") + 1]).toBe(
+    "openrouter/openai/gpt-4o-mini"
+  );
+  expect(inv.args[inv.args.indexOf("--session") + 1]).toBe("ses_123");
+  expect(inv.args).toContain("--fork");
+  expect(inv.args[inv.args.indexOf("--variant") + 1]).toBe("high");
+  expect(inv.args[inv.args.indexOf("-f") + 1]).toBe("/x/note.txt");
+});
+
+test("declares the acp endpoint and reports fork/attachments as native", () => {
+  const agent = opencode();
+  expect(agent.acp).toEqual({ command: ["opencode", "acp"] });
+  expect(agent.capabilities.sessionFork).toBe("native");
+  expect(agent.capabilities.attachments).toBe("native");
+});
+
 test("parses a simple text answer with usage summed from step_finish", async () => {
   const { events, result } = await collect("simple.jsonl");
   expect(result?.text).toBe("pong");

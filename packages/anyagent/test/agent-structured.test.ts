@@ -70,21 +70,22 @@ test("run() with schema throws Parse when the retry also fails", async () => {
   expect(prompts).toHaveLength(2);
 });
 
-test("runStream with schema yields text events and never a json result", async () => {
+test("iterating a schema run yields text events and a done carrying the parsed json", async () => {
   const agent = new AgentImpl(
     emulated,
     scriptedRunner([streamOf('{"n":1}')], [])
   );
   const types: string[] = [];
   let json: unknown;
-  for await (const ev of agent.runStream("q", { schema: objectSchema })) {
+  for await (const ev of agent.run("q", { schema: objectSchema })) {
     types.push(ev.type);
     if (ev.type === "done") {
       ({ json } = ev.result);
     }
   }
   expect(types).toContain("text-delta");
-  expect(json).toBeUndefined();
+  expect(types.filter((t) => t === "done")).toHaveLength(1);
+  expect(json).toEqual({ n: 1 });
 });
 
 test("raw.buildInvocation does not emulate an emulated capability", () => {

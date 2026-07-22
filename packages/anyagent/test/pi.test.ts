@@ -78,6 +78,22 @@ test("buildInvocation emits every optional flag and passes cwd/env", () => {
   expect(inv.env).toEqual({ FOO: "bar" });
 });
 
+test("forkSession maps resume to --fork, replacing --session-id", () => {
+  const inv = pi().buildInvocation("x", {
+    forkSession: true,
+    resume: "11111111-2222-4333-8444-555555555555",
+  });
+  expect(argAfter(inv, "--fork")).toBe("11111111-2222-4333-8444-555555555555");
+  expect(inv.args).not.toContain("--session-id");
+});
+
+test("attachments append @file positionals; the prompt stays on stdin", () => {
+  const inv = pi().buildInvocation("hi", { attachments: ["a.png", "b.md"] });
+  expect(inv.args).toContain("@a.png");
+  expect(inv.args).toContain("@b.md");
+  expect(inv.input).toBe("hi");
+});
+
 test("parses a simple answer from token-level deltas with usage", async () => {
   const { events, result } = await collect("simple.jsonl");
   expect(result?.text).toBe("pong");

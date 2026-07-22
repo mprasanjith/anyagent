@@ -15,6 +15,7 @@ import type {
 
 const CAPS = {
   // Never exec for auth: cline's config subcommand needs a TTY headless.
+  attachments: false,
   authStatus: "probed",
   cwd: "native",
   effort: "native",
@@ -29,7 +30,8 @@ const CAPS = {
   reasoningEfforts: ["none", "low", "medium", "high", "xhigh"],
   // `--id` resume is broken in cline's headless JSON mode (the prompt is
   // never accepted alongside it), so resume stays undeclared.
-  sessionResume: false,
+  session: false,
+  sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
   // cline's -s replaces the system prompt entirely; preamble emulation folds
@@ -291,6 +293,7 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * cline's own message.
  */
 export const cline = (): Adapter<typeof CAPS> => ({
+  acp: { command: ["cline", "--acp"] },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

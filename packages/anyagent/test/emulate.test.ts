@@ -8,6 +8,7 @@ const adapterWith = (
   structuredOutput: CapabilitySupport
 ): Adapter => {
   const caps: Capabilities = {
+    attachments: false,
     authStatus: false,
     cwd: "native",
     effort: false,
@@ -15,7 +16,8 @@ const adapterWith = (
     modelListing: false,
     modelSelection: "native",
     readOnly: false,
-    sessionResume: "native",
+    session: "emulated",
+    sessionFork: false,
     streaming: "native",
     structuredOutput,
     systemPrompt,

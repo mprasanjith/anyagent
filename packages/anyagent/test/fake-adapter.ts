@@ -8,6 +8,7 @@ import type {
 } from "../src/types.js";
 
 const allCaps: Capabilities = {
+  attachments: false,
   authStatus: "native",
   cwd: "native",
   effort: "native",
@@ -15,7 +16,8 @@ const allCaps: Capabilities = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  sessionResume: "native",
+  session: "emulated",
+  sessionFork: false,
   streaming: "native",
   structuredOutput: "native",
   systemPrompt: "native",
@@ -110,7 +112,7 @@ export const fakeText: Adapter = {
     effort: false,
     modelListing: false,
     readOnly: false,
-    sessionResume: false,
+    session: false,
     streaming: false,
     structuredOutput: false,
     systemPrompt: false,

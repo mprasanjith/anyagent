@@ -21,7 +21,7 @@ The `cursor` adapter drives the Cursor CLI in headless print mode, detected as t
 
 ## Under the hood
 
-Every run executes `agent -p --output-format stream-json --trust --force`, the unattended default, with the prompt piped over stdin. `--trust` is always passed: a headless run otherwise stalls on the workspace-trust prompt, which nothing in `run()`/`runStream()` can answer. `--force` is deliberate too: print mode without it only proposes edits, which would silently break the unattended full-autonomy contract. [Run options](/docs/api#run-options) change the mode and append flags:
+Every run executes `agent -p --output-format stream-json --trust --force`, the unattended default, with the prompt piped over stdin. `--trust` is always passed: a headless run otherwise stalls on the workspace-trust prompt, which nothing in `run()` can answer. `--force` is deliberate too: print mode without it only proposes edits, which would silently break the unattended full-autonomy contract. [Run options](/docs/api#run-options) change the mode and append flags:
 
 | Option           | Flag                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------ |
@@ -31,3 +31,5 @@ Every run executes `agent -p --output-format stream-json --trust --force`, the u
 | `resume`         | `--resume <chatId>`                                                                        |
 
 Tool calls arrive in a oneof-style envelope (`readToolCall`, `shellToolCall`, …); the shared names map onto it (`shellToolCall` → `bash`) and everything else keeps the envelope key as its name.
+
+Cursor ships an ACP endpoint, `agent acp`; see the [sessions guide](/docs/sessions).

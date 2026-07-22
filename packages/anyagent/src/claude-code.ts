@@ -15,6 +15,7 @@ import type {
 const VERSION_REGEX = /(?<version>\d+\.\d+\.\d+)/u;
 
 const CAPS = {
+  attachments: false,
   authStatus: "native",
   cwd: "native",
   effort: "native",
@@ -23,7 +24,8 @@ const CAPS = {
   modelSelection: "native",
   readOnly: "native",
   reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
-  sessionResume: "native",
+  session: "emulated",
+  sessionFork: "native",
   streaming: "native",
   structuredOutput: "native",
   systemPrompt: "native",
@@ -228,6 +230,11 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   }
   if (opts.resume) {
     args.push("--resume", opts.resume);
+    // --fork-session resumes into a fresh session id instead of continuing
+    // the old one; core only ever pairs forkSession with resume.
+    if (opts.forkSession) {
+      args.push("--fork-session");
+    }
   }
   if (opts.mcp) {
     // --strict-mcp-config keeps user-config servers out, so the option means

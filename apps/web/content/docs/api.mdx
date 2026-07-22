@@ -56,7 +56,7 @@ const agent = create(first);
 const create: (source: Adapter | DetectResult, opts?: CreateOptions) => Agent;
 ```
 
-The call is synchronous and spawns nothing; the process starts when you call `run` or `runStream`. It also never checks that the CLI is installed, so creating from an adapter on a machine without that CLI surfaces as an `Invocation` error on the first run. From an adapter factory the agent is typed to that adapter’s literal [`Capabilities`](#capabilities), so an unsupported option fails to compile; from a `DetectResult` only the shared options are typed until [`supports`](#runoptionsfor-and-supports) unlocks more.
+The call is synchronous and spawns nothing; the process starts when you call `run`. It also never checks that the CLI is installed, so creating from an adapter on a machine without that CLI surfaces as an `Invocation` error on the first run. From an adapter factory the agent is typed to that adapter’s literal [`Capabilities`](#capabilities), so an unsupported option fails to compile; from a `DetectResult` only the shared options are typed until [`supports`](#runoptionsfor-and-supports) unlocks more.
 
 ```ts
 import { create } from "anyagent";
@@ -75,12 +75,39 @@ console.log(result.text);
 
 ## Agent
 
-An `Agent` is a ready-to-run handle on one installed CLI. `run` resolves with the final result; `runStream` yields events as the agent works and ends with a `done` event carrying that same result. Breaking out of the stream early kills the underlying process. `authStatus` and `models` answer the two discovery questions, `supports` checks the gated options and narrows the type to allow them, and `raw` reaches the native CLI.
+An `Agent` is a ready-to-run handle on one installed CLI. `run` starts one turn and returns a [`Run`](#run) handle, `session` opens a [multi-turn conversation](#session-and-sessionoptions), `authStatus` and `models` answer the two discovery questions, `supports` checks the gated options and narrows the type to allow them, and `raw` reaches the native CLI.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
   name="Agent"
 />
+
+## Run
+
+One run in flight: a real `Promise` of the [`RunResult`](#runresult) that is also an `AsyncIterable` of [`AgentEvent`](#agentevent)s. Await it, iterate it, or both — one handle serves every consumer, and the terminal `done` event carries the same result awaiting resolves with. The run starts when the call is made and runs to completion unless `abort()` is called or the run’s `signal` fires; breaking out of an iteration loop stops watching, never the agent. On a schema run, awaiting resolves the parsed result and iterating yields every attempt’s events.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="Run"
+/>
+
+## Session and SessionOptions
+
+One conversation spanning many turns, from `agent.session()`. The session owns continuity: each turn threads the previous turn’s resume handle automatically, one CLI process per turn, and `id` is a plain string you persist and pass back as `agent.session({ resume: id })` to continue later from any process. Turns queue — a `run` while one is in flight starts after it — and a failed turn rejects the turns queued behind it. `steer` and `respond` are live-tier verbs gated by `session.supports()`; opencode, Cursor, goose, and the Gemini CLI declare the live tier today, and `respond` is not yet provided on any (`supports("respond")` is `false` while permission requests auto-allow). Gated by [`Capabilities.session`](#capabilities); [Run a conversation](/docs/sessions) is the guide.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="Session"
+/>
+
+`SessionOptions` shapes the session at creation. `fork` requires `resume` (`InvalidOptions` without it) and is gated by [`Capabilities.sessionFork`](#capabilities):
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="SessionOptions"
+/>
+
+A session’s per-turn options are the agent’s minus `resume` and `forkSession`, which the session owns; passing either anyway throws `InvalidOptions`.
 
 ## Run options
 
@@ -105,7 +132,7 @@ The options every supported agent honors; code that types against `BaselineRunOp
 
 ### ExtensionOptions
 
-The options that exist only on some agents, each gated by the [`Capabilities`](#capabilities) field of the same name (`resume` by `sessionResume`); requesting one an agent does not declare throws `UnsupportedCapability` before anything spawns.
+The options that exist only on some agents, each gated by the [`Capabilities`](#capabilities) field of the same name (`resume` by `session`); requesting one an agent does not declare throws `UnsupportedCapability` before anything spawns.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -146,7 +173,7 @@ What a finished run gives you back. Holding a `RunResult` means the run succeede
 
 ## AgentEvent
 
-One normalized event from a running agent, as yielded by `runStream`. `AgentEvent` is a discriminated union on `type` with eight variants. Every variant except `done` carries a `raw` field holding the CLI’s untouched native payload for that event.
+One normalized event from a running agent, as yielded by iterating a [`Run`](#run). `AgentEvent` is a discriminated union on `type` with nine variants. Every variant except `done` carries a `raw` field holding the CLI’s untouched native payload for that event.
 
 | `type`            | Payload                                                          | Meaning                                                              |
 | ----------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -157,9 +184,17 @@ One normalized event from a running agent, as yielded by `runStream`. `AgentEven
 | `tool-result`     | `name: ToolName`, `nativeName: string`, `callId?`, `output`      | a tool returned this output                                           |
 | `file-change`     | `kind: "create" \| "modify" \| "delete"`, `path: string`         | the agent changed a file, on CLIs that report it                      |
 | `usage`           | `usage: Usage`                                                   | token and cost accounting became available                            |
+| `permission-request` | `requestId`, `name`, `nativeName`, `input`, `options: PermissionOption[]` | a live-tier agent asked permission for a tool, offering its own options |
 | `done`            | `result: RunResult`                                              | the run finished; carries the final result                            |
 
-How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `file-change` is declared in the union, but no built-in adapter emits it yet.
+How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `file-change` is declared in the union, but no built-in adapter emits it yet; `permission-request` is emitted only by live-tier sessions (opencode, Cursor, goose, and the Gemini CLI today), which answer it themselves by allowing, so the event is informational until manual permission handling ships.
+
+Each `permission-request` carries the agent’s own choices as [`PermissionOption`](#agentevent)s — `id`, a normalized `kind` (`allow-once`, `allow-always`, `reject-once`, `reject-always`, or the agent’s own), and the agent’s `label`:
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="PermissionOption"
+/>
 
 ## ToolName
 

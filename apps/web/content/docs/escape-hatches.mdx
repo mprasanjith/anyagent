@@ -41,7 +41,7 @@ console.log(inv.command, inv.args.join(" "));
 //   --disallowedTools Bash,Edit,NotebookEdit,Write
 ```
 
-Unlike `run` and `runStream`, both `raw` calls skip capability validation and the behaviors AnyAgent provides: an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`, and a system prompt on a CLI without a system-prompt flag is not folded into the prompt for you. Check `agent.capabilities` yourself when it matters.
+Unlike `run`, both `raw` calls skip capability validation and the behaviors AnyAgent provides: an option the CLI does not support is silently left out of the argv rather than throwing `UnsupportedCapability`, and a system prompt on a CLI without a system-prompt flag is not folded into the prompt for you. Check `agent.capabilities` yourself when it matters.
 
 ## Own the process with agent.raw.spawn
 

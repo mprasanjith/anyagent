@@ -33,7 +33,7 @@ try {
 
 ## UnsupportedCapability
 
-You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`, `schema`, `effort`, `readOnly`) its capabilities do not declare, an `effort` value outside a closed vocabulary, or a discovery method (`authStatus()`, `models()`) it has no answer for. It fires before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
+You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`, `schema`, `effort`, `readOnly`, `attachments`, `forkSession`) its capabilities do not declare, an `effort` value outside a closed vocabulary, or a discovery method (`authStatus()`, `models()`) it has no answer for. It fires before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
 
 The message names the agent and the missing capability:
 
@@ -43,11 +43,15 @@ goose cannot guarantee a read-only run
 cline does not accept effort "ultra" (accepts: none, low, medium, high, xhigh)
 ```
 
-Drop the option, or check first and degrade the feature when it is missing: `agent.supports()` for `readOnly`, `effort`, `mcp`, and `resume`; `agent.capabilities` for the rest. [Run agents](/docs/run-agents#tune-the-run) shows both guards, and the [support matrix](/docs/adapters) shows what every CLI declares.
+Drop the option, or check first and degrade the feature when it is missing: `agent.supports()` for `readOnly`, `effort`, `mcp`, `resume`, `attachments`, and `forkSession`; `agent.capabilities` for the rest. [Run agents](/docs/run-agents#tune-the-run) shows both guards, and the [support matrix](/docs/adapters) shows what every CLI declares.
 
 ## InvalidOptions
 
-The options contradict each other, on any agent: a dependent option was passed without its prerequisite. Like `UnsupportedCapability` it fires before any process spawns, but the fix is different: this is not a gap in one CLI, it is a call that could never be valid, so correct the options at the call site rather than degrading per agent.
+The options contradict each other, on any agent: a dependent option was passed without its prerequisite, or a session-owned option was passed by hand. Like `UnsupportedCapability` it fires before any process spawns, but the fix is different: this is not a gap in one CLI, it is a call that could never be valid, so correct the options at the call site rather than degrading per agent. The concrete cases:
+
+- `forkSession` on a run with no `resume`: only an existing conversation can branch. The same rule holds for `fork` at session creation, `agent.session({ fork: true })` without `resume`.
+- `resume` or `forkSession` passed to `session.run()`: the session owns continuity, so thread it through `agent.session({ resume, fork })` instead.
+- Iterating one `Run` twice: a `Run` supports a single event consumer, so share the handle rather than opening a second `for await`.
 
 ## Invocation
 

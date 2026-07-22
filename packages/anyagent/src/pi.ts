@@ -15,6 +15,7 @@ import type {
 const CAPS = {
   // Pure BYOK: credentials live in ~/.pi/agent/auth.json and provider env
   // vars, so the answer is a best-effort probe, not the CLI's own word.
+  attachments: "native",
   authStatus: "probed",
   cwd: "native",
   effort: "native",
@@ -34,7 +35,8 @@ const CAPS = {
     "xhigh",
     "max",
   ],
-  sessionResume: "native",
+  session: "emulated",
+  sessionFork: "native",
   streaming: "native",
   structuredOutput: "emulated",
   systemPrompt: "native",
@@ -290,8 +292,22 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
     args.push("--append-system-prompt", opts.systemPrompt);
   }
   if (opts.resume) {
-    // --session-id resumes the exact session, creating it if missing.
-    args.push("--session-id", opts.resume);
+    if (opts.forkSession) {
+      // --fork branches the resumed session into a new one; it replaces
+      // --session-id rather than joining it. forkSession only arrives with
+      // resume.
+      args.push("--fork", opts.resume);
+    } else {
+      // --session-id resumes the exact session, creating it if missing.
+      args.push("--session-id", opts.resume);
+    }
+  }
+  if (opts.attachments) {
+    // Pi reads files from `@path` positionals (`pi @a.png "..."`); the prompt
+    // itself still travels on stdin.
+    for (const file of opts.attachments) {
+      args.push(`@${file}`);
+    }
   }
   return {
     args,

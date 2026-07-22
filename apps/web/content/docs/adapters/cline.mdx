@@ -29,3 +29,5 @@ Every run executes `cline --json --auto-approve true` with the prompt as a posit
 | `effort` | `--thinking <level>` |
 
 `authStatus()` tries `CLINE_PROVIDER_SETTINGS_PATH`, then `$CLINE_DATA_DIR/settings/providers.json`, then `$CLINE_DIR/data/settings/providers.json`, then `~/.cline/data/settings/providers.json`. Plain-text notices Cline prints mid-stream (“AI SDK Warning …”) are filtered before parsing, in strict mode too.
+
+Cline ships an ACP endpoint, `cline --acp`; see the [sessions guide](/docs/sessions).
