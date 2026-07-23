@@ -8,7 +8,6 @@ import { cn } from "@/lib/cn";
 import { CopyButton } from "./copy-button";
 import { HeroCanvas } from "./hero-canvas";
 import { Reveal } from "./reveal";
-import { SafetyPresets } from "./safety";
 
 const display = Teachers({
   subsets: ["latin"],
@@ -22,37 +21,29 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   description:
-    "AnyAgent detects the coding agent your end users already have installed (Claude Code, Codex, opencode, Pi, Goose, and more) and drives it from your tool. You collect no API keys and pay no inference bill.",
-  title: "AnyAgent: use the coding agent your users already have",
+    "AnyAgent detects the coding agent CLI your users already run (Claude Code, Codex, and more) and drives it programmatically. You collect no API keys and pay no inference bill.",
+  title: "AnyAgent: use the coding agent CLI your users already have",
 };
 
 const GITHUB = "https://github.com/mprasanjith/anyagent";
 
-/** From docs/specs/harness-audit.md — statuses are honest: "shipped" means
- * the adapter exists, "soon" means the headless surface is audited and the
- * adapter is on the way. `logo` is a file in public/agents/; `slug` overrides
- * the adapter-page path when it differs from the logo name. */
+/** `logo` is a file in public/agents/; `slug` overrides the adapter-page
+ * path when it differs from the logo name. */
 const HARNESSES: {
   logo: string;
   name: string;
   slug?: string;
-  status: string;
 }[] = [
-  { logo: "claude-code", name: "Claude Code", status: "shipped" },
-  { logo: "codex", name: "Codex", status: "shipped" },
-  { logo: "opencode", name: "opencode", status: "shipped" },
-  { logo: "kilo", name: "Kilo Code", slug: "kilo-code", status: "shipped" },
-  { logo: "pi", name: "Pi", status: "shipped" },
-  { logo: "goose", name: "Goose", status: "shipped" },
-  { logo: "cline", name: "Cline", status: "shipped" },
-  { logo: "gemini", name: "Gemini CLI", slug: "gemini-cli", status: "shipped" },
-  { logo: "antigravity", name: "Antigravity", status: "shipped" },
-  { logo: "cursor", name: "Cursor", status: "shipped" },
-  { logo: "copilot", name: "GitHub Copilot", status: "soon" },
-  { logo: "droid", name: "Factory droid", status: "soon" },
-  { logo: "kiro-cli", name: "Kiro", status: "soon" },
-  { logo: "devin", name: "Devin", status: "soon" },
-  { logo: "amp", name: "Amp", status: "soon" },
+  { logo: "claude-code", name: "Claude Code" },
+  { logo: "codex", name: "Codex" },
+  { logo: "opencode", name: "opencode" },
+  { logo: "kilo", name: "Kilo Code", slug: "kilo-code" },
+  { logo: "pi", name: "Pi" },
+  { logo: "goose", name: "Goose" },
+  { logo: "cline", name: "Cline" },
+  { logo: "gemini", name: "Gemini CLI", slug: "gemini-cli" },
+  { logo: "antigravity", name: "Antigravity" },
+  { logo: "cursor", name: "Cursor" },
 ];
 
 const iVar = (i: number) => ({ "--i": i }) as React.CSSProperties;
@@ -144,14 +135,14 @@ const Page = () => (
             Use it.
           </h1>
           <p className="mt-6 max-w-[52ch] text-hm-md leading-[1.6]">
-            AnyAgent detects the coding agent installed and signed in on your
-            end-user’s machine and drives it from your tool. Prompts run on
-            their install, under their login and subscription.
+            AnyAgent detects your user’s coding agent (Claude Code, Codex, and
+            more) and drives it programmatically. Prompts run under their login
+            and subscription.
           </p>
           <div className="mt-10 flex flex-wrap items-center gap-6">
             <Link
               className={buttonVariants({ variant: "primary" })}
-              href="/docs"
+              href="/docs/quickstart"
             >
               Read the quickstart
             </Link>
@@ -191,32 +182,26 @@ const Page = () => (
         </pre>
       </figure>
       <Body>
-        <code>detect()</code> returns whatever is installed. <code>run()</code>{" "}
-        behaves the same on all of it. When no agent is installed,{" "}
-        <code>detect()</code> returns an empty array and your tool can fall
-        back.
+        <code>detect()</code> returns whatever coding agent CLI is installed.{" "}
+        <code>run()</code> behaves the same across all of them.
       </Body>
-      <Body>
-        The prompt runs on the user’s own install, under their login and
-        subscription. You collect no API keys and pay no inference bill.
-      </Body>
-      <Body>
-        The same code path works against whichever supported agent they have.{" "}
+      <Body>You collect no API keys and pay no inference bill.</Body>
+      <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
         <Link
           className={buttonVariants({ variant: "link" })}
           href="/docs/run-an-agent"
         >
           Run an agent →
         </Link>
-      </Body>
+      </p>
     </Section>
 
     <Section>
-      <SectionTitle>What you build with it</SectionTitle>
+      <SectionTitle>Where it fits</SectionTitle>
       <Body>
         You ship the prompt and the guardrails; the user’s agent supplies the
-        model and the auth. AnyAgent suits tools that run a defined task against
-        the user’s own project.
+        model and the auth. AnyAgent is for tools that run a defined task
+        against the user’s own project.
       </Body>
       <div className="mt-10 grid grid-cols-[0.9fr_0.95fr_1.15fr] gap-6 max-md:grid-cols-1">
         {[
@@ -229,7 +214,7 @@ const Page = () => (
             title: "Migrations",
           },
           {
-            desc: "Produce changelogs, tests, or docs from the current source.",
+            desc: "Produce changelogs, tests, or docs from the user’s source.",
             title: "Generators",
           },
         ].map((c) => (
@@ -247,35 +232,14 @@ const Page = () => (
     </Section>
 
     <Section>
-      <SectionTitle>Unattended by design</SectionTitle>
-      <Body>
-        Every run is unattended: the agent works at the full autonomy the user’s
-        CLI allows, which is what lets a setup wizard finish without a human in
-        the loop. When your tool only needs to look, <code>readOnly: true</code>{" "}
-        confines the run to reading. An agent that cannot enforce that refuses
-        the run instead of downgrading it silently.
-      </Body>
-      <SafetyPresets />
-      <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
-        <Link
-          className={buttonVariants({ variant: "link" })}
-          href="/docs/run-agents#keep-a-run-read-only"
-        >
-          How read-only runs work →
-        </Link>
-      </p>
-    </Section>
-
-    <Section>
       <SectionTitle>Whichever agent they have</SectionTitle>
-      <Body>
-        Fifteen harnesses audited: ten adapters shipped, five on the way. For
-        anything else, an adapter is one file.
-      </Body>
       <ul className="m-0 mt-10 grid list-none grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-px border border-hm-rule bg-hm-rule p-0">
-        {HARNESSES.map((h) => {
-          const cell = (
-            <>
+        {HARNESSES.map((h) => (
+          <li className="bg-hm-paper" key={h.name}>
+            <Link
+              className="flex h-full items-center gap-3 p-4 text-inherit no-underline transition-colors duration-[120ms] ease-hm-out hover:bg-hm-paper-2"
+              href={`/docs/adapters/${h.slug ?? h.logo}`}
+            >
               <img
                 alt=""
                 className="block size-10 shrink-0 rounded-lg"
@@ -284,38 +248,10 @@ const Page = () => (
                 src={`/agents/${h.logo}.svg`}
                 width={40}
               />
-              <span className="grid min-w-0">
-                <span className="text-hm-ink text-hm-sm">{h.name}</span>
-                <span
-                  className={cn(
-                    "whitespace-nowrap font-hm-mono text-hm-label uppercase tracking-hm-micro",
-                    h.status === "shipped" ? "text-hm-accent" : "text-hm-muted"
-                  )}
-                >
-                  {h.status}
-                </span>
-              </span>
-            </>
-          );
-          const cellClass = "flex h-full items-center gap-3 p-4 no-underline";
-          return (
-            <li className="bg-hm-paper" key={h.name}>
-              {h.status === "shipped" ? (
-                <Link
-                  className={cn(
-                    cellClass,
-                    "text-inherit transition-colors duration-[120ms] ease-hm-out hover:bg-hm-paper-2"
-                  )}
-                  href={`/docs/adapters/${h.slug ?? h.logo}`}
-                >
-                  {cell}
-                </Link>
-              ) : (
-                <span className={cellClass}>{cell}</span>
-              )}
-            </li>
-          );
-        })}
+              <span className="text-hm-ink text-hm-sm">{h.name}</span>
+            </Link>
+          </li>
+        ))}
       </ul>
       <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
         <Link
@@ -330,7 +266,7 @@ const Page = () => (
     <footer className="border-hm-rule border-t pt-26 pb-10">
       <Shell className="grid gap-10">
         <p className="m-0 min-w-0 max-w-[28ch] font-hm-display font-normal text-[clamp(1.75rem,5vw,3.25rem)] text-hm-ink leading-[1.05] tracking-[-0.02em] [overflow-wrap:anywhere]">
-          Add AnyAgent to your tool with one small package.
+          Build on the agent your users already have.
         </p>
         <div className="flex flex-wrap items-center gap-6">
           <span className="inline-flex items-center gap-2 rounded-full border border-hm-rule bg-hm-paper-2 py-1 pr-1 pl-4">
@@ -339,7 +275,10 @@ const Page = () => (
             </code>
             <CopyButton text="bun add anyagent" />
           </span>
-          <Link className={buttonVariants({ variant: "primary" })} href="/docs">
+          <Link
+            className={buttonVariants({ variant: "primary" })}
+            href="/docs/quickstart"
+          >
             Read the quickstart
           </Link>
           <a className={buttonVariants({ variant: "link" })} href={GITHUB}>

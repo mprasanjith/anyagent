@@ -115,21 +115,6 @@ body {
   }
 }
 
-/* ---- safety preset panel ---- */
-
-.hm-perm-panel {
-  animation: hm-panel-in 150ms var(--ease-hm-out);
-}
-
-@keyframes hm-panel-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 /* ---- reduced motion ---- */
 
 @media (prefers-reduced-motion: reduce) {
