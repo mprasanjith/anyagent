@@ -204,9 +204,9 @@ const Page = () => (
         The same code path works against whichever supported agent they have.{" "}
         <Link
           className={buttonVariants({ variant: "link" })}
-          href="/docs/how-it-works"
+          href="/docs/run-an-agent"
         >
-          How the unified surface works →
+          Run an agent →
         </Link>
       </Body>
     </Section>
@@ -320,7 +320,7 @@ const Page = () => (
       <p className="mt-6 text-hm-muted text-hm-sm leading-[1.6]">
         <Link
           className={buttonVariants({ variant: "link" })}
-          href="/docs/adding-an-adapter"
+          href={`${GITHUB}/blob/main/CONTRIBUTING.md`}
         >
           Adding an adapter →
         </Link>
@@ -330,7 +330,7 @@ const Page = () => (
     <footer className="border-hm-rule border-t pt-26 pb-10">
       <Shell className="grid gap-10">
         <p className="m-0 min-w-0 max-w-[28ch] font-hm-display font-normal text-[clamp(1.75rem,5vw,3.25rem)] text-hm-ink leading-[1.05] tracking-[-0.02em] [overflow-wrap:anywhere]">
-          Add AnyAgent to your tool with one zero-dependency package.
+          Add AnyAgent to your tool with one small package.
         </p>
         <div className="flex flex-wrap items-center gap-6">
           <span className="inline-flex items-center gap-2 rounded-full border border-hm-rule bg-hm-paper-2 py-1 pr-1 pl-4">

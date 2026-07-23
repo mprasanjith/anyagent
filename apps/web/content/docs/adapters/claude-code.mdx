@@ -7,21 +7,18 @@ The `claude-code` adapter drives the Claude Code CLI in headless mode, detected 
 
 ## What you can ask for
 
-Nearly every run option works, on the CLI’s own flags: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own system prompt, never replacing it), `resume`, `forkSession`, `mcp`, and `schema`. Only `attachments` is unsupported: Claude Code has no headless attachment flag, so requesting it throws. The full grid is on the [support matrix](/docs/adapters).
-
-`authStatus()` asks `claude auth status --json`, so the answer is the CLI’s own word. `models()` throws: the CLI has no listing mechanism.
+Nearly every run option works: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own, never replacing it), `resume`, `forkSession`, `mcp`, and `schema`. Only `attachments` throws, since Claude Code has no headless attachment flag. `authStatus()` asks `claude auth status --json`; `models()` throws, since the CLI has no listing mechanism. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - The session id lands on `result.sessionId`; pass it back as `resume` to continue the conversation.
-- `mcp` means exactly the servers you passed: servers from the end user’s own configuration stay out of the run.
-- With a `schema`, the model answers through the CLI’s structured-output path and emits no other text, so `result.text` is the serialized JSON reply; validation and the one retry still apply.
-- One `text-delta` carries a whole assistant text block; thinking blocks stream as `reasoning-delta`.
-- `usage` follows the provider’s accounting: cache reads and writes are separate line items on `cacheReadTokens` and `cacheWriteTokens`, and `costUsd` is set.
+- `mcp` means exactly the servers you passed: the end user’s own configured servers stay out of the run.
+- With a `schema`, `result.text` is the serialized JSON reply and no other text is emitted; validation and the one retry still apply.
+- `usage` reports cache reads and writes as separate line items on `cacheReadTokens` and `cacheWriteTokens`, and sets `costUsd`.
 
 ## Under the hood
 
-Every run executes `claude -p --output-format stream-json --verbose --permission-mode bypassPermissions`, the unattended default, with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
+Every run executes `claude -p --output-format stream-json --verbose --permission-mode bypassPermissions` with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
 
 | Option           | Flag                                                                             |
 | ---------------- | --------------------------------------------------------------------------------- |
@@ -33,5 +30,3 @@ Every run executes `claude -p --output-format stream-json --verbose --permission
 | `forkSession: true` | `--fork-session`, appended beside `--resume` to branch into a fresh session id |
 | `mcp`            | `--mcp-config <json>` plus `--strict-mcp-config`                                 |
 | `schema`         | `--json-schema <json>`                                                           |
-
-`readOnly` is enforced twice on purpose: `manual` mode already denies unattended mutations, and the mutating built-in tools are also denied by name, so the guarantee holds even if the mode’s semantics drift upstream.

@@ -16,7 +16,7 @@ import type {
 import Link from "next/link";
 
 // Registry order — the order detect() scans and returns.
-const ADAPTERS: Adapter[] = [
+export const ADAPTERS: Adapter[] = [
   claudeCode(),
   codex(),
   opencode(),

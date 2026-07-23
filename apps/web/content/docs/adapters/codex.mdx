@@ -7,20 +7,17 @@ The `codex` adapter drives the Codex CLI through its non-interactive `codex exec
 
 ## What you can ask for
 
-`readOnly`, `model`, `effort`, `resume`, and `attachments` map to the CLI’s own flags. `systemPrompt` and `schema` work too, provided by AnyAgent. `codex exec` has no append-system-prompt flag, and its native `--output-schema` accepts a restricted schema dialect (every field required, `format` and `pattern` ignored), so whether a native run worked would depend on your schema. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/escape-hatches). The full grid is on the [support matrix](/docs/adapters).
-
-`authStatus()` asks `codex login status` and `models()` asks `codex debug models`, so both answers are the CLI’s own word.
+`readOnly`, `model`, `effort`, `resume`, and `attachments` map to the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/run-an-agent). `authStatus()` asks `codex login status` and `models()` asks `codex debug models`. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - `effort` has no closed vocabulary; accepted values are per-model, listed by `models()` on [`ModelInfo.reasoningEfforts`](/docs/api#modelinfo).
 - The `thread.started` id lands on `result.sessionId`; pass it back as `resume`.
-- Command executions surface as `bash` tool events (native name `command_execution`), file changes as a pair named `file_change`; reasoning items produce no events.
-- Codex folds cache reads into `input_tokens` and reasoning into `output_tokens`, and `Usage` keeps that accounting: `cacheReadTokens` and `reasoningTokens` are the folded shares, not additions. No cost is reported.
+- Cache reads fold into the input total and reasoning into the output total; `cacheReadTokens` and `reasoningTokens` report those shares, not additions. No cost is reported.
 
 ## Under the hood
 
-Every run executes `codex exec --json --sandbox danger-full-access`, the unattended default, with the prompt piped over stdin through the `-` positional. The sandbox is always passed explicitly: `codex exec` defaults to read-only, which would silently under-honor AnyAgent’s full-autonomy default. [Run options](/docs/api#run-options) change the sandbox and append flags:
+Every run executes `codex exec --json --sandbox danger-full-access` with the prompt piped over stdin through the `-` positional. [Run options](/docs/api#run-options) change the sandbox and append flags:
 
 | Option           | Flag                                                                           |
 | ---------------- | ------------------------------------------------------------------------------ |

@@ -3,71 +3,39 @@ title: Errors
 description: "Every AnyAgentError code: when it fires, what it carries, and how to turn it into a message your end user can act on."
 ---
 
-Everything AnyAgent throws is one class, `AnyAgentError`, with five `code` values and no subclass tree. Find the code you hit in its section below. Results never hide failures: holding a `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story.
+import { Card, Cards } from "fumadocs-ui/components/card";
 
-## Catch and branch on the code
-
-Import `AnyAgentError`, catch it, and branch on `err.code`. There is nothing else to match against:
-
-```ts
-import { create, detect } from "anyagent";
-import { AnyAgentError } from "anyagent/errors";
-
-const [found] = await detect();
-if (!found) {
-  throw new Error("No supported coding agent found.");
-}
-const agent = create(found);
-
-try {
-  const result = await agent.run("Summarize this repo.");
-  console.log(result.text);
-} catch (err) {
-  if (err instanceof AnyAgentError) {
-    console.error(`${err.code}: ${err.message}`);
-  } else {
-    throw err;
-  }
-}
-```
+Everything AnyAgent throws is one class, `AnyAgentError`, with five `code` values and no subclass tree. A `RunResult` means the run succeeded, so a `try/catch` around the run is the whole story: catch `AnyAgentError` and branch on `err.code`, with nothing else to match against. Find the code you hit in its section below; the [full example](#turn-each-code-into-a-message-for-the-end-user) handles every one.
 
 ## UnsupportedCapability
 
-You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`, `schema`, `effort`, `readOnly`, `attachments`, `forkSession`) its capabilities do not declare, an `effort` value outside a closed vocabulary, or a discovery method (`authStatus()`, `models()`) it has no answer for. It fires before any process spawns, so a wrong assumption fails at the call site rather than mid-run.
+You asked for something this agent’s CLI cannot do: a capability-gated option (`model`, `systemPrompt`, `resume`, `mcp`, `cwd`, `schema`, `effort`, `readOnly`, `attachments`, `forkSession`) its capabilities do not declare, an `effort` value outside a closed vocabulary, or a discovery method (`authStatus()`, `models()`) it has no answer for. It fires before any process spawns, and the message names the agent and the gap, for example `cline does not accept effort "ultra" (accepts: none, low, medium, high, xhigh)`.
 
-The message names the agent and the missing capability:
-
-```txt
-codex does not support MCP config
-goose cannot guarantee a read-only run
-cline does not accept effort "ultra" (accepts: none, low, medium, high, xhigh)
-```
-
-Drop the option, or check first and degrade the feature when it is missing: `agent.supports()` for `readOnly`, `effort`, `mcp`, `resume`, `attachments`, and `forkSession`; `agent.capabilities` for the rest. [Run agents](/docs/run-agents#tune-the-run) shows both guards, and the [support matrix](/docs/adapters) shows what every CLI declares.
+Drop the option, or check first and degrade the feature when it is missing: `agent.supports()` for `readOnly`, `effort`, `mcp`, `resume`, `attachments`, and `forkSession`, `agent.capabilities` for the rest. [Run an agent](/docs/run-an-agent#tune-the-run) shows both guards, and the [support matrix](/docs/adapters) shows what every CLI declares.
 
 ## InvalidOptions
 
-The options contradict each other, on any agent: a dependent option was passed without its prerequisite, or a session-owned option was passed by hand. Like `UnsupportedCapability` it fires before any process spawns, but the fix is different: this is not a gap in one CLI, it is a call that could never be valid, so correct the options at the call site rather than degrading per agent. The concrete cases:
+The options contradict each other on any agent: a dependent option was passed without its prerequisite, or a session-owned option was passed by hand. Like `UnsupportedCapability` it fires before any process spawns, but this call could never be valid on any CLI, so correct the options at the call site rather than degrading per agent. The cases:
 
-- `forkSession` on a run with no `resume`: only an existing conversation can branch. The same rule holds for `fork` at session creation, `agent.session({ fork: true })` without `resume`.
+- `forkSession` on a run with no `resume`, or `fork` at `agent.session({ fork: true })` without `resume`: only an existing conversation can branch.
 - `resume` or `forkSession` passed to `session.run()`: the session owns continuity, so thread it through `agent.session({ resume, fork })` instead.
-- Iterating one `Run` twice: a `Run` supports a single event consumer, so share the handle rather than opening a second `for await`.
+- Iterating one `Run` twice: a `Run` serves a single event consumer, so share the handle rather than opening a second `for await`.
 
 ## Invocation
 
-The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error in its own output stream. Real causes: the binary is missing (`create` never checks installation), the login expired, or the installed CLI does not know a flag you passed through `extraArgs`.
-
-`argv` and `stderr` are attached, so surface them to diagnose the failure. In a shipped tool, tell the end user to check that the agent is installed and signed in.
+The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error in its own output stream. Real causes: the binary is missing (`create` never checks installation), the login expired, or the installed CLI does not know a flag you passed through `extraArgs`. `argv` and `stderr` are attached, so surface them to diagnose the failure. In a shipped tool, tell the end user to check that the agent is installed and signed in.
 
 ## Parse
 
-The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet. Update `anyagent`, and report the failure upstream with the message and the offending payload on `err.raw` so the adapter can catch up.
+The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet: update `anyagent`, and report the failure upstream with the offending payload on `err.raw`.
 
-`Parse` also fires when you pass a [`schema`](/docs/structured-output) and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors, and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
+<Callout type="info">
+  `Parse` also fires when you pass a `schema` and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
+</Callout>
 
 ## Aborted
 
-Your `AbortSignal` fired and the underlying process was terminated, whether from a user cancelling or an `AbortSignal.timeout` expiring. In a shipped tool that means the end user stopped the run or your own timeout fired, so treat it as a normal exit rather than a failure. [Stream progress](/docs/streaming#cancel-a-run) shows how to wire the signal to Ctrl+C.
+Your `AbortSignal` fired and the underlying process was terminated, whether from a user cancelling or an `AbortSignal.timeout` expiring. In a shipped tool that means the end user stopped the run or your own timeout fired, so treat it as a normal exit rather than a failure. [Run an agent](/docs/run-an-agent#stop-a-run) shows how to wire the signal to Ctrl+C.
 
 ## Diagnostic fields
 
@@ -140,10 +108,10 @@ try {
 }
 ```
 
-Each branch gives the end user something to act on: cancellation exits quietly, a capability gap names the agent, contradictory options name the tool at fault, a run failure points at install and login, and a parse failure asks for a report with the validation detail attached.
-
 ## Next steps
 
-- [Run agents](/docs/run-agents): guard each capability-gated option before you ask
-- [Stream progress](/docs/streaming): wire an `AbortSignal` so `Aborted` means the user cancelled
-- [API reference](/docs/api#anyagenterror): the `AnyAgentError` class shape
+<Cards>
+  <Card href="/docs/run-an-agent#tune-the-run" title="Run an agent">Guard each capability-gated option before you ask.</Card>
+  <Card href="/docs/run-an-agent#watch-it-live" title="Watch a run live">Wire an `AbortSignal` so `Aborted` means the user cancelled.</Card>
+  <Card href="/docs/api#anyagenterror" title="API reference">The `AnyAgentError` class shape.</Card>
+</Cards>

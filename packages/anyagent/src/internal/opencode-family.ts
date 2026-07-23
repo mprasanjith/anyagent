@@ -225,7 +225,7 @@ const READ_ONLY_MATRIX = JSON.stringify({ bash: "deny", edit: "deny" });
 const makeBuildInvocation =
   (command: string, permissionEnv: string) =>
   (prompt: string, opts: RunOptions): Invocation => {
-    // `--auto` always: the v2 default is the CLI's maximum unattended
+    // `--auto` always: the v2 default is the CLI's maximum
     // autonomy, and readOnly confines it via the deny matrix rather than by
     // dropping the flag.
     const args = ["run", "--format", "json", "--auto"];

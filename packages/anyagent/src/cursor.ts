@@ -240,7 +240,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
     args.push("--mode", "plan");
   } else {
     // Without --force, print mode only *proposes* edits — it would silently
-    // break the unattended full-autonomy contract.
+    // break the full-autonomy contract.
     args.push("--force");
   }
   const model = modelWithEffort(opts);
@@ -315,7 +315,7 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
 
 /**
  * The adapter for the Cursor CLI, detected as the `agent` binary (legacy
- * `cursor-agent` also resolves). A default run has full unattended autonomy;
+ * `cursor-agent` also resolves). A default run has full autonomy;
  * `readOnly: true` confines it to Cursor's enforced plan mode. `model` takes
  * any id from `models()`, including bracket overrides like
  * `"claude-opus-4-8[context=1m,effort=high]"`; `effort` composes into those

@@ -4,7 +4,9 @@ description: "Every AnyAgent export you call as a tool builder: detect and creat
 full: true
 ---
 
-This page documents what you use when building on AnyAgent: the two entry-point functions, the types you pass and receive at runtime, and the single error class. The contract for supporting a new CLI lives on its own page, the [adapter contract](/docs/adapter-contract).
+import { Card, Cards } from "fumadocs-ui/components/card";
+
+This page documents what you use when building on AnyAgent: the two entry-point functions, the types you pass and receive at runtime, and the single error class. The contract for supporting a new CLI lives in the repo’s [contributing guide](https://github.com/mprasanjith/anyagent/blob/main/CONTRIBUTING.md).
 
 ## Entry points
 
@@ -75,7 +77,7 @@ console.log(result.text);
 
 ## Agent
 
-An `Agent` is a ready-to-run handle on one installed CLI. `run` starts one turn and returns a [`Run`](#run) handle, `session` opens a [multi-turn conversation](#session-and-sessionoptions), `authStatus` and `models` answer the two discovery questions, `supports` checks the gated options and narrows the type to allow them, and `raw` reaches the native CLI.
+An `Agent` is a ready-to-run handle on one installed CLI: `run` starts one turn and returns a [`Run`](#run), `session` opens a [multi-turn conversation](#session-and-sessionoptions), and `supports` narrows the type to the gated options it unlocks.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -84,7 +86,7 @@ An `Agent` is a ready-to-run handle on one installed CLI. `run` starts one turn 
 
 ## Run
 
-One run in flight: a real `Promise` of the [`RunResult`](#runresult) that is also an `AsyncIterable` of [`AgentEvent`](#agentevent)s. Await it, iterate it, or both — one handle serves every consumer, and the terminal `done` event carries the same result awaiting resolves with. The run starts when the call is made and runs to completion unless `abort()` is called or the run’s `signal` fires; breaking out of an iteration loop stops watching, never the agent. On a schema run, awaiting resolves the parsed result and iterating yields every attempt’s events.
+One run in flight: a `Promise` of the [`RunResult`](#runresult) that is also an `AsyncIterable` of [`AgentEvent`](#agentevent)s, so you await it, iterate it, or both. It runs to completion unless `abort()` or its `signal` fires; breaking out of an iteration loop stops watching, not the agent.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -93,7 +95,7 @@ One run in flight: a real `Promise` of the [`RunResult`](#runresult) that is als
 
 ## Session and SessionOptions
 
-One conversation spanning many turns, from `agent.session()`. The session owns continuity: each turn threads the previous turn’s resume handle automatically, one CLI process per turn, and `id` is a plain string you persist and pass back as `agent.session({ resume: id })` to continue later from any process. Turns queue — a `run` while one is in flight starts after it — and a failed turn rejects the turns queued behind it. `steer` and `respond` are live-tier verbs gated by `session.supports()`; opencode, Cursor, goose, and the Gemini CLI declare the live tier today, and `respond` is not yet provided on any (`supports("respond")` is `false` while permission requests auto-allow). Gated by [`Capabilities.session`](#capabilities); [Run a conversation](/docs/sessions) is the guide.
+One conversation spanning many turns, from `agent.session()`. The session owns continuity: each turn threads the previous turn’s resume handle automatically, one CLI process per turn, and `id` is a plain string you persist and pass back as `agent.session({ resume: id })` to continue later. Turns queue, and a failed turn rejects the turns queued behind it; `steer` and `respond` are live-tier verbs gated by `session.supports()`. Gated by [`Capabilities.session`](#capabilities); [Sessions](/docs/sessions) is the guide.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -117,13 +119,17 @@ Everything you can tune about a single run; all fields are optional. [`BaselineR
 type RunOptions = BaselineRunOptions & Partial<ExtensionOptions>;
 ```
 
-Every option is validated against the agent’s capabilities before any process spawns, so requesting something the CLI cannot do throws [`AnyAgentError`](#anyagenterror) with `code: "UnsupportedCapability"` up front. Every run is unattended, at the most autonomy the CLI offers; [How AnyAgent works](/docs/how-it-works#every-run-is-unattended) explains why.
+Every option is validated against the agent’s capabilities before any process spawns, so requesting something the CLI cannot do throws [`AnyAgentError`](#anyagenterror) with `code: "UnsupportedCapability"` up front. Every run is autonomous at the most the CLI offers: nothing waits for approval.
 
 ### BaselineRunOptions
 
 The options every supported agent honors; code that types against `BaselineRunOptions` runs unchanged on any agent AnyAgent can drive.
 
-`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed, validated against it, and set on [`RunResult.json`](#runresult); [Get structured output](/docs/structured-output) covers the parsing, validation, and retry path. Validation covers the essential keywords: `type` (including `"integer"`), `properties` and `required` recursively, `items` as a single schema over every element, and `enum`. Every other keyword, such as `minLength`, `pattern`, or `format`, passes without a check, so enforce those in your own code after reading `json`.
+`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed, validated against it, and set on [`RunResult.json`](#runresult); [Run an agent](/docs/run-an-agent) covers the parsing, validation, and retry path.
+
+<Callout type="warn">
+  Validation covers `type` (including `"integer"`), `properties` and `required` recursively, `items` as a single schema over every element, and `enum`. Every other keyword, such as `minLength`, `pattern`, or `format`, passes without a check, so enforce those in your own code after reading `json`.
+</Callout>
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -141,7 +147,7 @@ The options that exist only on some agents, each gated by the [`Capabilities`](#
 
 ### RunOptionsFor and supports
 
-`RunOptionsFor<C>` is the options one specific agent accepts: `BaselineRunOptions` plus every extension its capabilities `C` declare available. From an adapter factory the capabilities are literal, so an unsupported option is a compile error. From `detect()` they are dynamic, and `agent.supports(...keys)` is both the runtime check and the type narrowing: a `true` branch makes those options typecheck. [How AnyAgent works](/docs/how-it-works#check-what-an-agent-can-do-before-you-ask) shows the pattern.
+`RunOptionsFor<C>` is the options one specific agent accepts: `BaselineRunOptions` plus every extension its capabilities `C` declare available. From an adapter factory the capabilities are literal, so an unsupported option is a compile error. From `detect()` they are dynamic, and `agent.supports(...keys)` is both the runtime check and the type narrowing: a `true` branch makes those options typecheck. [Run an agent](/docs/run-an-agent#tune-the-run) shows the pattern.
 
 ## ReasoningEffort
 
@@ -164,7 +170,7 @@ Where an agent’s vocabulary is closed, [`Capabilities.reasoningEfforts`](#capa
 
 ## RunResult
 
-What a finished run gives you back. Holding a `RunResult` means the run succeeded: the CLI exited cleanly and reported no agent-level error, since every failure path throws [`AnyAgentError`](#anyagenterror) instead. `text` is the final answer with all text output concatenated. `sessionId` is the id to pass back as `resume`, absent on CLIs that never reveal one headless. `raw` is the CLI’s own final payload, untouched.
+What a finished run gives you back. Holding a `RunResult` means the run succeeded: the CLI exited cleanly and reported no agent-level error, since every failure path throws [`AnyAgentError`](#anyagenterror) instead.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -187,7 +193,7 @@ One normalized event from a running agent, as yielded by iterating a [`Run`](#ru
 | `permission-request` | `requestId`, `name`, `nativeName`, `input`, `options: PermissionOption[]` | a live-tier agent asked permission for a tool, offering its own options |
 | `done`            | `result: RunResult`                                              | the run finished; carries the final result                            |
 
-How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `file-change` is declared in the union, but no built-in adapter emits it yet; `permission-request` is emitted only by live-tier sessions (opencode, Cursor, goose, and the Gemini CLI today), which answer it themselves by allowing, so the event is informational until manual permission handling ships.
+How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `permission-request` is emitted only by live-tier sessions, which resolve it themselves by allowing the tool.
 
 Each `permission-request` carries the agent’s own choices as [`PermissionOption`](#agentevent)s — `id`, a normalized `kind` (`allow-once`, `allow-always`, `reject-once`, `reject-always`, or the agent’s own), and the agent’s `label`:
 
@@ -214,7 +220,7 @@ type ToolName =
 
 ## Usage
 
-Token and cost accounting for a run, normalized across CLIs. Every field is optional because each CLI reports a different subset, so check for `undefined` rather than assuming a field is present. `inputTokens` matches the underlying provider’s accounting: some providers report cache reads and writes as separate line items, others fold them into `inputTokens`. For exact cost, read the native payload on the event’s or result’s `raw`.
+Token and cost accounting for a run, normalized across CLIs. Every field is optional because each CLI reports a different subset, so check for `undefined` rather than assuming a field is present, and read the event’s or result’s `raw` for exact cost.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -235,7 +241,7 @@ type CapabilitySupport = "native" | "emulated" | false;
 | `"emulated"` | the CLI has no such flag, so AnyAgent’s core provides the behavior itself, identically on every agent |
 | `false`      | unavailable; requesting it throws `UnsupportedCapability` before anything spawns                      |
 
-Both `"native"` and `"emulated"` are truthy, so a `caps.systemPrompt ? … : …` check still reads as “is this available”. You ask for an emulated capability exactly as you ask for a native one.
+Both `"native"` and `"emulated"` are truthy, so a `caps.systemPrompt ? … : …` check still reads as “is this available”, and you ask for an emulated capability exactly as you ask for a native one.
 
 ## DiscoverySupport
 
@@ -253,7 +259,7 @@ type DiscoverySupport = "native" | "probed" | false;
 
 ## Capabilities
 
-What one agent CLI can do. Read it from `agent.capabilities` or a [`DetectResult`](#detectresult) to find out what you can ask for before you ask. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns. `authStatus` and `modelListing` are [`DiscoverySupport`](#discoverysupport) values, `reasoningEfforts` is the closed effort vocabulary where one exists, and every other field is a [`CapabilitySupport`](#capabilitysupport). `streaming` is informational, describing whether the agent emits progressive output rather than guarding an option.
+What one agent CLI can do, read from `agent.capabilities` or a [`DetectResult`](#detectresult) before you ask for anything. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns; `authStatus` and `modelListing` are [`DiscoverySupport`](#discoverysupport) values, and every other field is a [`CapabilitySupport`](#capabilitysupport).
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -262,7 +268,7 @@ What one agent CLI can do. Read it from `agent.capabilities` or a [`DetectResult
 
 ## AuthStatus and AuthState
 
-The answer to `agent.authStatus()`: whether this CLI looks ready to run. This is “are credentials configured”, never “were they verified live”; no paid model call is ever made on your behalf. `method` names how the CLI authenticates when known, and `providers` lists the model providers with credentials on bring-your-own-key CLIs. On `authStatus: false` the call throws `UnsupportedCapability`.
+The answer to `agent.authStatus()`: whether this CLI looks ready to run. This is “are credentials configured”, never “were they verified live”, and no paid model call is ever made on your behalf; on `authStatus: false` the call throws `UnsupportedCapability`.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -277,7 +283,7 @@ type AuthState = "authenticated" | "unauthenticated" | "unknown";
 
 ## ModelInfo
 
-One model an agent accepts, from `agent.models()`. The contract that makes the list useful: `id` is valid verbatim as `model` on the same agent. `reasoningEfforts` lists the `effort` values this model accepts, when the CLI reports them. On `modelListing: false` the call throws `UnsupportedCapability`.
+One model an agent accepts, from `agent.models()`. `id` is valid verbatim as `model` on the same agent, and on `modelListing: false` the call throws `UnsupportedCapability`.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -328,19 +334,11 @@ await agent.run("List the tables the app touches.", {
 type AgentId = keyof KnownAgents | (string & Record<never, never>);
 ```
 
-`KnownAgents` is the interface whose keys feed `AgentId`; it ships with a key for every built-in adapter. A third-party adapter teaches the type about its own id through module augmentation:
-
-```ts
-declare module "anyagent/types" {
-  interface KnownAgents {
-    "acme-cli": true;
-  }
-}
-```
+`KnownAgents` is the interface whose keys feed `AgentId`, with a key for every built-in adapter. A third-party adapter teaches the type about its own id through module augmentation; the repo’s `CONTRIBUTING.md` has the recipe.
 
 ## AnyAgentError
 
-The single error type everything in AnyAgent throws. There is no subclass tree; you branch on the `code` field. [Handle errors](/docs/errors) covers what to do about each code.
+The single error type everything in AnyAgent throws; there is no subclass tree, so you branch on the `code` field. [Errors](/docs/errors) covers what each code means and what to do about it.
 
 ```ts
 class AnyAgentError extends Error {
@@ -349,18 +347,7 @@ class AnyAgentError extends Error {
   readonly argv?: string[];
   readonly stderr?: string;
 }
-```
 
-| Name     | Type                | Description                                                             |
-| -------- | ------------------- | ----------------------------------------------------------------------- |
-| `code`   | `AnyAgentErrorCode` | which way the run failed; one of the five values below                  |
-| `raw`    | `unknown`           | the underlying cause: a native error or the CLI’s own error payload     |
-| `argv`   | `string[]`          | the command line that ran; attached when a process was involved         |
-| `stderr` | `string`            | what that process wrote to stderr; attached when a process was involved |
-
-`AnyAgentErrorCode` is the union of the five codes:
-
-```ts
 type AnyAgentErrorCode =
   | "UnsupportedCapability"
   | "InvalidOptions"
@@ -369,38 +356,9 @@ type AnyAgentErrorCode =
   | "Aborted";
 ```
 
-| `code`                  | Cause                                                                                                                                               |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UnsupportedCapability` | you asked for something this agent’s CLI cannot do: an option or method its capabilities do not declare, or an effort value outside its closed vocabulary; thrown before anything spawns |
-| `InvalidOptions`        | the options contradict each other on any agent: a dependent option without its prerequisite; thrown before anything spawns                          |
-| `Invocation`            | the CLI itself went wrong: it failed to spawn, exited nonzero, or reported an agent-level error; `argv` and `stderr` show what ran and what it said |
-| `Parse`                 | the CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event                        |
-| `Aborted`               | your `AbortSignal` fired and the run was terminated                                                                                                 |
-
-Branch on `code` to handle a specific failure:
-
-```ts
-import { create } from "anyagent";
-import { AnyAgentError } from "anyagent/errors";
-import { claudeCode } from "anyagent/claude-code";
-
-const controller = new AbortController();
-const agent = create(claudeCode());
-
-try {
-  await agent.run("Summarize this repo.", { signal: controller.signal });
-} catch (err) {
-  if (err instanceof AnyAgentError && err.code === "Aborted") {
-    console.log("Cancelled.");
-  } else {
-    throw err;
-  }
-}
-```
-
 ## VersionProbe
 
-The two I/O operations detection needs. `which` resolves a binary name to its path on `PATH`, or `undefined` when absent. `exec` runs a binary and captures its output. `detect` uses a real implementation by default; tests pass a fake via `detect({ probe })` to simulate any machine without spawning processes, shown in [Test without a CLI](/docs/run-agents#test-without-a-cli).
+The two I/O operations detection needs. `detect` uses a real implementation by default; tests pass a fake via `detect({ probe })` to simulate any machine without spawning processes, shown in [Test and ship](/docs/test-and-ship).
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -409,7 +367,7 @@ The two I/O operations detection needs. `which` resolves a binary name to its pa
 
 ## SystemProbe
 
-Everything discovery reads from the machine: the `VersionProbe` operations plus the environment, the home directory, and file contents. It is what `authStatus()` and `models()` consult. The real one is the default; tests pass a fake via `create(source, { probe })` to simulate any machine, credentials included, with zero subprocesses. `readFile` resolves `undefined` for a missing or unreadable file.
+Everything discovery reads from the machine: the `VersionProbe` operations plus the environment, home directory, and file contents, consulted by `authStatus()` and `models()`. The real one is the default; tests pass a fake via `create(source, { probe })` to simulate any machine, credentials included, with zero subprocesses.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -418,7 +376,7 @@ Everything discovery reads from the machine: the `VersionProbe` operations plus 
 
 ## RawHandle
 
-Direct access to the native CLI, reached through `agent.raw`, for capabilities the unified interface does not cover. `buildInvocation` returns the exact command AnyAgent would run, useful for logging or running it elsewhere. `spawn` launches it and hands you the Node `ChildProcess` to drive yourself, with the prompt already wired to stdin and no normalized events or lifecycle management. See [Escape hatches](/docs/escape-hatches).
+Direct access to the native CLI, reached through `agent.raw`, for capabilities the unified interface does not cover. `buildInvocation` returns the exact command AnyAgent would run; `spawn` launches it and hands you the Node `ChildProcess` to drive yourself, with the prompt wired to stdin and no normalized events.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -427,7 +385,8 @@ Direct access to the native CLI, reached through `agent.raw`, for capabilities t
 
 ## Next steps
 
-- [Run agents](/docs/run-agents): each run option applied in context
-- [Errors](/docs/errors): what to do about each `AnyAgentError` code
-- [Escape hatches](/docs/escape-hatches): `extraArgs` and `RawHandle` in practice
-- [Adapter contract](/docs/adapter-contract): the types an adapter implements
+<Cards>
+  <Card href="/docs/run-an-agent" title="Run an agent">Each run option applied in context.</Card>
+  <Card href="/docs/errors" title="Errors">What to do about each `AnyAgentError` code.</Card>
+  <Card href="/docs/adapters" title="Supported agents">What each agent supports, side by side.</Card>
+</Cards>

@@ -1,0 +1,91 @@
+---
+title: Test and ship
+description: Simulate any machine with fake probes, then run the checklist before release.
+---
+
+import { Card, Cards } from "fumadocs-ui/components/card";
+
+Your tests should not depend on which CLIs the CI machine has installed. Both entry points accept a fake probe, so a test simulates any machine without spawning a process. Once those tests pass, the checklist at the end of this page is what to confirm before release.
+
+## Simulate detection
+
+`detect({ probe })` takes two functions: `which` resolves a binary name to a path or `undefined`, and `exec` returns a command’s output:
+
+```ts
+import { detect } from "anyagent";
+
+const probe = {
+  which: async (bin: string) =>
+    bin === "claude" ? "/home/sam/.local/bin/claude" : undefined,
+  exec: async () => ({ stdout: "2.0.31", stderr: "", code: 0 }),
+};
+
+const installed = await detect({ probe });
+// One result: Claude Code 2.0.31, without touching PATH.
+```
+
+Pass `adapters` alongside `probe` to scan a subset or include a custom adapter; see [`DetectOptions`](/docs/api#detect).
+
+## Simulate credentials and files
+
+`create(source, { probe })` takes the richer [`SystemProbe`](/docs/api#systemprobe) — env, home dir, and file reads — so `authStatus()` and `models()` run against a machine you define:
+
+```ts
+import { create } from "anyagent";
+import { claudeCode } from "anyagent/claude-code";
+
+const agent = create(claudeCode(), {
+  probe: {
+    env: {},
+    exec: async () => ({
+      stdout: '{"loggedIn": true}',
+      stderr: "",
+      code: 0,
+    }),
+    homedir: () => "/home/fake",
+    readFile: async () => undefined,
+    which: async () => "/home/fake/bin/claude",
+  },
+});
+
+const auth = await agent.authStatus(); // answered from the fake, no process
+```
+
+## Three machines to cover
+
+Test the three machines your end users actually have. Each is a probe away, and your messages for the first two matter as much as the happy path:
+
+- **No supported agent installed**: name a supported CLI and its setup steps
+- **Installed but signed out**: report the sign-in state and tell the user how to fix it
+- **Installed and ready**: run the prompt and stream progress
+
+<Callout type="warn">
+  A fake probe never spawns the real CLI, so these tests won’t catch a CLI
+  whose output format changed. Keep one integration test per supported CLI that
+  runs against the installed binary.
+</Callout>
+
+## Before you ship
+
+A shipped tool runs a coding agent on a stranger’s machine, under their login, at their expense. Confirm every item before release:
+
+- Detect first, and handle the none-installed case with a message that names a supported CLI and its setup steps
+- Check [`authStatus()`](/docs/run-an-agent) where the agent supports it, and tell the user when the CLI is installed but not signed in
+- Tell the user which agent runs and that it draws on their login and subscription
+- Ask which agent to use when more than one is installed
+- Scope the prompt: name the files, keep changes local, forbid commits and pushes
+- Use [`readOnly: true`](/docs/run-an-agent) for analysis features; a default run edits files and runs shell commands autonomously, so reserve it for tasks where the user asked for code changes
+- Handle all five [error codes](/docs/errors) with messages a stranger can act on
+- Bound run time with `AbortSignal.timeout` so a hung CLI cannot hang your tool
+- Pin nothing to agent versions; `version` is for display, and AnyAgent targets current CLIs
+- Test with each supported CLI installed and with none, using a fake probe in CI
+- Log `argv` and `stderr` on failure so users can file useful bug reports
+
+## Next steps
+
+<Cards>
+  <Card href="/docs/run-an-agent" title="Run an agent">Detection, choice, options, and read-only runs.</Card>
+  <Card href="/docs/sessions" title="Sessions">Multi-turn runs that keep context across prompts.</Card>
+  <Card href="/docs/errors" title="Handle errors">Each code and the message it deserves.</Card>
+  <Card href="/docs/api#versionprobe" title="API reference">`VersionProbe` and `SystemProbe` in full.</Card>
+</Cards>

@@ -5,18 +5,14 @@ description: Install AnyAgent, detect an installed agent, and run your first pro
 
 import { Card, Cards } from "fumadocs-ui/components/card";
 
-This page takes you from install to a working script: detect a coding agent installed on your machine and run a read-only prompt on it.
+This page takes you from install to a working script: detect a coding agent installed on your machine and run one prompt on it.
 
 ## Prerequisites
-
-You need:
 
 - Node.js 22.18 or later, or Bun, so the example `.ts` file runs without a build step; AnyAgent itself runs on Node.js 18 or later
 - At least one [supported agent](/docs/adapters) installed and signed in
 
 ## Install
-
-Add the package with your package manager:
 
 ```npm
 npm i anyagent
@@ -29,26 +25,20 @@ Create a file named `run-agent.ts`:
 ```ts
 import { create, detect } from "anyagent";
 
-const installed = await detect();
-const [first] = installed;
+const [first] = await detect();
 if (!first) {
   throw new Error("No supported coding agent found.");
 }
 
 const agent = create(first);
-if (!agent.supports("readOnly")) {
-  throw new Error(`${first.name} cannot guarantee a read-only run.`);
-}
-
 const result = await agent.run(
-  "List the scripts in package.json and what each one does.",
-  { readOnly: true }
+  "List the scripts in package.json and what each one does."
 );
 
 console.log(result.text);
 ```
 
-`detect()` scans your `PATH` and returns every supported agent it finds, and `create()` wraps the first result in a runnable handle. `agent.supports("readOnly")` confirms this agent can guarantee a read-only run, and `readOnly: true` then confines it to reading, so the agent inspects files without changing anything.
+`detect()` scans your `PATH` for supported agents, and `create()` wraps one in a runnable handle.
 
 ## Run the script
 
@@ -75,16 +65,13 @@ package.json defines three scripts:
 ## Next steps
 
 <Cards>
-  <Card href="/docs/how-it-works" title="How AnyAgent works">
-    The mental model behind the API, in five ideas.
+  <Card href="/docs/run-an-agent" title="Run an agent">
+    Watch a run live, keep it read-only, get structured output.
   </Card>
-  <Card href="/docs/run-agents" title="Run agents">
-    Detect installs, let the user choose, and configure a run.
+  <Card href="/docs/sessions" title="Sessions">
+    One conversation across turns — resume, branch, and steer.
   </Card>
-  <Card href="/docs/streaming" title="Stream progress">
-    Render an agent’s events as it works, and cancel a run.
-  </Card>
-  <Card href="/docs/production" title="Ship to production">
-    What a shipped tool owes its end users, and the release checklist.
+  <Card href="/docs/test-and-ship" title="Test and ship">
+    Fake the machine in CI, and the pre-release checklist.
   </Card>
 </Cards>

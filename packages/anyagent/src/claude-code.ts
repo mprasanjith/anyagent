@@ -45,7 +45,7 @@ const toolName = (nativeName: string): ToolName =>
   TOOL_NAMES[nativeName] ?? nativeName;
 
 // Belt and braces for readOnly: `--permission-mode manual` already denies
-// unattended mutations, but a mode alone fails open if upstream ever changes
+// autonomous mutations, but a mode alone fails open if upstream ever changes
 // its semantics, so the mutating built-ins are also denied by name.
 const READ_ONLY_DENY = "Bash,Edit,NotebookEdit,Write";
 

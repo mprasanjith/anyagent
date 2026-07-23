@@ -301,7 +301,7 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
 
 /**
  * The adapter for the Antigravity CLI (`agy`). A default run has full
- * unattended autonomy; there is no read-only run (`readOnly: true` throws),
+ * full autonomy; there is no read-only run (`readOnly: true` throws),
  * and Antigravity's plan mode remains reachable via
  * `extraArgs: ["--mode", "plan"]`. `resume` continues a prior conversation
  * using the id from {@link RunResult.sessionId}; `effort` accepts `low`,
