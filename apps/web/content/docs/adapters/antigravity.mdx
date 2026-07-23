@@ -7,27 +7,24 @@ The `antigravity` adapter drives the Antigravity CLI in its headless print mode,
 
 ## What you can ask for
 
-`model`, `effort` (closed vocabulary: `low`, `medium`, `high`), and `resume` work on the CLI’s own flags. `systemPrompt` and `schema` work too, provided by AnyAgent. `readOnly` and `mcp` are undeclared, and requesting them throws. The full grid is on the [support matrix](/docs/adapters).
-
-No read-only run exists: `--mode plan` refuses workspace writes but leaves Antigravity’s always-allowed internal scratch directories writable (verified: a plan-mode run created a real file there and reported success). Plan mode stays reachable via `extraArgs: ["--mode", "plan"]`.
-
-`models()` runs `agy models`, a plain one-id-per-line, cross-vendor catalog (gemini, claude, and gpt-oss families); ids can bake an effort level into the name, and every id is valid verbatim as `model`. `authStatus()` is probed: the CLI has no status subcommand and no readable credential file, so a model listing means authenticated and a sign-in notice means not.
+`model`, `effort` (closed vocabulary: `low`, `medium`, `high`), and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly` and `mcp` are undeclared and throw: no true read-only run exists, since `--mode plan` still leaves Antigravity’s internal scratch directories writable. Plan mode stays reachable via `extraArgs: ["--mode", "plan"]`. `models()` runs `agy models`, a cross-vendor catalog whose ids are valid verbatim as `model` and can bake in an effort level; `authStatus()` is probed, reading a model listing as authenticated. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
+<Callout type="warn">
+The default model (`auto`) can spiral on trivial prompts; pin `model` for predictable cost.
+</Callout>
+
 - Print mode times out after 5 minutes by default; give a longer run `extraArgs: ["--print-timeout", "30m"]`.
-- The default model (`auto`) can spiral on trivial prompts; pin `model` for predictable cost.
 - The init event’s conversation id lands on `result.sessionId` and resumes via `resume`.
 - `usage` maps the CLI’s `thinking_tokens` to `reasoningTokens`; no cache line items are reported.
 
 ## Under the hood
 
-Every run executes `agy -p <prompt> --output-format stream-json --dangerously-skip-permissions`, with the prompt as `-p`’s value: piped stdin is ignored in print mode, so the prompt always rides argv. Permissions are skipped on purpose: without the flag, headless permission asks are auto-denied, and a denied tool surfaces as an `ERROR`-state step and an advisory `tool-result` while the run still ends `SUCCESS`. [Run options](/docs/api#run-options) append flags:
+Every run executes `agy -p <prompt> --output-format stream-json --dangerously-skip-permissions`, with the prompt as `-p`’s value; piped stdin is ignored in print mode. [Run options](/docs/api#run-options) append flags:
 
 | Option   | Flag                                                           |
 | -------- | ---------------------------------------------------------------- |
 | `model`  | `--model <id>`, ids verbatim from `models()`                   |
 | `effort` | `--effort <level>`                                             |
 | `resume` | `--conversation <sessionId>`                                   |
-
-The exit code lies: a self-canceled headless run reports `status: "CANCELED"` with exit 0, so the adapter trusts only the `result` status and throws `Invocation` on anything but `SUCCESS`.

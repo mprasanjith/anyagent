@@ -7,14 +7,10 @@ These are the agent CLIs AnyAgent supports. `detect()` scans for all of them in 
 
 <CapabilityMatrix />
 
-How to read the grid: `native` means the CLI provides the capability itself, `emulated` means AnyAgent provides the behavior identically on every agent that declares it, and `—` means requesting it throws `UnsupportedCapability` before anything spawns. You ask for an emulated capability exactly as you ask for a native one. Sessions read `emulated` where AnyAgent provides the conversation loop itself, one process per turn threaded through the CLI’s own resume mechanism; [Run a conversation](/docs/sessions) covers what that means in practice. Fork shows whether a resumed conversation can branch instead of continuing, and Attachments whether files can ride along with a prompt; both read like any other capability column.
-
-Auth status and Models answer discovery questions rather than gating run options: `native` means the CLI answers itself, and `probed` means AnyAgent reads the CLI’s credential files and environment variables instead, a hint rather than a guarantee.
-
-Everything else CLI-specific lives on the adapter’s page: what you can ask for, behavior worth knowing, and the flags underneath. The pages share one shape, so a fact about one agent sits in the same place on every other.
+In the grid, `native` means the CLI provides the capability, `emulated` means AnyAgent provides it identically wherever declared, and `—` means requesting it throws `UnsupportedCapability` before anything spawns; you ask for an emulated capability exactly as a native one. Auth status and Models answer discovery questions rather than gating runs, where `probed` means AnyAgent reads credential files and environment variables, a hint rather than a guarantee. Everything else CLI-specific lives on the adapter’s page.
 
 ## Next steps
 
-- [Run agents](/docs/run-agents): scan the machine and choose among the agents installed on it
-- [Escape hatches](/docs/escape-hatches): reach native capabilities the unified interface does not cover
-- [Adding an adapter](/docs/adding-an-adapter): bring another CLI into this list
+- [Run an agent](/docs/run-an-agent): choose among the agents on the machine and reach native flags the unified interface does not cover
+- [Sessions](/docs/sessions): thread a conversation across turns
+- [Adding an adapter](https://github.com/mprasanjith/anyagent/blob/main/CONTRIBUTING.md): bring another CLI into this list

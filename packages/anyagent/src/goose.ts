@@ -223,7 +223,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
     args,
     command: "goose",
     cwd: opts.cwd,
-    // The unattended baseline: goose's approve modes would hang a headless
+    // The autonomous baseline: goose's approve modes would hang a headless
     // run. A caller-set GOOSE_MODE wins over the default.
     env: { GOOSE_MODE: "auto", ...opts.env },
     input: prompt,

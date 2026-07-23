@@ -213,7 +213,7 @@ class AcpTurnRun extends RunHandle {
 // lazy — the connection opens on the first `run` — and turns queue through the
 // same FIFO discipline as the emulated tier, one live `session/prompt` at a
 // time. `steer` injects an extra prompt; permission requests are surfaced as
-// events and auto-answered so an unattended run never hangs.
+// events and auto-answered so a run never blocks waiting on an answer.
 export class AcpSessionImpl<C extends Capabilities = Capabilities>
   implements Session<C>
 {

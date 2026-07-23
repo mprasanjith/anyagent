@@ -2,21 +2,13 @@
   "pages": [
     "index",
     "quickstart",
-    "how-it-works",
     "---Guides---",
-    "run-agents",
+    "run-an-agent",
     "sessions",
-    "streaming",
-    "structured-output",
-    "skills",
-    "escape-hatches",
-    "production",
+    "test-and-ship",
     "---Reference---",
     "errors",
     "api",
-    "adapters",
-    "---Extend---",
-    "adding-an-adapter",
-    "adapter-contract"
+    "adapters"
   ]
 }

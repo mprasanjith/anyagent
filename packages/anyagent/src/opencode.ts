@@ -5,7 +5,7 @@ import {
 import type { Adapter } from "./types.js";
 
 /**
- * The adapter for opencode (`opencode`). A run gets the CLI's full unattended
+ * The adapter for opencode (`opencode`). A run gets the CLI's full
  * autonomy by default; `readOnly: true` denies file edits and shell for the
  * run — the adapter owns the `OPENCODE_PERMISSION` env var to guarantee that,
  * so a value you pass in `env` under that key is overridden. `resume`

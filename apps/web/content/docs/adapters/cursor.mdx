@@ -7,21 +7,18 @@ The `cursor` adapter drives the Cursor CLI in headless print mode, detected as t
 
 ## What you can ask for
 
-`readOnly`, `model`, `effort`, and `resume` work on the CLI’s own flags. `systemPrompt` and `schema` work too, provided by AnyAgent. `mcp` is undeclared: Cursor manages servers through its own `agent mcp` configuration, reachable via [`extraArgs`](/docs/escape-hatches). The full grid is on the [support matrix](/docs/adapters).
-
-`readOnly` runs in plan mode, which is enforced read-only: the CLI refuses writes. `authStatus()` asks `agent status --format json` and `models()` parses `agent --list-models`, so both answers are the CLI’s own word, and every listed id is valid verbatim as `model`.
+`readOnly`, `model`, `effort`, and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is undeclared: reach Cursor’s own `agent mcp` configuration via [`extraArgs`](/docs/run-an-agent). `readOnly` runs plan mode, which the CLI enforces read-only. `authStatus()` asks `agent status --format json` and `models()` parses `agent --list-models`, every listed id valid verbatim as `model`. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
-- `effort` has no standalone flag; it rides in the model id’s bracket overrides, so `effort` without `model` throws `InvalidOptions`. `model: "m", effort: "high"` becomes `--model m[effort=high]`, and a caller-supplied bracket list gains effort as one more override.
-- Effort and speed variants are also baked into model ids themselves (`gpt-5.3-codex-low`, `…-high-fast`); picking one of those ids needs no `effort` at all.
-- Thinking streams natively as `reasoning-delta`; one `text-delta` carries a whole assistant text block.
+- `effort` has no standalone flag; it rides in the model id’s bracket overrides, so `effort` without `model` throws `InvalidOptions`. `model: "m", effort: "high"` becomes `--model m[effort=high]`.
+- Effort and speed variants are also baked into model ids (`gpt-5.3-codex-low`, `…-high-fast`); picking one of those needs no `effort`.
 - The init event’s session id lands on `result.sessionId`; pass it back as `resume`.
-- Usage reports cache reads and writes as separate line items on `cacheReadTokens` and `cacheWriteTokens`; no cost and no reasoning tokens are reported.
+- Usage reports cache reads and writes as separate line items; no cost and no reasoning tokens are reported.
 
 ## Under the hood
 
-Every run executes `agent -p --output-format stream-json --trust --force`, the unattended default, with the prompt piped over stdin. `--trust` is always passed: a headless run otherwise stalls on the workspace-trust prompt, which nothing in `run()` can answer. `--force` is deliberate too: print mode without it only proposes edits, which would silently break the unattended full-autonomy contract. [Run options](/docs/api#run-options) change the mode and append flags:
+Every run executes `agent -p --output-format stream-json --trust --force` with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
 
 | Option           | Flag                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------ |
@@ -29,7 +26,3 @@ Every run executes `agent -p --output-format stream-json --trust --force`, the u
 | `model`          | `--model <id>`, bracket overrides pass through verbatim (`"claude-opus-4-8[context=1m]"`) |
 | `effort`         | compiled into the model’s bracket overrides                                                |
 | `resume`         | `--resume <chatId>`                                                                        |
-
-Tool calls arrive in a oneof-style envelope (`readToolCall`, `shellToolCall`, …); the shared names map onto it (`shellToolCall` → `bash`) and everything else keeps the envelope key as its name.
-
-Cursor ships an ACP endpoint, `agent acp`; see the [sessions guide](/docs/sessions).

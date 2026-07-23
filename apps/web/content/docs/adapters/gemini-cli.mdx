@@ -7,29 +7,24 @@ The `gemini-cli` adapter drives the Gemini CLI in headless mode, detected as the
 
 ## What you can ask for
 
-`model`, `readOnly`, and `resume` work on the CLI’s own flags. `systemPrompt` and `schema` work too, provided by AnyAgent. `effort`, `mcp`, and model listing are undeclared, and requesting them throws. The full grid is on the [support matrix](/docs/adapters).
-
-`authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain.
+`model`, `readOnly`, and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `effort`, `mcp`, and model listing are undeclared and throw. `authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
-- Pin a model. The CLI’s automatic routing can spend minutes self-investigating a trivial prompt, so never leave `model` unset expecting a sane default.
-- Model aliases are rerouted upstream: requesting `gemini-2.5-flash` runs and reports `gemini-3.5-flash` in the stats.
+<Callout type="warn">
+Pin a model. Automatic routing can spend minutes self-investigating a trivial prompt, so never leave `model` unset expecting a sane default.
+</Callout>
+
 - The init event’s session id lands on `result.sessionId`; `resume` takes that UUID.
-- Assistant text arrives as genuine deltas; the stream carries no thinking output.
-- Usage maps the terminal stats block: `cached` becomes `cacheReadTokens`, and the per-model breakdown stays on the usage event’s `raw`.
-- A `result` with `status: "error"` throws `AnyAgentError` with the agent’s own message, ahead of the CLI’s nonzero exit.
+- Resuming a live session from a different process can fail; start a fresh session instead.
+- Usage maps the terminal stats block: `cached` becomes `cacheReadTokens`.
 
 ## Under the hood
 
-Every run executes `gemini -p "" --output-format stream-json --skip-trust --approval-mode yolo`, the unattended default, with the prompt piped over stdin. `--skip-trust` is always passed: an untrusted working directory otherwise exits 55 before doing anything. The prompt is echoed back as a `user` message and dropped. [Run options](/docs/api#run-options) change the mode and append flags:
+Every run executes `gemini -p "" --output-format stream-json --skip-trust --approval-mode yolo` with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
 
 | Option           | Flag                                                                          |
 | ---------------- | ----------------------------------------------------------------------------- |
 | `readOnly: true` | `--approval-mode default`, whose headless toolset has no write or shell tools |
 | `model`          | `-m <name>`, in the Gemini CLI’s own vocabulary; never defaulted              |
 | `resume`         | `--resume <sessionId>`                                                        |
-
-`readOnly` deliberately avoids `--approval-mode plan`: headless, the model can call `exit_plan_mode`, which self-approves, and then write freely. In `default` mode the mutating tools are never registered, so a write is structurally impossible.
-
-Gemini CLI ships an ACP endpoint, `gemini --acp`; see the [sessions guide](/docs/sessions).

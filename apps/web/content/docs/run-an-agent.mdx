@@ -1,0 +1,183 @@
+---
+title: Run an agent
+description: Detect an installed agent, run one prompt, watch it work, then reach structured output, skills, and native flags.
+---
+
+import { Card, Cards } from "fumadocs-ui/components/card";
+
+One prompt in, one result out. This page takes you from detecting an installed agent to reading a finished run, then into structured output, skills, and the escape hatch to native CLI flags. Every snippet assumes at least one [supported agent](/docs/adapters) is installed and signed in.
+
+## Detect and choose an agent
+
+`detect()` scans the end user’s `PATH` and returns one result per installed agent, empty when none are found:
+
+```ts
+import { create, detect } from "anyagent";
+
+const installed = await detect();
+const [found] = installed;
+if (!found) {
+  console.error("No supported coding agent found. Install one and rerun.");
+  process.exit(1);
+}
+const agent = create(found);
+```
+
+The order carries no ranking, so which agent to run is your product decision. The prompt runs under the end user’s login and bills their subscription, so tell them which agent you found, and when several are installed, ask. To target one agent instead, import its adapter and skip detection with `create(claudeCode())`; a missing binary then surfaces as an [`Invocation` error](/docs/errors#invocation) on the first run.
+
+## Run and read the result
+
+`agent.run(prompt)` starts one autonomous turn. Scope the prompt: name the files, state the goal, forbid the rest, because nothing can approve or reject an action mid-run.
+
+```ts
+const result = await agent.run(
+  "Add the Acme SDK to this project: install the dependency and wire it " +
+    "into the app entry point. Only edit files in this repo. Do not commit."
+);
+console.log(result.text);
+```
+
+`result.text` is the final answer; `usage`, `sessionId`, `events`, and `raw` carry the rest ([`RunResult`](/docs/api#runresult)). Holding a result means the run succeeded; every failure [throws instead](/docs/errors).
+
+## Watch it live
+
+The same call is iterable. Loop over it for [events](/docs/api#agentevent) as the agent works, and await it for the result:
+
+```ts
+const run = agent.run("Fix the failing test in test/parser.test.ts.");
+for await (const event of run) {
+  if (event.type === "text-delta") {
+    process.stdout.write(event.text);
+  } else if (event.type === "tool-call") {
+    console.log(`\n[running ${event.name}]`);
+  }
+}
+const result = await run;
+```
+
+Anything longer than a few seconds should show progress, or a silent run looks hung.
+
+## Stop a run
+
+`run.abort()` stops the agent (the run throws `code: "Aborted"`); breaking out of the loop only stops watching. Wire abort to Ctrl+C, and bound hung CLIs with `signal: AbortSignal.timeout(300_000)` in the options:
+
+```ts
+const run = agent.run(prompt);
+process.on("SIGINT", () => run.abort());
+```
+
+## Keep a run read-only
+
+<SupportedBy capability="readOnly" />
+
+For analysis features, `readOnly: true` guarantees nothing on the machine changes. Not every CLI can promise that, so guard it:
+
+```ts
+if (agent.supports("readOnly")) {
+  const report = await agent.run("Audit the error handling in src/api/.", {
+    readOnly: true,
+  });
+}
+```
+
+A run without `readOnly` has the CLI’s full autonomy, file edits and shell included, because nothing in a run can answer an approval prompt. Harness-specific middle grounds stay reachable via [`extraArgs`](#reach-native-flags).
+
+## Tune the run
+
+`model`, `effort`, `systemPrompt`, `cwd`, `env`, `attachments`, and `mcp` each shape one run; the [run options reference](/docs/api#run-options) covers every field. The pattern is always the same: pass the option, and guard it with `agent.supports()` when the agent is not known in advance:
+
+```ts
+if (agent.supports("effort")) {
+  await agent.run(prompt, { effort: "high" });
+}
+```
+
+Before shipping, check the agent is signed in with `agent.authStatus()`, and list the names the `model` option accepts with `agent.models()`. Both throw where the CLI has no answer; the [matrix](/docs/adapters) shows who answers what.
+
+## Get structured output
+
+<SupportedBy capability="structuredOutput" />
+
+Pass a JSON Schema as `schema` and AnyAgent returns the agent’s reply parsed and validated against it on `result.json`, whether the reply comes back bare, fenced, or embedded in prose. The parsed value is typed `unknown`, so cast it to the shape you asked for:
+
+```ts
+const schema = {
+  type: "object",
+  properties: {
+    dependencies: { type: "array", items: { type: "string" } },
+    testCommand: { type: "string" },
+  },
+  required: ["dependencies", "testCommand"],
+};
+
+const result = await agent.run(
+  "Inspect this repo and report its runtime dependencies and the command " +
+    "that runs its tests.",
+  { schema }
+);
+
+const { dependencies, testCommand } = result.json as {
+  dependencies: string[];
+  testCommand: string;
+};
+```
+
+When the first reply fails to parse or validate, AnyAgent retries once, re-asking with the errors quoted. When the retry also fails, `run()` throws `code: "Parse"` with the validation errors and the agent’s final reply on `err.raw` ([Handle errors](/docs/errors)).
+
+<Callout type="warn">
+  The retry is a second full agent run. On an agent that edits files, a run
+  whose first reply fails validation acts on your repo twice. For extraction
+  tasks, pair `schema` with a [read-only run](#keep-a-run-read-only) where the
+  agent supports one, so a retry stays side-effect free.
+</Callout>
+
+Iterating a schema run yields raw events from both attempts, but `json` exists only on the final result, never mid-stream.
+
+## Use skills
+
+[Agent Skills](https://agentskills.io) are folders holding a `SKILL.md` file that a CLI loads when a task calls for it. The CLIs discover them from the filesystem, so AnyAgent adds no API for skills: place a skill in the repo the agent works on and set [`cwd`](#tune-the-run), and the CLI finds it.
+
+| Agent       | Project paths                                                            | User paths                                 |
+| ----------- | ------------------------------------------------------------------------ | ------------------------------------------ |
+| Claude Code | `.claude/skills/`                                                        | `~/.claude/skills/`                        |
+| Codex       | `.agents/skills/`                                                        | `~/.agents/skills/`                        |
+| opencode    | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/`                | user-level equivalents of each             |
+| Pi          | `.pi/skills/`, `.agents/skills/`                                         | `~/.pi/agent/skills/`, `~/.agents/skills/` |
+| goose       | `.agents/skills/`                                                        | `~/.agents/skills/`                        |
+| Gemini CLI  | `.agents/skills/`, `.gemini/skills/`                                     | `~/.agents/skills/`, `~/.gemini/skills/`   |
+| Antigravity | `.agents/skills/`                                                        | `~/.gemini/config/skills/`                 |
+| Cursor      | `.agents/skills/`, `.cursor/skills/`, `.claude/skills/`, `.codex/skills/` | user-level equivalents of each             |
+| Kilo Code   | none                                                                     | none                                       |
+| Cline       | none                                                                     | none                                       |
+
+`.agents/skills/` is the shared path: every skills-capable agent except Claude Code reads it. Claude Code reads `.claude/skills/` (Cursor and opencode read that path too). Point a run at a repo that holds a skill under one of these paths, set [`cwd`](#tune-the-run) to it, and the CLI picks the skill up on its own. Kilo Code and Cline discover no skills; there, fold the instructions into [`systemPrompt`](#tune-the-run), which reaches every built-in agent.
+
+## Reach native flags
+
+The unified interface covers what the CLIs share, so each can do things it leaves out. Three hatches reach a CLI’s native capabilities, in increasing order of control:
+
+| You need                                             | Reach for                   |
+| ---------------------------------------------------- | --------------------------- |
+| One native flag the interface leaves out             | `extraArgs`                 |
+| The exact argv, for logging or running it elsewhere  | `agent.raw.buildInvocation` |
+| To own the process: custom parsing, bidirectional IO | `agent.raw.spawn`           |
+
+`extraArgs` appends native flags to the argv while the normalized event stream and lifecycle management stay the same:
+
+```ts
+const result = await agent.run("Generate API docs from the source.", {
+  extraArgs: ["--permission-mode", "acceptEdits"],
+});
+```
+
+Flags are appended after AnyAgent’s own, unvalidated, so one can override a typed option; pinning Claude Code’s `acceptEdits` mode above relies on exactly that. Prefer a typed option whenever one exists.
+
+`agent.raw.buildInvocation` returns the exact command AnyAgent would spawn without running it, and `agent.raw.spawn` launches it and hands back the Node `ChildProcess`. Both skip capability validation, so check `agent.capabilities` yourself; the [`RawHandle` type](/docs/api) covers what each returns.
+
+## Next steps
+
+<Cards>
+  <Card href="/docs/sessions" title="Sessions">Carry one conversation across many runs.</Card>
+  <Card href="/docs/test-and-ship" title="Test and ship">Simulate any machine, then work the release checklist.</Card>
+  <Card href="/docs/api" title="API reference">Every run option, result field, and error code.</Card>
+</Cards>

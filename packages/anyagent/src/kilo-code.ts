@@ -8,7 +8,7 @@ import type { Adapter } from "./types.js";
  * The adapter for Kilo Code's CLI (`kilo`). Kilo is an opencode fork with the
  * identical headless surface — verified against real `kilo` output, not
  * assumed from the lineage — and behaves like the opencode adapter: full
- * unattended autonomy by default, `readOnly: true` denies file edits and
+ * full autonomy by default, `readOnly: true` denies file edits and
  * shell (the adapter owns the `KILO_PERMISSION` env var, overriding a value
  * you pass in `env` under that key), `resume` continues a session using
  * `RunResult.sessionId`, `effort` passes a provider-defined variant name

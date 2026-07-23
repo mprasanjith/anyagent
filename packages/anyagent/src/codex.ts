@@ -332,7 +332,7 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
 };
 
 /**
- * The adapter for the Codex CLI (`codex`). A default run has full unattended
+ * The adapter for the Codex CLI (`codex`). A default run has full
  * autonomy (Codex's `danger-full-access` sandbox); `readOnly: true` confines
  * it to the `read-only` sandbox instead. `resume` continues a prior thread
  * using the id from {@link RunResult.sessionId}; `effort` passes through to

@@ -136,10 +136,10 @@ export interface Capabilities {
    * {@link Agent.session}:
    *
    * - `"native"` — the session holds a live bidirectional channel to the
-   *   agent (no built-in adapter declares this yet).
-   * - `"emulated"` — AnyAgent provides continuity itself: one process per
-   *   turn, threaded through the CLI's own resume mechanism. Turns behave
-   *   identically; only the live-channel members are unavailable.
+   *   agent, unlocking {@link Session.steer}.
+   * - `"emulated"` — continuity works through `resume`, one turn at a time.
+   *   Turns behave identically; only the live-channel members
+   *   ({@link Session.steer}) are unavailable.
    * - `false` — the CLI has no way to continue a conversation; both the
    *   `resume` option and `session()` throw.
    */
@@ -151,26 +151,26 @@ export interface Capabilities {
    */
   sessionFork: CapabilitySupport;
   /**
-   * Whether the agent streams its work as it goes. When truthy, `runStream`
-   * relays the agent's own live events. When `false`, the CLI only prints a
-   * final answer, so you get it all at once — one `text-delta` with the whole
-   * reply, then `done`. Either way `runStream` works; this just tells you
-   * whether to expect progressive output.
+   * Whether the agent streams its work as it goes. When truthy, iterating a
+   * {@link Run} relays the agent's own live events. When `false`, the CLI
+   * only prints a final answer, so you get it all at once — one `text-delta`
+   * with the whole reply, then `done`. Iteration works either way; this just
+   * tells you whether to expect progressive output.
    */
   streaming: CapabilitySupport;
   /**
    * Whether the agent can return output shaped to a schema, guarding
-   * {@link BaselineRunOptions.schema}. `"emulated"` means the schema
-   * instructions travel in the prompt; `"native"` means the CLI has its own
-   * structured-output flag. Either way the contract is identical: a
-   * validated value on {@link RunResult.json}, with one retry.
+   * {@link BaselineRunOptions.schema}. Either way a validated value lands on
+   * {@link RunResult.json}. `"native"` means the CLI enforces the shape
+   * itself; `"emulated"` is a weaker guarantee — AnyAgent validates the reply
+   * and retries once before giving up.
    */
   structuredOutput: CapabilitySupport;
   /**
    * Whether you can add to the agent's system prompt. See
-   * {@link BaselineRunOptions.systemPrompt}. `"native"` means the CLI has an
-   * append-system-prompt flag; `"emulated"` means your text reaches the
-   * model as a prompt preamble — observably weaker adherence, same call.
+   * {@link BaselineRunOptions.systemPrompt}. Your text always reaches the
+   * model and never replaces the CLI's built-in prompt; `"emulated"` has
+   * observably weaker adherence than `"native"`, from the same call.
    */
   systemPrompt: CapabilitySupport;
 }
@@ -271,7 +271,7 @@ export type McpConfig = Record<string, McpServer>;
  * AnyAgent can drive; the compiler enforces the portability. Everything
  * beyond this is an {@link ExtensionOptions} field, gated per agent.
  *
- * A baseline run is unattended: `run()` and `runStream()` have no channel
+ * A baseline run is autonomous: a run has no channel
  * for answering an approval prompt, so every agent runs with the most
  * autonomy its CLI offers. To keep a run from changing anything, see
  * {@link ExtensionOptions.readOnly}.
@@ -306,11 +306,10 @@ export interface BaselineRunOptions {
   /** Aborting terminates the process; the run throws `code: "Aborted"`. */
   signal?: AbortSignal;
   /**
-   * Extra system-level instructions for the run, appended to the CLI's own
-   * system prompt where the CLI has a flag for that
-   * (`systemPrompt: "native"`), and folded into the prompt text as a
-   * preamble where it does not (`"emulated"`) — same call, observably
-   * weaker adherence. It never replaces the CLI's built-in prompt.
+   * Extra system-level instructions for the run, added on top of the CLI's
+   * own system prompt, which they never replace. Where
+   * {@link Capabilities.systemPrompt} is `"emulated"`, adherence is observably
+   * weaker than `"native"`; the call is the same either way.
    */
   systemPrompt?: string;
 }
@@ -350,9 +349,9 @@ export interface ExtensionOptions {
    * file writes, no shell. Gated by {@link Capabilities.readOnly}; an
    * agent that cannot guarantee it throws rather than approximating.
    *
-   * The default (`false` or omitted) is a fully unattended run with the most
+   * The default (`false` or omitted) is a fully autonomous run with the most
    * autonomy the CLI offers — file edits and shell included. There is no
-   * middle setting: nothing in `run()`/`runStream()` can answer an approval
+   * middle setting: nothing in a run can answer an approval
    * prompt, so a level that waits for one cannot exist here. Harness-specific
    * modes between the two remain reachable via
    * {@link BaselineRunOptions.extraArgs}.
@@ -432,13 +431,16 @@ export type RunOptions = BaselineRunOptions & Partial<ExtensionOptions>;
  * - `file-change` — the agent created, modified, or deleted a file, on CLIs
  *   that report it.
  * - `usage` — token/cost accounting became available.
+ * - `permission-request` — the agent asked to run something that needs
+ *   approval. AnyAgent currently answers automatically with the first allow
+ *   option; the event lets you observe what was asked.
  * - `done` — the run finished; carries the final {@link RunResult}.
  *
  * How much text one `text-delta` carries depends on the CLI: a token, a
- * chunk, or a whole assistant message. What you can rely on — enforced by
- * the conformance suite — is that concatenating every delta's `text`
- * reproduces `RunResult.text` exactly. `raw` on each event except `done` is
- * the CLI's untouched native payload for it.
+ * chunk, or a whole assistant message. What you can rely on is that
+ * concatenating every delta's `text` reproduces `RunResult.text` exactly.
+ * `raw` on each event except `done` is the CLI's untouched native payload for
+ * it.
  */
 export type AgentEvent =
   | { type: "session"; sessionId: string; raw?: unknown }
@@ -537,8 +539,7 @@ export interface Invocation {
 export interface OutputSource {
   /**
    * Terminate the underlying process. The core calls this when a consumer
-   * abandons a stream early, so a half-read agent isn't left running. A no-op
-   * once the process has already exited.
+   * abandons the stream early. A no-op once the process has already exited.
    */
   close?: () => void;
   exitCode: Promise<number>;
@@ -694,8 +695,7 @@ export interface Detection {
  * The contract for supporting one agent CLI. An adapter is data plus pure
  * functions: it describes how to invoke its CLI and how to read its output,
  * while the core does all actual I/O (spawning, stream handling, validation,
- * lifecycle). That split keeps adapters testable offline against recorded
- * fixtures, with zero subprocesses.
+ * lifecycle). That split keeps adapters testable offline.
  *
  * Declare `capabilities` with `as const satisfies Capabilities` so the
  * table's literal types reach {@link Agent} and unsupported options become
@@ -736,8 +736,7 @@ export interface Adapter<C extends Capabilities = Capabilities> {
   /**
    * Map the process output to normalized events, ending with exactly one
    * `done`. Under `strict`, throw `AnyAgentError` (`code: "Parse"`) on any
-   * unrecognized shape — the live drift check relies on strict mode to catch
-   * upstream format changes.
+   * unrecognized shape.
    */
   parse: (
     source: OutputSource,
@@ -786,7 +785,7 @@ export interface RawHandle {
  * A ready-to-run handle on one installed coding agent; get one from
  * `create()`.
  *
- * `run` starts one unattended turn and returns a {@link Run}: await it for
+ * `run` starts one autonomous turn and returns a {@link Run}: await it for
  * the final {@link RunResult}, iterate it for live {@link AgentEvent}s, or
  * both. `session` opens a multi-turn conversation.
  *
