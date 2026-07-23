@@ -3,3 +3,6 @@ dist
 .next
 .turbo
 .source
+
+# copied from the repo root by prepack
+packages/anyagent/README.md
