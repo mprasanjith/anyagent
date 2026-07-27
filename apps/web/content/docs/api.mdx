@@ -86,7 +86,7 @@ An `Agent` is a ready-to-run handle on one installed CLI: `run` starts one turn 
 
 ## Run
 
-One run in flight: a `Promise` of the [`RunResult`](#runresult) that is also an `AsyncIterable` of [`AgentEvent`](#agentevent)s, so you await it, iterate it, or both. It runs to completion unless `abort()` or its `signal` fires; breaking out of an iteration loop stops watching, not the agent.
+One run in flight: a `Promise` of the [`RunResult`](#runresult) that is also an `AsyncIterable` of [`AgentEvent`](#agentevent)s, so you await it, iterate it, or both. It runs to completion unless `abort()` or its `signal` fires; breaking out of an iteration loop stops watching, not the agent. When a run fails, iterating yields the events received so far and then throws the error awaiting rejects with.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"

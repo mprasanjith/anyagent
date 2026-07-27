@@ -28,7 +28,9 @@ import type {
 } from "../types.js";
 import type { AcpSession, AcpTransport } from "./acp.js";
 import { connect } from "./acp.js";
-import { RunHandle } from "./run.js";
+import { validateOptions } from "./capabilities.js";
+import { promptWithSchema } from "./emulate.js";
+import { RunHandle, runWithSchema } from "./run.js";
 import { SessionImpl } from "./session.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
@@ -329,12 +331,15 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     acpRun: AcpTurnRun
   ): Promise<void> {
     try {
+      // Before the connection opens, so a live session fails fast on an
+      // option this agent cannot honor exactly as every other path does.
+      validateOptions(this.agent.adapter, opts);
       const mode = await this.#ensureMode(opts);
       if (mode.kind === "emulated") {
         await this.#bridgeEmulated(mode.delegate, prompt, opts, acpRun);
         return;
       }
-      await this.#driveNative(mode.live, prompt, acpRun);
+      await this.#driveNative(mode.live, prompt, opts, acpRun);
     } catch (error) {
       acpRun.settleErr(AnyAgentError.wrap(error));
     }
@@ -431,11 +436,37 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
   async #driveNative(
     live: AcpSession,
     prompt: string,
+    opts: RunOptions,
     acpRun: AcpTurnRun
   ): Promise<void> {
+    const final = await runWithSchema(
+      prompt,
+      opts,
+      (text) => this.#promptOnce(live, text, opts, acpRun),
+      (event) => {
+        acpRun.push(event);
+      }
+    );
+    this.#id = live.sessionId;
+    acpRun.settleOk(final);
+  }
+
+  // One live `session/prompt`: relay its updates onto the run and return the
+  // turn's result. Failures throw so the caller settles the handle once, after
+  // the schema contract has had its say.
+  async #promptOnce(
+    live: AcpSession,
+    prompt: string,
+    opts: RunOptions,
+    acpRun: AcpTurnRun
+  ): Promise<RunResult> {
     const active: ActiveTurn = { events: [], run: acpRun, text: [] };
     this.#active = active;
-    const turn = live.prompt(prompt, (update) => {
+    const text =
+      opts.schema === undefined
+        ? prompt
+        : promptWithSchema(prompt, opts.schema);
+    const turn = live.prompt(text, (update) => {
       const event = translateUpdate(update);
       if (event) {
         this.#emit(active, event);
@@ -449,28 +480,23 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     }
     const stop = response.stopReason;
     if (stop === "cancelled") {
-      acpRun.settleErr(
-        new AnyAgentError("Aborted", "the run was aborted", { raw: response })
-      );
-      return;
+      throw new AnyAgentError("Aborted", "the run was aborted", {
+        raw: response,
+      });
     }
     if (!SUCCESS_STOPS.has(stop)) {
-      acpRun.settleErr(
-        new AnyAgentError(
-          "Invocation",
-          `the agent ended the turn with stop reason "${stop}"`,
-          { raw: response }
-        )
+      throw new AnyAgentError(
+        "Invocation",
+        `the agent ended the turn with stop reason "${stop}"`,
+        { raw: response }
       );
-      return;
     }
-    this.#id = live.sessionId;
-    acpRun.settleOk({
+    return {
       events: active.events,
       raw: response,
       sessionId: live.sessionId,
       text: active.text.join(""),
-    });
+    };
   }
 
   async #bridgeEmulated(

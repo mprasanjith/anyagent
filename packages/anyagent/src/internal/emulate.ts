@@ -3,7 +3,12 @@ import type { Adapter, RunOptions } from "../types.js";
 const withSystemPrompt = (prompt: string, systemPrompt: string): string =>
   `<system-instructions>\n${systemPrompt}\n</system-instructions>\n\n${prompt}`;
 
-const withSchema = (prompt: string, schema: Record<string, unknown>): string =>
+// Also the live tier's only channel for a schema: an ACP turn carries text and
+// nothing else, so there is no flag to hand the schema to.
+export const promptWithSchema = (
+  prompt: string,
+  schema: Record<string, unknown>
+): string =>
   `${prompt}\n\nRespond with a single JSON value that matches this JSON Schema. Output only the JSON, with no prose and no code fences.\n\n<json-schema>\n${JSON.stringify(schema, null, 2)}\n</json-schema>`;
 
 // Fold every option the adapter declares as `"emulated"` into the prompt and
@@ -30,7 +35,7 @@ export const applyEmulations = (
   }
 
   if (caps.structuredOutput === "emulated" && nextOpts.schema !== undefined) {
-    nextPrompt = withSchema(nextPrompt, nextOpts.schema);
+    nextPrompt = promptWithSchema(nextPrompt, nextOpts.schema);
     nextOpts.schema = undefined;
   }
 

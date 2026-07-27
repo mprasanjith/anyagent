@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-
+import type { AnyAgentError } from "../src/errors.js";
 import { AcpSessionImpl } from "../src/internal/acp-session.js";
 import { AgentImpl } from "../src/internal/agent.js";
 import type { Adapter, AgentEvent } from "../src/types.js";
@@ -8,6 +8,7 @@ import {
   request,
   response,
   type ScriptApi,
+  type ScriptedTransport,
   scriptedTransport,
   update,
 } from "./acp-transport.js";
@@ -378,6 +379,147 @@ test("resume without loadSession falls back to the emulated print-mode cursor", 
   expect(result.text).toBe("emulated ok");
   expect(result.sessionId).toBe("s2");
   await transport.done;
+});
+
+// The JSON Schema the schema-turn tests validate against, and a transport
+// wrapper that counts how many `session/prompt` requests actually went out.
+const okSchema = {
+  properties: { ok: { type: "boolean" } },
+  required: ["ok"],
+  type: "object",
+};
+
+const countingPrompts = (
+  transport: ScriptedTransport
+): { counted: ScriptedTransport; prompts: () => number } => {
+  let prompts = 0;
+  return {
+    counted: {
+      ...transport,
+      send: (line: string) => {
+        if (
+          (JSON.parse(line) as { method?: string }).method === "session/prompt"
+        ) {
+          prompts += 1;
+        }
+        transport.send(line);
+      },
+    },
+    prompts: () => prompts,
+  };
+};
+
+test("an unsupported option rejects before the transport is ever opened", async () => {
+  let opened = 0;
+  const sent: string[] = [];
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => {
+      opened += 1;
+      return {
+        close: () => undefined,
+        onLine: () => undefined,
+        send: (line) => {
+          sent.push(line);
+        },
+      };
+    }
+  );
+
+  // `attachments` is false on the fake adapter.
+  await expect(
+    session.run("hi", { attachments: ["a.png"] })
+  ).rejects.toMatchObject({ code: "UnsupportedCapability" });
+  expect(opened).toBe(0);
+  expect(sent).toEqual([]);
+});
+
+test("a schema turn re-asks once, emits schema-retry, and resolves with json", async () => {
+  const scripted = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+
+    const first = await api.next();
+    expect(first.method).toBe("session/prompt");
+    api.emit(
+      update("s1", {
+        content: { text: "sorry, no JSON here", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(first.id, { stopReason: "end_turn" }));
+
+    const second = await api.next();
+    expect(second.method).toBe("session/prompt");
+    api.emit(
+      update("s1", {
+        content: { text: '{"ok":true}', type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(second.id, { stopReason: "end_turn" }));
+  });
+  const { counted, prompts } = countingPrompts(scripted);
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => counted
+  );
+  const run = session.run("give me json", { schema: okSchema });
+  const events: AgentEvent[] = [];
+  await collect(events, run);
+  const result = await run;
+
+  const retries = events.filter((e) => e.type === "schema-retry");
+  expect(retries).toHaveLength(1);
+  expect(
+    retries[0]?.type === "schema-retry" && retries[0].issues.length
+  ).toBeGreaterThan(0);
+  expect(result.json).toEqual({ ok: true });
+  expect(result.text).toBe('{"ok":true}');
+  expect(events.filter((e) => e.type === "done").length).toBe(1);
+  expect(events.at(-1)?.type).toBe("done");
+  expect(prompts()).toBe(2);
+  await scripted.done;
+});
+
+test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", async () => {
+  const scripted = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+
+    const only = await api.next();
+    expect(only.method).toBe("session/prompt");
+    api.emit(
+      update("s1", {
+        content: { text: "still not JSON", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(only.id, { stopReason: "end_turn" }));
+  });
+  const { counted, prompts } = countingPrompts(scripted);
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => counted
+  );
+  const failure = await session
+    .run("give me json", { schema: okSchema, schemaRetries: 0 })
+    .catch((error: unknown) => error as AnyAgentError);
+
+  expect(failure).toMatchObject({ code: "Parse", raw: "still not JSON" });
+  expect((failure as AnyAgentError).issues?.length).toBeGreaterThan(0);
+  expect(prompts()).toBe(1);
+  await scripted.done;
 });
 
 test("fork on a live session throws InvalidOptions at construction", () => {
