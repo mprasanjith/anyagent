@@ -100,7 +100,6 @@ export interface PromptTurn {
   readonly result: Promise<PromptResponse>;
 }
 
-/** One `session/set_config_option` call. */
 export interface ConfigOptionInput {
   configId: string;
   value: string;
@@ -109,9 +108,9 @@ export interface ConfigOptionInput {
 /** A live ACP session: the unit that prompts, streams, and cancels. */
 export interface AcpSession {
   cancel: () => Promise<void>;
-  /** Ends the session agent-side; the connection itself stays open. */
+  // Ends the session agent-side; the connection itself stays open.
   close: () => Promise<void>;
-  /** Each select-type config option's value as the session opened. */
+  // Each select-type config option's value as the session opened.
   readonly config: ReadonlyMap<string, string>;
   prompt: (input: PromptInput, onUpdate?: UpdateListener) => PromptTurn;
   readonly sessionId: string;

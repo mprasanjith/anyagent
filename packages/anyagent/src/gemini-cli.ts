@@ -247,9 +247,9 @@ export const geminiCli = (): Adapter<typeof CAPS> => ({
   acp: {
     // Without --skip-trust the endpoint downgrades its approval mode with only
     // a stderr notice, so a live turn would silently lose its autonomy.
-    // No `readOnly` option: plan mode's exit_plan_mode self-approves headless,
-    // so mode would be a false guarantee (see readOnly above).
     command: ["gemini", "--acp", "--skip-trust"],
+    // No `readOnly` here: plan mode's exit_plan_mode self-approves headless, so
+    // the mode would be a false guarantee; permission denial holds the line.
     settings: ({ model }) => ({ args: model ? ["-m", model] : [] }),
   },
   authStatus,

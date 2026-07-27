@@ -165,10 +165,8 @@ const toUsage = (usage: AcpUsage | null | undefined): Usage | undefined =>
       }
     : undefined;
 
-// Translate one ACP `session/update` into a normalized {@link AgentEvent}, or
-// `undefined` for update kinds this build does not surface. The raw update
-// rides along on every event emitted. A tool call announces its name once, so
-// `tools` carries that identity forward to the update that ends it.
+// A tool call announces its name once, so `tools` carries that identity forward
+// to the update that ends it.
 const translateUpdate = (
   update: SessionUpdate,
   tools: Map<string, ToolIdentity>
@@ -319,8 +317,8 @@ const spawnTransport = (invocation: Invocation): AcpTransport => {
   };
 };
 
-// One in-flight native turn. `failure` is set when something outside the
-// prompt — a rejected `steer` — already decided the turn is lost.
+// `failure` is set when something outside the prompt — a rejected `steer` —
+// already decided the turn is lost.
 interface ActiveTurn {
   events: AgentEvent[];
   failure?: AnyAgentError;
@@ -343,8 +341,8 @@ type Mode =
   | { kind: "emulated"; delegate: SessionImpl };
 
 // A {@link Run} fed by translated ACP notifications rather than a spawned CLI.
-// `abort` reaches this turn only; the session decides what that means where the
-// turn currently sits. Settling is first-wins.
+// `abort` reaches this turn only; the session decides what that means. Settling
+// is first-wins.
 class AcpTurnRun extends RunHandle {
   readonly #controller = new AbortController();
 
@@ -451,8 +449,8 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
         "no live turn to steer yet; call run() first"
       );
     }
-    // Fire-and-forget: an additional prompt on the running turn. A failure ends
-    // the turn it was meant to guide — once, there.
+    // Fire-and-forget: a failure ends the turn it was meant to guide — once,
+    // there.
     const active = this.#active;
     live.prompt(text).result.catch((error: unknown) => {
       this.#failSteer(live, error, active);
@@ -532,9 +530,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     return acpRun;
   }
 
-  // Turn-scoped: the live turn is cancelled over the wire; a turn still queued —
-  // or one whose connection never opened — leaves the queue and settles here,
-  // and the in-flight turn is left alone.
+  // Turn-scoped: aborting a queued turn never disturbs the one in flight.
   #abortTurn(turn: QueuedTurn): void {
     if (this.#inFlight === turn.run && this.#live) {
       // The turn still ends through its `cancelled` stop reason if the notify
@@ -570,8 +566,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
         // biome-ignore lint/performance/noAwaitInLoops: one live turn at a time by contract.
         await turn.task();
       } catch (failure) {
-        // The conversation is broken where it stands: every turn queued behind
-        // this one fails with it, as on the emulated tier.
+        // The conversation is broken where it stands, as on the emulated tier.
         for (const queued of this.#queue.splice(0)) {
           queued.run.settleErr(failure);
         }
@@ -733,8 +728,6 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     active.run.push(event);
   }
 
-  // Once per turn, before the prompt goes out, and again only for an id the
-  // turn has not announced yet.
   #emitSession(active: ActiveTurn, sessionId: string, raw?: unknown): void {
     if (active.sessionId === sessionId) {
       return;
@@ -777,9 +770,8 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     acpRun.settleOk(final);
   }
 
-  // One live `session/prompt`: relay its updates onto the run and return the
-  // turn's result. Failures throw so the caller settles the handle once, after
-  // the schema contract has had its say.
+  // Failures throw so the caller settles the handle once, after the schema
+  // contract has had its say.
   async #promptOnce(
     live: AcpSession,
     prompt: string,
@@ -846,8 +838,6 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     opts: RunOptions,
     acpRun: AcpTurnRun
   ): Promise<void> {
-    // Relay the emulated cursor's turn through this handle: the print-mode
-    // runner drives it, we forward every event and settle on its result.
     const run = delegate.run(prompt, opts);
     whenAborted(acpRun.signal, () => {
       run.abort();

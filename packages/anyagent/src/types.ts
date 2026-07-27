@@ -917,12 +917,11 @@ export interface Agent<C extends Capabilities = Capabilities> {
  * The run starts when the call is made and runs to completion unless
  * `abort()` is called or the run's `signal` fires. Breaking out of an
  * iteration loop stops watching, never the agent. When a run fails, iterating
- * yields the events received so far and then throws the error awaiting
- * rejects with. On a run with a
- * {@link BaselineRunOptions.schema}, awaiting resolves the parsed result;
- * iterating yields every attempt's events, separated by a `schema-retry`
- * event, and the terminal `done` carries the same result awaiting resolves
- * with.
+ * yields the events received so far and then throws the error awaiting rejects
+ * with. On a run with a {@link BaselineRunOptions.schema}, awaiting resolves
+ * the parsed result; iterating yields every attempt's events, separated by a
+ * `schema-retry` event, and the terminal `done` carries the same result
+ * awaiting resolves with.
  */
 export interface Run extends Promise<RunResult>, AsyncIterable<AgentEvent> {
   /** Stop the agent: the process is terminated and the run throws `code: "Aborted"`. */
@@ -948,12 +947,11 @@ export interface PermissionOption {
 /**
  * Options for {@link Agent.session}. A session is a thread: `model`, `effort`,
  * `cwd`, `env`, `mcp`, and `extraArgs` are its settings, fixed here for its
- * whole lifetime and applied to every turn — `session.run` takes only
- * per-turn options, and passing a setting there throws `AnyAgentError`
- * (`code: "InvalidOptions"`).
- * To continue the conversation under different settings, fork it into a new
- * session. Every setting is validated against the agent's
- * {@link Capabilities} at `agent.session()`, before any turn runs.
+ * whole lifetime and applied to every turn — `session.run` takes only per-turn
+ * options, and passing a setting there throws `AnyAgentError`
+ * (`code: "InvalidOptions"`). To continue the conversation under different
+ * settings, fork it into a new session. Every setting is validated against the
+ * agent's {@link Capabilities} at `agent.session()`, before any turn runs.
  *
  * `resume` continues an earlier session from a persisted {@link Session.id}.
  * `fork` branches: the first turn carries the CLI's copy-on-resume flag, and
@@ -974,15 +972,9 @@ export interface SessionOptions {
   /** Extra environment variables for every turn, merged over the parent's. */
   env?: Record<string, string>;
   /**
-   * Escape hatch: extra native CLI flags appended verbatim to every turn's
-   * argv, so you can reach a native capability the unified surface does not
-   * model while keeping normalized events. Adapter-specific — the caller owns
-   * correctness.
-   *
-   * These flags are never validated and are appended after the flags the
-   * adapter builds, so one here can override what a typed option set. Prefer
-   * the typed options; reach for this only when nothing else exposes the flag
-   * you need. For a flag on one turn only, run it outside the session:
+   * Extra native CLI flags appended verbatim to every turn's argv, with the
+   * caveats on {@link BaselineRunOptions.extraArgs}. For a flag on one turn
+   * only, run it outside the session:
    * `agent.run(prompt, { resume: session.id, extraArgs })`.
    */
   extraArgs?: string[];

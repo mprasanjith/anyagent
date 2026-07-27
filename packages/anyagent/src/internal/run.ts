@@ -43,12 +43,8 @@ const correctionPrompt = (
     .map((e) => `- ${e}`)
     .join("\n")}\n\nReply again with only a corrected JSON value.`;
 
-// The `schema` contract every tier shares: run the turn, and when a schema is
-// asked for, parse the reply, then either fail fast (`schemaRetries: 0`) or
-// announce the `schema-retry` boundary and re-ask once with the correction.
-// `attempt` runs one turn of whatever drives the tier — a spawned process, a
-// live ACP prompt — and must withhold its terminal `done` so the caller emits
-// exactly one, carrying the parsed result.
+// `attempt` must withhold its terminal `done`: the caller emits exactly one,
+// carrying the parsed result.
 export const runWithSchema = async (
   prompt: string,
   opts: RunOptions,

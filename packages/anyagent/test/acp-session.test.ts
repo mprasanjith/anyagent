@@ -843,8 +843,6 @@ test("resume without loadSession falls back to the emulated print-mode cursor", 
   await transport.done;
 });
 
-// The JSON Schema the schema-turn tests validate against, and a transport
-// wrapper that counts how many `session/prompt` requests actually went out.
 const okSchema = {
   properties: { ok: { type: "boolean" } },
   required: ["ok"],
@@ -1446,8 +1444,6 @@ test("fork without resume throws InvalidOptions at session creation", () => {
 // and the assertions check shape (a session id, some text, a terminal event),
 // never the exact reply, since the recorder's framing is not ours byte-for-byte.
 
-// One recorded transcript reduced to the pieces a replay needs: the three
-// keyed responses and the session/update notifications between them.
 interface FixtureBody {
   id?: number;
   method?: string;
