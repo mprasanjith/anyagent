@@ -7,11 +7,12 @@ The `opencode` adapter drives the opencode CLI through `opencode run --format js
 
 ## What you can ask for
 
-`readOnly`, `model` (as `"provider/model"`), `effort` (a provider-defined variant name, passed verbatim), `resume`, `forkSession`, and `attachments` all work on the CLI’s own switches; `systemPrompt` and `schema` are provided by AnyAgent. MCP is a config-file concern, reachable via [`extraArgs`](/docs/run-an-agent). `models()` runs `opencode models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/opencode/auth.json` plus the provider key env vars, a hint rather than a guarantee. The full grid is on the [support matrix](/docs/adapters).
+`readOnly`, `model` (as `"provider/model"`), `effort` (a provider-defined variant name, passed verbatim), `resume`, `forkSession`, `attachments`, and `mcp` all work on the CLI’s own switches and config; `systemPrompt` and `schema` are provided by AnyAgent. `models()` runs `opencode models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/opencode/auth.json` plus the provider key env vars, a hint rather than a guarantee. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - The session id is surfaced once, on first sight, and lands on `result.sessionId`.
+- `mcp` servers are added to whatever the machine already configures rather than replacing them, each under the name you key it by. The adapter owns `OPENCODE_CONFIG_CONTENT`, so a config document you pass in `env` under that key is merged, not dropped — but `extraArgs` cannot override what it delivers.
 - Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
 
 ## Under the hood
@@ -26,3 +27,4 @@ Every run executes `opencode run --format json --auto` with the prompt piped ove
 | `resume`         | `--session <sessionId>`                                     |
 | `forkSession: true` | `--fork`, alongside `--session`, branching before continuing |
 | `attachments`    | `-f <file>`, repeated once per attachment                  |
+| `mcp`            | env `OPENCODE_CONFIG_CONTENT={"mcp":{…}}`, `type: "local"` per `command`, `type: "remote"` per `url` |

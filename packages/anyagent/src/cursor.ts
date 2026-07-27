@@ -21,7 +21,9 @@ const CAPS = {
   // bracket overrides, whose accepted values are per-model — the CLI itself
   // is the authority on validity.
   effort: "native",
-  // MCP servers are config-file territory (`agent mcp`); no per-run flag.
+  // MCP servers are config-file territory (`agent mcp` edits .cursor/mcp.json,
+  // which a run may not write); `--approve-mcps` only auto-approves what that
+  // file already defines, so no per-run definition channel exists.
   mcp: false,
   modelListing: "native",
   modelSelection: "native",

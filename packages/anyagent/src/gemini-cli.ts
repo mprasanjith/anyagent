@@ -19,6 +19,9 @@ const CAPS = {
   authStatus: "probed",
   cwd: "native",
   effort: false,
+  // `--allowed-mcp-server-names` only allowlists servers settings.json already
+  // defines, and `gemini mcp add` writes that file — a run may not edit the
+  // user's config, so print mode has no way to define a server for one run.
   mcp: false,
   // No listing surface: `--list-sessions` exists, models do not.
   modelListing: false,

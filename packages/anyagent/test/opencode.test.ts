@@ -5,7 +5,12 @@ import path from "node:path";
 import { runConformance } from "../src/conformance.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { opencode } from "../src/opencode.js";
-import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
+import type {
+  AgentEvent,
+  Invocation,
+  OutputSource,
+  RunResult,
+} from "../src/types.js";
 import { fakeSystemProbe, sourceFromBody } from "./fake-adapter.js";
 
 const SESSION_ID = /^ses_/u;
@@ -60,6 +65,77 @@ test("under readOnly the adapter's permission key wins; other caller env survive
     bash: "deny",
     edit: "deny",
   });
+});
+
+const NEEDS_ENDPOINT = /needs a command or a url/u;
+
+interface ConfigDoc {
+  mcp?: Record<string, unknown>;
+  theme?: string;
+}
+
+const mcpConfig = (inv: Invocation): ConfigDoc =>
+  JSON.parse(inv.env?.OPENCODE_CONFIG_CONTENT ?? "{}") as ConfigDoc;
+
+test("a stdio mcp server maps to a local entry under the caller's own name", () => {
+  const inv = opencode().buildInvocation("hi", {
+    mcp: { mydb: { args: ["-y", "srv"], command: "npx", env: { K: "v" } } },
+  });
+  expect(mcpConfig(inv).mcp).toEqual({
+    mydb: {
+      command: ["npx", "-y", "srv"],
+      enabled: true,
+      environment: { K: "v" },
+      type: "local",
+    },
+  });
+});
+
+test("a url mcp server maps to a remote entry", () => {
+  const inv = opencode().buildInvocation("hi", {
+    mcp: { docs: { url: "https://example.test/mcp" } },
+  });
+  expect(mcpConfig(inv).mcp).toEqual({
+    docs: { enabled: true, type: "remote", url: "https://example.test/mcp" },
+  });
+});
+
+// The failure that keeps goose off this capability: there, both would land
+// under the shared command token and one would vanish.
+test("two servers sharing a command stay distinct — the key is the name", () => {
+  const inv = opencode().buildInvocation("hi", {
+    mcp: {
+      one: { args: ["-y", "a"], command: "npx" },
+      two: { args: ["-y", "b"], command: "npx" },
+    },
+  });
+  expect(Object.keys(mcpConfig(inv).mcp ?? {})).toEqual(["one", "two"]);
+});
+
+test("a caller's own config document survives; this run's servers merge in", () => {
+  const inv = opencode().buildInvocation("hi", {
+    env: {
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({
+        mcp: { theirs: { type: "local" } },
+        theme: "nord",
+      }),
+    },
+    mcp: { ours: { command: "srv" } },
+  });
+  const config = mcpConfig(inv);
+  expect(config.theme).toBe("nord");
+  expect(Object.keys(config.mcp ?? {})).toEqual(["theirs", "ours"]);
+});
+
+test("an mcp server with neither command nor url fails fast", () => {
+  expect(() =>
+    opencode().buildInvocation("hi", { mcp: { broken: {} } })
+  ).toThrow(NEEDS_ENDPOINT);
+});
+
+test("without mcp the config env var is never written", () => {
+  const inv = opencode().buildInvocation("hi", { env: { FOO: "bar" } });
+  expect(inv.env).toEqual({ FOO: "bar" });
 });
 
 test("buildInvocation emits model/session/variant flags and passes cwd/env", () => {

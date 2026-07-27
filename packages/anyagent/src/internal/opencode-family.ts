@@ -7,6 +7,7 @@ import type {
   AuthStatus,
   Capabilities,
   Invocation,
+  McpConfig,
   ModelInfo,
   RunOptions,
   SystemProbe,
@@ -28,7 +29,8 @@ const CAPS = {
   // `--variant` takes provider-defined names — an open vocabulary, so no
   // `reasoningEfforts` list; the CLI itself rejects a bad value.
   effort: "native",
-  // MCP stays config-file territory until the config-env delivery ships (M2).
+  // Off for the family: delivery needs a `configEnv`, and only a sibling whose
+  // own config env var is verified declares one.
   mcp: false,
   modelListing: "native",
   modelSelection: "native",
@@ -222,8 +224,60 @@ const makeParse = (id: string) =>
 // the machine, and the readOnly contract is "nothing on the machine changes".
 const READ_ONLY_MATRIX = JSON.stringify({ bash: "deny", edit: "deny" });
 
+// The config `mcp` map is keyed by the name the agent sees, matching
+// {@link McpConfig} exactly, so the caller's key survives the trip.
+const toConfigMcp = (mcp: McpConfig): Record<string, unknown> => {
+  const servers: Record<string, unknown> = {};
+  for (const [name, server] of Object.entries(mcp)) {
+    if (server.url !== undefined) {
+      servers[name] = { enabled: true, type: "remote", url: server.url };
+      continue;
+    }
+    if (server.command === undefined) {
+      throw new AnyAgentError(
+        "InvalidOptions",
+        `mcp server "${name}" needs a command or a url`
+      );
+    }
+    servers[name] = {
+      command: [server.command, ...(server.args ?? [])],
+      enabled: true,
+      environment: server.env,
+      type: "local",
+    };
+  }
+  return servers;
+};
+
+const parseConfig = (caller: string): Record<string, unknown> | undefined => {
+  try {
+    return JSON.parse(caller) as Record<string, unknown>;
+  } catch {
+    // Reported by the caller, which owns the message.
+  }
+};
+
+// The config env var carries a whole config document, so a caller may already
+// be using it for unrelated settings: merge into what they sent rather than
+// replacing it, and let this run's servers win name by name.
+const configWithMcp = (caller: string | undefined, mcp: McpConfig): string => {
+  const base = caller === undefined ? {} : parseConfig(caller);
+  if (base === undefined) {
+    throw new AnyAgentError(
+      "InvalidOptions",
+      "the config env var holds invalid JSON, so this run's mcp servers cannot be merged into it",
+      { raw: caller }
+    );
+  }
+  const existing = base.mcp as Record<string, unknown> | undefined;
+  return JSON.stringify({
+    ...base,
+    mcp: { ...existing, ...toConfigMcp(mcp) },
+  });
+};
+
 const makeBuildInvocation =
-  (command: string, permissionEnv: string) =>
+  (command: string, permissionEnv: string, configEnv: string | undefined) =>
   (prompt: string, opts: RunOptions): Invocation => {
     // `--auto` always: the v2 default is the CLI's maximum
     // autonomy, and readOnly confines it via the deny matrix rather than by
@@ -251,9 +305,15 @@ const makeBuildInvocation =
     // adapter-owned. Caller env merges first and the adapter's key lands
     // last, so a caller-supplied value can never weaken the readOnly
     // contract.
-    const env = opts.readOnly
+    let env = opts.readOnly
       ? { ...opts.env, [permissionEnv]: READ_ONLY_MATRIX }
       : opts.env;
+    if (configEnv && opts.mcp) {
+      env = {
+        ...env,
+        [configEnv]: configWithMcp(opts.env?.[configEnv], opts.mcp),
+      };
+    }
     // With no positional message the CLI reads the prompt from stdin, so a
     // large prompt never hits the OS argv size limit.
     return { args, command, cwd: opts.cwd, env, input: prompt };
@@ -327,6 +387,12 @@ const makeListModels =
   };
 
 export interface OpencodeFamilySpec {
+  /**
+   * The adapter-owned env var carrying an inline config document, which is how
+   * a run's MCP servers are delivered. Omit it where the CLI's own name for it
+   * is unverified — a sibling without one cannot declare `mcp`.
+   */
+  configEnv?: string;
   /** App dir under `~/.local/share` holding the CLI's `auth.json`. */
   dataDir: string;
   meta: AdapterMeta;
@@ -358,7 +424,11 @@ export const opencodeFamilyAdapter = (
       },
     },
     authStatus: makeAuthStatus(spec.dataDir),
-    buildInvocation: makeBuildInvocation(command, spec.permissionEnv),
+    buildInvocation: makeBuildInvocation(
+      command,
+      spec.permissionEnv,
+      spec.configEnv
+    ),
     capabilities: CAPS,
     detection: {},
     listModels: makeListModels(command),

@@ -19,8 +19,11 @@ const CAPS = {
   // Reasoning effort on goose is env-only per-provider config, unstable
   // across providers; extraArgs territory.
   effort: false,
-  // Goose attaches MCP servers via --with-extension, but that surface is
-  // unverified against real output; use extraArgs or raw.
+  // `--with-extension` attaches a server but has no slot for its name: goose
+  // derives one from the command's first token, so two servers launched the
+  // same way (`npx …`, the common case) collide and one is dropped in silence
+  // — verified on 1.43. The live tier names them properly, but capabilities
+  // are per-adapter, so honoring `mcp` here would be a lie in print mode.
   mcp: false,
   modelListing: false,
   modelSelection: "native",
