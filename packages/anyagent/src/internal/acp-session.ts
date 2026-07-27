@@ -334,8 +334,9 @@ interface QueuedTurn {
   task: () => Promise<void>;
 }
 
-// A native session may find its ACP reattachment unsupported and fall back to
-// the emulated cursor; the mode decided on the first turn covers every turn.
+// A native session may find its ACP reattachment or branching unsupported and
+// fall back to the emulated cursor; the mode decided on the first turn covers
+// every turn.
 type Mode =
   | { kind: "native"; live: AcpSession }
   | { kind: "emulated"; delegate: SessionImpl };
@@ -388,6 +389,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
   readonly #runner: Runner;
   readonly #transportFactory: AcpTransportFactory;
   readonly #resume: string | undefined;
+  readonly #fork: boolean;
   readonly #settings: SessionOptions;
   readonly #acp: AcpSettings;
   readonly #mcpServers: AcpMcpServer[];
@@ -415,20 +417,20 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     this.#transportFactory = transportFactory;
     this.#resume = opts.resume;
     this.#id = opts.resume;
+    this.#fork = opts.fork === true;
     this.#settings = opts;
+    // The emulated tier raises this from its own constructor; a native session
+    // reaches that constructor only after connecting, too late to fail fast.
+    if (this.#fork && opts.resume === undefined) {
+      throw new AnyAgentError(
+        "InvalidOptions",
+        "fork requires resume: only an existing conversation can branch"
+      );
+    }
     // Both throw for a setting this endpoint cannot carry — here, before the
     // constructor returns, so nothing has spawned yet.
     this.#acp = agent.adapter.acp?.settings?.(opts) ?? {};
     this.#mcpServers = toAcpMcpServers(opts.mcp);
-    if (opts.fork === true) {
-      // No recorded `session/fork` transcript exists to code against, so a
-      // branch runs on the print tier, whose copy-on-resume flag is verified.
-      this.#delegate = new SessionImpl<C>(agent, runner, opts, true);
-      this.#modePromise = Promise.resolve({
-        delegate: this.#delegate,
-        kind: "emulated",
-      });
-    }
   }
 
   get id(): string | undefined {
@@ -632,6 +634,20 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     await client.initialize();
 
     if (this.#resume !== undefined) {
+      if (this.#fork) {
+        // `session/fork` takes the id straight from `resume`: the recorded
+        // opencode exchange branches a session this connection never opened,
+        // so no `session/load` precedes it.
+        return client.capabilities?.sessionCapabilities?.fork
+          ? await this.#open(
+              client.forkSession({
+                cwd,
+                mcpServers: this.#mcpServers,
+                sessionId: this.#resume,
+              })
+            )
+          : this.#bridge();
+      }
       if (client.capabilities?.loadSession) {
         return await this.#open(
           client.loadSession({
@@ -641,23 +657,28 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
           })
         );
       }
-      // Mixed tier: the CLI still resumes cross-process through its own flag
-      // even though ACP `session/load` is unavailable (gemini). Reattachment
-      // falls back to the emulated print-mode cursor for the whole session.
-      client.close();
-      this.#client = undefined;
-      this.#delegate = new SessionImpl<C>(
-        this.agent,
-        this.#runner,
-        { ...this.#settings, resume: this.#resume },
-        true
-      );
-      return { delegate: this.#delegate, kind: "emulated" };
+      return this.#bridge();
     }
 
     return await this.#open(
       client.newSession({ cwd, mcpServers: this.#mcpServers })
     );
+  }
+
+  // Mixed tier: the CLI still reattaches or branches cross-process through its
+  // own flags even though the ACP endpoint advertised no `session/load`
+  // (gemini) or `session/fork`. The whole session falls back to the emulated
+  // print-mode cursor, which carries those flags on its first turn.
+  #bridge(): Mode {
+    this.#client?.close();
+    this.#client = undefined;
+    this.#delegate = new SessionImpl<C>(
+      this.agent,
+      this.#runner,
+      this.#settings,
+      true
+    );
+    return { delegate: this.#delegate, kind: "emulated" };
   }
 
   async #open(opening: Promise<AcpSession>): Promise<Mode> {

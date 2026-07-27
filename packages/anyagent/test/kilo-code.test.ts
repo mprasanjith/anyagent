@@ -74,6 +74,32 @@ test("kilo declares its own acp endpoint and native fork/attachments", () => {
   expect(agent.capabilities.attachments).toBe("native");
 });
 
+test("kilo takes the live session tier while keeping the family's acp spec", () => {
+  const agent = kiloCode();
+  expect(agent.capabilities.session).toBe("native");
+  expect(agent.acp?.readOnly).toEqual({ configId: "mode", value: "plan" });
+  expect(agent.acp?.settings?.({ model: "kilo/openai/gpt-5.4" })).toEqual({
+    configOptions: [{ configId: "model", value: "kilo/openai/gpt-5.4" }],
+  });
+});
+
+// Verified against the real binary (7.4.16): `KILO_CONFIG_CONTENT` servers
+// connect under the caller's key and merge with file config.
+test("mcp servers land in the adapter-owned config env var", () => {
+  expect(kiloCode().capabilities.mcp).toBe("native");
+  const inv = kiloCode().buildInvocation("x", {
+    env: { KEEP: "yes" },
+    mcp: { mydb: { command: "npx" } },
+  });
+  expect(inv.env?.KEEP).toBe("yes");
+  const config = JSON.parse(inv.env?.KILO_CONFIG_CONTENT ?? "");
+  expect(config.mcp.mydb).toEqual({
+    command: ["npx"],
+    enabled: true,
+    type: "local",
+  });
+});
+
 test("readOnly sets the deny matrix in KILO_PERMISSION, overriding the caller's", () => {
   const inv = kiloCode().buildInvocation("x", {
     env: { KEEP: "yes", KILO_PERMISSION: '{"*":"allow"}' },

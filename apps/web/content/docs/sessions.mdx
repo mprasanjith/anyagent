@@ -57,7 +57,7 @@ Resuming one id into two sessions without `fork` is a relay, not a branch: both 
 
 ## Which agents run sessions
 
-Every built-in adapter except Cline runs sessions; `agent.supports("resume")` is the guard, and `agent.session()` throws where it is false. Agents that hold a live connection add steering, covered next; the Sessions column in the [matrix](/docs/adapters) marks them.
+Every built-in adapter runs sessions; `agent.supports("resume")` is the guard, and `agent.session()` throws where it is false. Agents that hold a live connection add steering, covered next; the Sessions column in the [matrix](/docs/adapters) marks them.
 
 ## Steer a live session
 

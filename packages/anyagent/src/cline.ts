@@ -28,9 +28,14 @@ const CAPS = {
   // nothing-changes cannot be guaranteed.
   readOnly: false,
   reasoningEfforts: ["none", "low", "medium", "high", "xhigh"],
-  // `--id` resume is broken in cline's headless JSON mode (the prompt is
-  // never accepted alongside it), so resume stays undeclared.
-  session: false,
+  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // test/fixtures/acp/cline.jsonl — initialize on protocolVersion 1, a session
+  // id, an agent_message_chunk streaming "pong", stopReason end_turn. The live
+  // endpoint is the only tier that continues a conversation: headless print
+  // mode reveals no session id, and its `--id` never accepts a prompt
+  // alongside it (upstream). This build advertises `loadSession: true`, so
+  // resume reattaches over ACP rather than falling back to that print path.
+  session: "native",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
@@ -202,6 +207,12 @@ const parse: Adapter["parse"] = (source, opts) =>
   innerParse(jsonLinesOnly(source), opts);
 
 const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
+  if (opts.resume !== undefined) {
+    throw new AnyAgentError(
+      "UnsupportedCapability",
+      "cline: print mode cannot continue a conversation; resume through agent.session({ resume })"
+    );
+  }
   // Auto-approval is cline's headless default; passing it explicitly keeps
   // the behavior pinned if that default ever changes. `readOnly: true` never
   // reaches here — the capability is declared false, so the core throws
@@ -283,14 +294,35 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  *
  * Headless cline auto-approves every tool and cannot guarantee a read-only
  * run, so `readOnly: true` throws. Reasoning effort is native with a closed
- * vocabulary (`none` through `xhigh`). Session resume is undeclared: `--id`
- * is broken in headless JSON mode upstream, and no session id is revealed —
- * `RunResult.sessionId` stays absent. System prompts have no append flag
- * (`-s` replaces) and are emulated. A failed run throws `AnyAgentError` with
- * cline's own message.
+ * vocabulary (`none` through `xhigh`) on a one-shot run; the live endpoint has
+ * no channel for it, so `agent.session({ effort })` throws. Sessions are live —
+ * `agent.session()` holds a `cline --acp` connection — and `model` selects the
+ * session's model: pin one, because a session that leaves it unset inherits
+ * cline's stored choice, which need not be a model the signed-in provider
+ * serves, and the turn then ends with no output. A one-shot `run` reveals no
+ * session id, so `RunResult.sessionId` stays absent there. System prompts have
+ * no append flag (`-s` replaces) and are emulated. A failed run throws
+ * `AnyAgentError` with cline's own message.
  */
 export const cline = (): Adapter<typeof CAPS> => ({
-  acp: { command: ["cline", "--acp"] },
+  acp: {
+    command: ["cline", "--acp"],
+    // No `readOnly` option here: cline's live endpoint offers plan mode, but
+    // plan mode still runs shell commands — the same reason the capability is
+    // false. Permission denial holds the line instead.
+    settings: ({ effort, model }) => {
+      if (effort !== undefined) {
+        throw new AnyAgentError(
+          "UnsupportedCapability",
+          "cline: a live session cannot set reasoning effort; run it outside the session"
+        );
+      }
+      return {
+        configOptions:
+          model === undefined ? [] : [{ configId: "model", value: model }],
+      };
+    },
+  },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

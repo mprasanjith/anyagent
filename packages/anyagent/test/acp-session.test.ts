@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { cline } from "../src/cline.js";
 import { cursor } from "../src/cursor.js";
 import { AnyAgentError } from "../src/errors.js";
 import { geminiCli } from "../src/gemini-cli.js";
@@ -8,6 +9,7 @@ import type { AcpTransport } from "../src/internal/acp.js";
 import type { AcpTransportFactory } from "../src/internal/acp-session.js";
 import { AcpSessionImpl } from "../src/internal/acp-session.js";
 import { AgentImpl } from "../src/internal/agent.js";
+import { kiloCode } from "../src/kilo-code.js";
 import { opencode } from "../src/opencode.js";
 import type {
   Adapter,
@@ -1160,6 +1162,51 @@ test("a live opencode session sets its model config option", async () => {
   await Promise.all([session.run("hi"), transport.done]);
 });
 
+test("a live cline session sets its model config option", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "1785_x_cli" }));
+
+    const config = await api.next();
+    expect(config.method).toBe("session/set_config_option");
+    expect(config.params).toEqual({
+      configId: "model",
+      sessionId: "1785_x_cli",
+      value: "gpt-5.4-mini",
+    });
+    api.emit(response(config.id, { configOptions: [] }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(
+    cline(),
+    { model: "gpt-5.4-mini" },
+    () => transport
+  );
+  await Promise.all([session.run("hi"), transport.done]);
+});
+
+test("effort on a live cline session throws before anything opens", () => {
+  let opened = 0;
+  expect(
+    () =>
+      new AcpSessionImpl(
+        new AgentImpl(cline(), runnerFromFixture("")),
+        runnerFromFixture(""),
+        { effort: "high" },
+        () => {
+          opened += 1;
+          return inertTransport();
+        }
+      )
+  ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
+  expect(opened).toBe(0);
+});
+
 test("effort on a live opencode session throws before anything opens", () => {
   let opened = 0;
   expect(
@@ -1400,11 +1447,12 @@ const forkAdapter: Adapter = {
   capabilities: { ...nativeAdapter.capabilities, sessionFork: "native" },
 };
 
-test("fork on a live session runs through the print-mode delegate, settings intact", async () => {
+test("fork without an advertised session/fork runs through the print-mode delegate, settings intact", async () => {
   const fixture =
     '{"t":"session","v":"s2"}\n{"t":"text","v":"forked"}\n{"t":"end"}';
   const seen: Invocation[] = [];
-  let opened = 0;
+  // The agent only completes the handshake; no session/fork is ever sent.
+  const transport = scriptedTransport((api) => handshake(api, {}));
   const session = new AcpSessionImpl(
     new AgentImpl(forkAdapter, runnerFromFixture(fixture)),
     (invocation: Invocation) => {
@@ -1412,22 +1460,86 @@ test("fork on a live session runs through the print-mode delegate, settings inta
       return sourceFromBody(fixture);
     },
     { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
-    () => {
-      opened += 1;
-      return inertTransport();
-    }
+    () => transport
   );
 
-  expect(session.supports("steer")).toBe(false);
   const result = await session.run("branch");
 
   expect(result.text).toBe("forked");
   expect(session.id).toBe("s2");
-  expect(opened).toBe(0);
+  expect(session.supports("steer")).toBe(false);
   expect(seen[0]).toMatchObject({
     args: ["-p", "branch", "--model", "opus", "--fork", "--resume", "s-old"],
     cwd: "/repo",
   });
+  await transport.done;
+});
+
+test("fork branches over the wire when the agent advertises it, settings applied after", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, { sessionCapabilities: { fork: {} } });
+    const fork = await api.next();
+    expect(fork.method).toBe("session/fork");
+    expect(fork.params).toMatchObject({ cwd: "/repo", sessionId: "s-old" });
+    api.emit(
+      response(fork.id, {
+        configOptions: [
+          {
+            currentValue: "sonnet",
+            id: "model",
+            name: "Model",
+            options: [{ name: "Opus", value: "opus" }],
+            type: "select",
+          },
+        ],
+        sessionId: "s-forked",
+      })
+    );
+
+    const configured = await api.next();
+    expect(configured.method).toBe("session/set_config_option");
+    expect(configured.params).toMatchObject({
+      configId: "model",
+      sessionId: "s-forked",
+      value: "opus",
+    });
+    api.emit(response(configured.id, {}));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    expect(prompt.params).toMatchObject({ sessionId: "s-forked" });
+    api.emit(
+      update("s-forked", {
+        content: { text: "branched", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const configuringAdapter: Adapter = {
+    ...forkAdapter,
+    acp: {
+      command: ["fake-acp"],
+      settings: ({ model }) => ({
+        configOptions: model ? [{ configId: "model", value: model }] : [],
+      }),
+    },
+  };
+  const session = new AcpSessionImpl(
+    new AgentImpl(configuringAdapter, runnerFromFixture("")),
+    runnerFromFixture(""),
+    { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
+    () => transport
+  );
+
+  const result = await session.run("branch");
+
+  expect(result.text).toBe("branched");
+  expect(result.sessionId).toBe("s-forked");
+  expect(session.id).toBe("s-forked");
+  expect(session.supports("steer")).toBe(true);
+  await transport.done;
 });
 
 test("fork without resume throws InvalidOptions at session creation", () => {
@@ -1501,7 +1613,7 @@ const loadReplayFixture = (id: string): ReplayFixture => {
   };
 };
 
-for (const id of ["cursor", "goose", "gemini-cli", "opencode"]) {
+for (const id of ["cursor", "goose", "gemini-cli", "opencode", "cline"]) {
   test(`replays the recorded ${id} ACP transcript to a completed turn`, async () => {
     const fx = loadReplayFixture(id);
     const transport = scriptedTransport(async (api) => {
@@ -1550,3 +1662,161 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode"]) {
     await transport.done;
   });
 }
+
+interface ForkFixtureEntry {
+  body?: {
+    id?: number;
+    method?: string;
+    params?: { cwd?: string; sessionId?: string };
+    result?: Record<string, unknown>;
+  };
+  dir: "in" | "out";
+}
+
+interface ForkFixture {
+  cwd: string;
+  forkedId: string;
+  forkResult: Record<string, unknown>;
+  initResult: Record<string, unknown>;
+  parentId: string;
+}
+
+const loadForkFixture = (): ForkFixture => {
+  const path = `${import.meta.dir}/fixtures/acp/opencode-fork.jsonl`;
+  const entries = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as ForkFixtureEntry);
+  const sent = entries.find(
+    (entry) => entry.dir === "out" && entry.body?.method === "session/fork"
+  )?.body?.params;
+  const answered = (id: number): Record<string, unknown> | undefined =>
+    entries.find((entry) => entry.dir === "in" && entry.body?.id === id)?.body
+      ?.result;
+  const initResult = answered(1);
+  const forkResult = answered(2);
+  if (!(sent?.cwd && sent.sessionId && initResult && forkResult)) {
+    throw new Error(
+      "replay fixture opencode-fork is missing the fork exchange"
+    );
+  }
+  return {
+    cwd: sent.cwd,
+    forkedId: String(forkResult.sessionId),
+    forkResult,
+    initResult,
+    parentId: sent.sessionId,
+  };
+};
+
+// The recorded transcript branches a session the connection never opened, and
+// its `initialize` advertises `loadSession` too — so replaying it proves the
+// fork path reaches for `session/fork` alone. The prompt turn is no part of
+// this fixture (opencode.jsonl backs that), so it ends on a synthetic stop.
+test("replays the recorded opencode session/fork handshake", async () => {
+  const fx = loadForkFixture();
+  const transport = scriptedTransport(async (api) => {
+    const init = await api.next();
+    expect(init.method).toBe("initialize");
+    api.emit(response(init.id, fx.initResult));
+
+    const fork = await api.next();
+    expect(fork.method).toBe("session/fork");
+    expect(fork.params).toMatchObject({
+      cwd: fx.cwd,
+      sessionId: fx.parentId,
+    });
+    api.emit(response(fork.id, fx.forkResult));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    expect(prompt.params).toMatchObject({ sessionId: fx.forkedId });
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    { cwd: fx.cwd, fork: true, resume: fx.parentId },
+    () => transport
+  );
+  const result = await session.run("branch");
+
+  expect(session.id).toBe(fx.forkedId);
+  expect(result.sessionId).toBe(fx.forkedId);
+  expect(session.id).not.toBe(fx.parentId);
+  await transport.done;
+});
+
+// kilo's transcript stops at `session/new`: the machine that recorded it held no
+// kilo credentials, so there is no prompt turn to replay. What it does carry is
+// the handshake and the option set the family's AcpSpec drives, which is what
+// the test below answers for; the turn ends on a synthetic stop.
+interface HandshakeFixture {
+  initResult: Record<string, unknown>;
+  newResult: Record<string, unknown>;
+}
+
+const loadHandshakeFixture = (id: string): HandshakeFixture => {
+  const path = `${import.meta.dir}/fixtures/acp/${id}.jsonl`;
+  const answered = (wanted: number): Record<string, unknown> | undefined =>
+    readFileSync(path, "utf8")
+      .split("\n")
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as FixtureEntry)
+      .find((entry) => entry.dir === "in" && entry.body?.id === wanted)?.body
+      ?.result;
+  const initResult = answered(1);
+  const newResult = answered(2);
+  if (!(initResult && newResult)) {
+    throw new Error(`handshake fixture ${id} is missing a keyed response`);
+  }
+  return { initResult, newResult };
+};
+
+test("kilo forks over the wire on its own recorded capabilities", async () => {
+  const fx = loadHandshakeFixture("kilo-handshake");
+  const forkedId = String(fx.newResult.sessionId);
+  const transport = scriptedTransport(async (api) => {
+    const init = await api.next();
+    expect(init.method).toBe("initialize");
+    api.emit(response(init.id, fx.initResult));
+
+    const fork = await api.next();
+    expect(fork.method).toBe("session/fork");
+    expect(fork.params).toMatchObject({ cwd: "/repo", sessionId: "ses_old" });
+    api.emit(response(fork.id, fx.newResult));
+
+    // The family's settings mapping reaches the fork the same as a new session.
+    const configured = await api.next();
+    expect(configured.method).toBe("session/set_config_option");
+    expect(configured.params).toEqual({
+      configId: "model",
+      sessionId: forkedId,
+      value: "kilo/openai/gpt-5.4",
+    });
+    api.emit(response(configured.id, {}));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    expect(prompt.params).toMatchObject({ sessionId: forkedId });
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(
+    kiloCode(),
+    {
+      cwd: "/repo",
+      fork: true,
+      model: "kilo/openai/gpt-5.4",
+      resume: "ses_old",
+    },
+    () => transport
+  );
+  const result = await session.run("branch");
+
+  expect(result.sessionId).toBe(forkedId);
+  expect(session.id).toBe(forkedId);
+  expect(session.supports("steer")).toBe(true);
+  await transport.done;
+});

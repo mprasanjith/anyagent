@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { cline } from "../src/cline.js";
 import { runConformance } from "../src/conformance.js";
+import { AnyAgentError } from "../src/errors.js";
 import { create } from "../src/index.js";
 import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import type {
@@ -392,6 +393,38 @@ test("authStatus is unknown on unparseable JSON", async () => {
       Promise.resolve(p === HOME_PROVIDERS ? "{not json" : undefined),
   });
   expect(status).toEqual({ state: "unknown" });
+});
+
+test("a print-mode resume throws instead of running without the conversation", () => {
+  let thrown: unknown;
+  try {
+    cline().buildInvocation("hi", { resume: "sess-123" });
+  } catch (err) {
+    thrown = err;
+  }
+  expect(thrown).toBeInstanceOf(AnyAgentError);
+  expect((thrown as AnyAgentError).code).toBe("UnsupportedCapability");
+});
+
+test("cline declares the live session tier over its acp endpoint", () => {
+  const adapter = cline();
+  expect(adapter.capabilities.session).toBe("native");
+  expect(adapter.acp?.command).toEqual(["cline", "--acp"]);
+  // Plan mode is not a read-only guarantee here, so no mode option is declared.
+  expect(adapter.acp?.readOnly).toBeUndefined();
+  expect(adapter.capabilities.readOnly).toBe(false);
+  expect(adapter.capabilities.sessionFork).toBe(false);
+});
+
+test("acp settings carry model and refuse effort", () => {
+  const settings = cline().acp?.settings;
+  expect(settings?.({ model: "gpt-5.4-mini" })).toEqual({
+    configOptions: [{ configId: "model", value: "gpt-5.4-mini" }],
+  });
+  expect(settings?.({})).toEqual({ configOptions: [] });
+  expect(() => settings?.({ effort: "high" })).toThrow(
+    expect.objectContaining({ code: "UnsupportedCapability" })
+  );
 });
 
 test("conformance holds over the recorded fixtures", async () => {

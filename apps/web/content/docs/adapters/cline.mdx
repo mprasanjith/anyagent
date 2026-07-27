@@ -7,11 +7,12 @@ The `cline` adapter drives `cline --json --auto-approve true`, detected as the `
 
 ## What you can ask for
 
-`model` and `effort` (closed vocabulary: `none`, `low`, `medium`, `high`, `xhigh`) work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly`, `resume`, `mcp`, and model listing are undeclared and throw: no read-only run exists, since headless Cline auto-approves every tool and plan mode still runs shell commands. `authStatus()` reads the provider settings file and never runs the CLI, whose `config` subcommand needs a TTY. The full grid is on the [support matrix](/docs/adapters).
+`model` and `effort` (closed vocabulary: `none`, `low`, `medium`, `high`, `xhigh`) work on the CLI’s own flags, and [sessions](/docs/sessions) run live over `cline --acp`; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly`, `mcp`, and model listing are undeclared and throw: no read-only run exists, since headless Cline auto-approves every tool and plan mode still runs shell commands. `authStatus()` reads the provider settings file and never runs the CLI, whose `config` subcommand needs a TTY. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
-- No session id is revealed headless, so `result.sessionId` stays absent; carry context forward in the next prompt instead.
+- `agent.session()` holds a live connection, so it steers too; a one-shot `run` reveals no session id and `result.sessionId` stays absent there. `effort` has no channel on that connection, so `agent.session({ effort })` throws — pass it to a one-shot `run` instead.
+- Pin `model` on a live session: left unset it inherits Cline’s stored choice, which need not be a model the signed-in provider serves, and the turn then ends with no output.
 - The prompt must be positional, so a prompt larger than the OS argv limit needs [`agent.raw`](/docs/run-an-agent).
 - `systemPrompt` is provided by AnyAgent because Cline’s `-s` replaces the system prompt entirely; reach `-s` via `extraArgs` if replacement is what you want.
 - Usage arrives in the final `run_result`, with cache line items and cost; a `finishReason` other than `"completed"` throws `Invocation` with Cline’s own message.
