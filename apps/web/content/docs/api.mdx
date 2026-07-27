@@ -10,17 +10,17 @@ This page documents what you use when building on AnyAgent: the two entry-point 
 
 ## Entry points
 
-Import `detect` and `create` from the package root, `AnyAgentError` from `anyagent/errors`, and every type from `anyagent/types`. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
+Import `detect` and `create` from the package root, `AnyAgentError` from `anyagent-js/errors`, and every type from `anyagent-js/types`. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
 
 ```ts
-import { create, detect } from "anyagent";
-import { AnyAgentError } from "anyagent/errors";
-import type { Agent, RunOptions, RunResult } from "anyagent/types";
-import { claudeCode } from "anyagent/claude-code";
-import { codex } from "anyagent/codex";
+import { create, detect } from "anyagent-js";
+import { AnyAgentError } from "anyagent-js/errors";
+import type { Agent, RunOptions, RunResult } from "anyagent-js/types";
+import { claudeCode } from "anyagent-js/claude-code";
+import { codex } from "anyagent-js/codex";
 ```
 
-The other adapter subpaths follow the same shape: `anyagent/opencode`, `anyagent/kilo-code`, `anyagent/pi`, `anyagent/goose`, `anyagent/cline`, `anyagent/gemini-cli`, `anyagent/antigravity`, and `anyagent/cursor`. Each exports one factory (`claudeCode()`, `codex()`, …) returning an adapter you can hand to `create`; each factory’s flag mappings and quirks live on its [adapter page](/docs/adapters).
+The other adapter subpaths follow the same shape: `anyagent-js/opencode`, `anyagent-js/kilo-code`, `anyagent-js/pi`, `anyagent-js/goose`, `anyagent-js/cline`, `anyagent-js/gemini-cli`, `anyagent-js/antigravity`, and `anyagent-js/cursor`. Each exports one factory (`claudeCode()`, `codex()`, …) returning an adapter you can hand to `create`; each factory’s flag mappings and quirks live on its [adapter page](/docs/adapters).
 
 ## detect
 
@@ -33,7 +33,7 @@ const detect: (opts?: DetectOptions) => Promise<DetectResult[]>;
 Call it with no arguments to scan the built-in adapters on the real machine, then pass the result you pick to `create`:
 
 ```ts
-import { create, detect } from "anyagent";
+import { create, detect } from "anyagent-js";
 
 const installed = await detect();
 const [first] = installed;
@@ -61,8 +61,8 @@ const create: (source: Adapter | DetectResult, opts?: CreateOptions) => Agent;
 The call is synchronous and spawns nothing; the process starts when you call `run`. It also never checks that the CLI is installed, so creating from an adapter on a machine without that CLI surfaces as an `Invocation` error on the first run. From an adapter factory the agent is typed to that adapter’s literal [`Capabilities`](#capabilities), so an unsupported option fails to compile; from a `DetectResult` only the shared options are typed until [`supports`](#runoptionsfor-and-supports) unlocks more.
 
 ```ts
-import { create } from "anyagent";
-import { claudeCode } from "anyagent/claude-code";
+import { create } from "anyagent-js";
+import { claudeCode } from "anyagent-js/claude-code";
 
 const agent = create(claudeCode());
 const result = await agent.run("Summarize this repo.");
@@ -317,8 +317,8 @@ type McpConfig = Record<string, McpServer>;
 Pass it through [`RunOptions.mcp`](#extensionoptions) on an agent whose capabilities declare `mcp`:
 
 ```ts
-import { create } from "anyagent";
-import { claudeCode } from "anyagent/claude-code";
+import { create } from "anyagent-js";
+import { claudeCode } from "anyagent-js/claude-code";
 
 const agent = create(claudeCode());
 await agent.run("List the tables the app touches.", {

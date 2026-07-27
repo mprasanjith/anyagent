@@ -161,7 +161,7 @@ const Page = () => (
         <pre className="m-0 overflow-x-auto font-hm-mono text-hm-sm leading-[1.75]">
           <Kw>{"import "}</Kw>
           {"{ create, detect } "}
-          <Kw>from</Kw> <Str>"anyagent"</Str>
+          <Kw>from</Kw> <Str>"anyagent-js"</Str>
           {";\n\n"}
           <Kw>const</Kw>
           {" [agent] = "}
@@ -271,9 +271,9 @@ const Page = () => (
         <div className="flex flex-wrap items-center gap-6">
           <span className="inline-flex items-center gap-2 rounded-full border border-hm-rule bg-hm-paper-2 py-1 pr-1 pl-4">
             <code className="whitespace-nowrap font-hm-mono text-hm-sm">
-              bun add anyagent
+              bun add anyagent-js
             </code>
-            <CopyButton text="bun add anyagent" />
+            <CopyButton text="bun add anyagent-js" />
           </span>
           <Link
             className={buttonVariants({ variant: "primary" })}

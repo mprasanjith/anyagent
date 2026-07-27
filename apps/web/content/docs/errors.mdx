@@ -27,7 +27,7 @@ The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an ag
 
 ## Parse
 
-The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet: update `anyagent`, and report the failure upstream with the offending payload on `err.raw`.
+The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet: update `anyagent-js`, and report the failure upstream with the offending payload on `err.raw`.
 
 <Callout type="info">
   `Parse` also fires when you pass a `schema` and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
@@ -60,9 +60,9 @@ console.error("stderr:", err.stderr);
 This wraps the `acme init` run and gives every code a response a stranger could act on:
 
 ```ts
-import { create } from "anyagent";
-import { AnyAgentError } from "anyagent/errors";
-import { claudeCode } from "anyagent/claude-code";
+import { create } from "anyagent-js";
+import { AnyAgentError } from "anyagent-js/errors";
+import { claudeCode } from "anyagent-js/claude-code";
 
 const controller = new AbortController();
 process.on("SIGINT", () => controller.abort());

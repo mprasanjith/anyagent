@@ -324,8 +324,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * `agent status`; `models()` asks `agent --list-models`.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { cursor } from "anyagent/cursor";
+ * import { create } from "anyagent-js";
+ * import { cursor } from "anyagent-js/cursor";
  *
  * const result = await create(cursor()).run("summarize this repo");
  * ```

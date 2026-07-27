@@ -1,18 +1,18 @@
-import { antigravity } from "anyagent/antigravity";
-import { claudeCode } from "anyagent/claude-code";
-import { cline } from "anyagent/cline";
-import { codex } from "anyagent/codex";
-import { cursor } from "anyagent/cursor";
-import { geminiCli } from "anyagent/gemini-cli";
-import { goose } from "anyagent/goose";
-import { kiloCode } from "anyagent/kilo-code";
-import { opencode } from "anyagent/opencode";
-import { pi } from "anyagent/pi";
+import { antigravity } from "anyagent-js/antigravity";
+import { claudeCode } from "anyagent-js/claude-code";
+import { cline } from "anyagent-js/cline";
+import { codex } from "anyagent-js/codex";
+import { cursor } from "anyagent-js/cursor";
+import { geminiCli } from "anyagent-js/gemini-cli";
+import { goose } from "anyagent-js/goose";
+import { kiloCode } from "anyagent-js/kilo-code";
+import { opencode } from "anyagent-js/opencode";
+import { pi } from "anyagent-js/pi";
 import type {
   Adapter,
   CapabilitySupport,
   DiscoverySupport,
-} from "anyagent/types";
+} from "anyagent-js/types";
 import Link from "next/link";
 
 // Registry order — the order detect() scans and returns.

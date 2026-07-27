@@ -392,8 +392,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * `"openrouter/openai/gpt-4o-mini"`).
  *
  * ```ts
- * import { create } from "anyagent";
- * import { pi } from "anyagent/pi";
+ * import { create } from "anyagent-js";
+ * import { pi } from "anyagent-js/pi";
  *
  * const result = await create(pi()).run("summarize this repo");
  * ```

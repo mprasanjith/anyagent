@@ -340,8 +340,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * `authStatus()` asks `codex login status`.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { codex } from "anyagent/codex";
+ * import { create } from "anyagent-js";
+ * import { codex } from "anyagent-js/codex";
  *
  * const result = await create(codex()).run("summarize this repo");
  * ```

@@ -15,7 +15,7 @@ This page takes you from install to a working script: detect a coding agent CLI 
 ## Install
 
 ```npm
-npm i anyagent
+npm i anyagent-js
 ```
 
 ## Write the script
@@ -23,7 +23,7 @@ npm i anyagent
 Create a file named `run-agent.ts`:
 
 ```ts
-import { create, detect } from "anyagent";
+import { create, detect } from "anyagent-js";
 
 const [first] = await detect();
 if (!first) {

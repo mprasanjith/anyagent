@@ -1,4 +1,4 @@
-import type { Capabilities } from "anyagent/types";
+import type { Capabilities } from "anyagent-js/types";
 import Link from "next/link";
 
 import { ADAPTERS } from "@/components/capability-matrix";

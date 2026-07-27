@@ -278,8 +278,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * configured, read from cline's provider settings.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { cline } from "anyagent/cline";
+ * import { create } from "anyagent-js";
+ * import { cline } from "anyagent-js/cline";
  *
  * const result = await create(cline()).run("summarize this repo");
  * ```

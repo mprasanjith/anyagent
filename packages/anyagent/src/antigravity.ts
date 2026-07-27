@@ -310,8 +310,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * are emulated; MCP is unavailable.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { antigravity } from "anyagent/antigravity";
+ * import { create } from "anyagent-js";
+ * import { antigravity } from "anyagent-js/antigravity";
  *
  * const result = await create(antigravity()).run("summarize this repo");
  * ```

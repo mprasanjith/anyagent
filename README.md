@@ -5,15 +5,15 @@ Detect the coding agent CLI your end user already has installed (Claude Code, Co
 ## Install
 
 ```sh
-npm i anyagent
+npm i anyagent-js
 ```
 
-Two runtime dependencies. Node.js 18+ or Bun, ESM only. Built-in adapters cover Claude Code, Codex, opencode, Kilo Code, Pi, goose, Cline, Gemini CLI, Antigravity, and Cursor, each importable from its own subpath (`anyagent/claude-code`, `anyagent/codex`, …).
+Two runtime dependencies. Node.js 18+ or Bun, ESM only. Built-in adapters cover Claude Code, Codex, opencode, Kilo Code, Pi, goose, Cline, Gemini CLI, Antigravity, and Cursor, each importable from its own subpath (`anyagent-js/claude-code`, `anyagent-js/codex`, …).
 
 ## Use
 
 ```ts
-import { create, detect } from "anyagent";
+import { create, detect } from "anyagent-js";
 
 const installed = await detect();
 const [first] = installed;

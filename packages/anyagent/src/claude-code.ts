@@ -290,8 +290,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * and system-prompt append.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { claudeCode } from "anyagent/claude-code";
+ * import { create } from "anyagent-js";
+ * import { claudeCode } from "anyagent-js/claude-code";
  *
  * const result = await create(claudeCode()).run("summarize this repo");
  * ```

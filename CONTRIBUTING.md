@@ -1,6 +1,6 @@
 # Contributing
 
-This guide is for contributors changing the AnyAgent repo itself. If you are building on top of the library, read the [docs site](https://anyagent.dev/docs) instead. The main contribution is adding an adapter: support for a new coding-agent CLI.
+This guide is for contributors changing the AnyAgent repo itself. If you are building on top of the library, read the [docs site](https://anyagent.madusha.me/docs) instead. The main contribution is adding an adapter: support for a new coding-agent CLI.
 
 One rule governs the whole flow: no adapter ships against a guessed schema. Every claim about a CLI's flags and output is verified against a real audit plus recorded real output.
 
@@ -65,7 +65,7 @@ const parse = ndjsonParser<Ctx>({
 });
 ```
 
-`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `undefined` to ignore it, and `finalize` builds the terminal `RunResult`. The parser fills `RunResult.events` from what `map` emitted after `finalize` returns. A real adapter maps its CLI's whole event taxonomy, including tool calls and usage. Relative imports are for in-repo adapters; an adapter published outside this repo imports `ndjsonParser` from `anyagent/ndjson` and `AnyAgentError` from `anyagent/errors`.
+`init` creates the per-run accumulator, `map` turns one raw object into event(s) or `undefined` to ignore it, and `finalize` builds the terminal `RunResult`. The parser fills `RunResult.events` from what `map` emitted after `finalize` returns. A real adapter maps its CLI's whole event taxonomy, including tool calls and usage. Relative imports are for in-repo adapters; an adapter published outside this repo imports `ndjsonParser` from `anyagent-js/ndjson` and `AnyAgentError` from `anyagent-js/errors`.
 
 ### 4. Register in BUILTINS
 
@@ -127,7 +127,7 @@ Add an adapter page under `apps/web/content/docs/adapters/` following the existi
 
 ## Checklist
 
-Before you open the change, confirm all six:
+Before you open the change, confirm all seven:
 
 1. `src/hopper.ts` exports the `hopper()` factory, with TSDoc on it
 2. The adapter is appended to `BUILTINS`
@@ -135,8 +135,13 @@ Before you open the change, confirm all six:
 4. A conformance test covers those fixtures
 5. A `hopper.live.test.ts` includes the strict-mode drift canary
 6. `bun run check && bun run types && bun test` is green at the repo root
+7. A changeset describes the change: run `bun run changeset` and commit the generated file
 
 Declare `false` for any capability you have not verified against real output. Honest capabilities matter more than broad ones.
+
+## Releasing
+
+Versioning is driven by [changesets](https://github.com/changesets/changesets). Every PR with a user-visible change includes a changeset (`bun run changeset`); the release workflow on `main` collects them into a "Version Packages" PR, and merging that PR publishes `anyagent-js` to npm and tags the release. `bun run release` builds and publishes from a local checkout if the workflow is unavailable.
 
 ## Contract invariants
 
@@ -147,7 +152,7 @@ Declare `false` for any capability you have not verified against real output. Ho
 An adapter published outside this repo teaches the `AgentId` type about its own id through module augmentation, so the custom id autocompletes alongside the built-ins:
 
 ```ts
-declare module "anyagent/types" {
+declare module "anyagent-js/types" {
   interface KnownAgents {
     "acme-cli": true;
   }

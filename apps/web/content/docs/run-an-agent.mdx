@@ -12,7 +12,7 @@ One prompt in, one result out. This page takes you from detecting an installed a
 `detect()` scans the end user’s `PATH` and returns one result per installed agent, empty when none are found:
 
 ```ts
-import { create, detect } from "anyagent";
+import { create, detect } from "anyagent-js";
 
 const installed = await detect();
 const [found] = installed;

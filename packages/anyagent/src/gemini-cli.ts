@@ -237,8 +237,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * emulated; usage reports cache reads via the stream's `cached` counter.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { geminiCli } from "anyagent/gemini-cli";
+ * import { create } from "anyagent-js";
+ * import { geminiCli } from "anyagent-js/gemini-cli";
  *
  * const result = await create(geminiCli()).run("summarize this repo");
  * ```

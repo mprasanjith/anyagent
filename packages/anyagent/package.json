@@ -1,10 +1,33 @@
 {
-  "name": "anyagent",
-  "version": "0.0.0",
+  "name": "anyagent-js",
+  "version": "0.1.0",
   "description": "Detect and drive the coding-agent CLI a user already has installed.",
   "license": "MIT",
+  "homepage": "https://anyagent.madusha.me",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mprasanjith/anyagent.git",
+    "directory": "packages/anyagent"
+  },
+  "bugs": "https://github.com/mprasanjith/anyagent/issues",
+  "keywords": [
+    "coding-agent",
+    "agent",
+    "cli",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "opencode",
+    "cline",
+    "goose",
+    "cursor",
+    "acp"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
-    "anyagent-record": "./dist/internal/record.js"
+    "anyagent-record": "dist/internal/record.js"
   },
   "files": [
     "dist"
@@ -85,6 +108,6 @@
     "test:live": "ANYAGENT_LIVE=1 bun test --path-ignore-patterns '' live.test",
     "types": "tsc --noEmit",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "cp ../../README.md ./README.md"
+    "prepack": "cp ../../README.md ./README.md && cp ../../LICENSE ./LICENSE"
   }
 }

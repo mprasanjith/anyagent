@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@paper-design/shaders-react": "0.0.77",
-    "anyagent": "workspace:*",
+    "anyagent-js": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "fumadocs-core": "16.11.5",

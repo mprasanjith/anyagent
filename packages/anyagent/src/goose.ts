@@ -284,8 +284,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * bare model name leaves the provider to goose's own config.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { goose } from "anyagent/goose";
+ * import { create } from "anyagent-js";
+ * import { goose } from "anyagent-js/goose";
  *
  * const result = await create(goose()).run("summarize this repo");
  * ```
