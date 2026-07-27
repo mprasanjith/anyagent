@@ -18,7 +18,7 @@ Drop the option, or check first and degrade the feature when it is missing: `age
 The options contradict each other on any agent: a dependent option was passed without its prerequisite, or a session-owned option was passed by hand. Like `UnsupportedCapability` it fires before any process spawns, but this call could never be valid on any CLI, so correct the options at the call site rather than degrading per agent. The cases:
 
 - `forkSession` on a run with no `resume`, or `fork` at `agent.session({ fork: true })` without `resume`: only an existing conversation can branch.
-- `resume` or `forkSession` passed to `session.run()`: the session owns continuity, so thread it through `agent.session({ resume, fork })` instead.
+- `resume`, `forkSession`, or a session setting (`model`, `effort`, `cwd`, `env`, `mcp`, `extraArgs`) passed to `session.run()`: the session owns continuity and its settings, so set them at `agent.session()` instead.
 - Iterating one `Run` twice: a `Run` serves a single event consumer, so share the handle rather than opening a second `for await`.
 
 ## Invocation

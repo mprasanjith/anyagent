@@ -852,8 +852,12 @@ export interface Agent<C extends Capabilities = Capabilities> {
    * pass back later as `{ resume }`. Gated by {@link Capabilities.session};
    * throws `UnsupportedCapability` where it is `false`.
    *
+   * A session is a thread: its {@link SessionOptions} settings are fixed here
+   * and apply to every turn. Fork it to continue the conversation under
+   * different settings.
+   *
    * ```ts
-   * const session = agent.session();
+   * const session = agent.session({ model: "opus" });
    * await session.run("Review this repo.");
    * await session.run("Fix what you found.");
    * ```
@@ -909,25 +913,74 @@ export interface PermissionOption {
 }
 
 /**
- * Options for {@link Agent.session}. `resume` continues an earlier session
- * from a persisted {@link Session.id}. `fork` branches: the first turn
- * carries the CLI's copy-on-resume flag, and `session.id` becomes the new
- * conversation's id. `fork` requires `resume` (`InvalidOptions` without it)
- * and is gated by {@link Capabilities.sessionFork}.
+ * Options for {@link Agent.session}. A session is a thread: `model`, `effort`,
+ * `cwd`, `env`, `mcp`, and `extraArgs` are its settings, fixed here for its
+ * whole lifetime and applied to every turn — `session.run` takes only
+ * per-turn options, and passing a setting there throws `AnyAgentError`
+ * (`code: "InvalidOptions"`).
+ * To continue the conversation under different settings, fork it into a new
+ * session. Every setting is validated against the agent's
+ * {@link Capabilities} at `agent.session()`, before any turn runs.
+ *
+ * `resume` continues an earlier session from a persisted {@link Session.id}.
+ * `fork` branches: the first turn carries the CLI's copy-on-resume flag, and
+ * `session.id` becomes the new conversation's id. `fork` requires `resume`
+ * (`InvalidOptions` without it) and is gated by
+ * {@link Capabilities.sessionFork}.
  */
 export interface SessionOptions {
+  /** Directory every turn works in. Defaults to the current process's cwd. */
+  cwd?: string;
+  /**
+   * How hard the model should think on every turn. Gated by
+   * {@link Capabilities.effort}; where {@link Capabilities.reasoningEfforts}
+   * is present the value is checked against it, otherwise it passes through
+   * and the CLI judges it.
+   */
+  effort?: ReasoningEffort;
+  /** Extra environment variables for every turn, merged over the parent's. */
+  env?: Record<string, string>;
+  /**
+   * Escape hatch: extra native CLI flags appended verbatim to every turn's
+   * argv, so you can reach a native capability the unified surface does not
+   * model while keeping normalized events. Adapter-specific — the caller owns
+   * correctness.
+   *
+   * These flags are never validated and are appended after the flags the
+   * adapter builds, so one here can override what a typed option set. Prefer
+   * the typed options; reach for this only when nothing else exposes the flag
+   * you need. For a flag on one turn only, run it outside the session:
+   * `agent.run(prompt, { resume: session.id, extraArgs })`.
+   */
+  extraArgs?: string[];
   fork?: boolean;
+  /** MCP servers attached to every turn. Gated by {@link Capabilities.mcp}. */
+  mcp?: McpConfig;
+  /**
+   * Model every turn runs on, in the CLI's own vocabulary (e.g. `"opus"` for
+   * claude-code). Gated by {@link Capabilities.modelSelection}.
+   */
+  model?: string;
   resume?: string;
 }
 
 /**
  * The per-turn options a session accepts: everything the agent accepts minus
- * `resume` and `forkSession`, which the session owns. Passing either anyway
- * throws `AnyAgentError` (`code: "InvalidOptions"`).
+ * what the session owns — `resume` and `forkSession`, plus the thread's
+ * settings (`model`, `effort`, `cwd`, `env`, `mcp`, `extraArgs`; see
+ * {@link SessionOptions}). Passing any of them anyway throws
+ * `AnyAgentError` (`code: "InvalidOptions"`).
  */
 export type SessionRunOptionsFor<C extends Capabilities> = Omit<
   RunOptionsFor<C>,
-  "forkSession" | "resume"
+  | "cwd"
+  | "effort"
+  | "env"
+  | "extraArgs"
+  | "forkSession"
+  | "mcp"
+  | "model"
+  | "resume"
 >;
 
 /** The members {@link Session.supports} gates: the native-tier verbs. */
@@ -940,6 +993,11 @@ export type SessionKey = "respond" | "steer";
  * after it, threaded automatically. A failed turn rejects the turns queued
  * behind it; calling `run` again afterwards retries from the last good
  * point.
+ *
+ * A session is a thread: the {@link SessionOptions} settings it was opened
+ * with are fixed for its lifetime and ride every turn, so `run` takes only
+ * per-turn options. Changing a setting means a new session, or a fork of this
+ * one to keep the history.
  *
  * `id` is the resume handle: `undefined` until the first turn reveals it,
  * then stable. Persist it anywhere and pass it back as

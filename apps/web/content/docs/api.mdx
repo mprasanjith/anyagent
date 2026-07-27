@@ -102,14 +102,14 @@ One conversation spanning many turns, from `agent.session()`. The session owns c
   name="Session"
 />
 
-`SessionOptions` shapes the session at creation. `fork` requires `resume` (`InvalidOptions` without it) and is gated by [`Capabilities.sessionFork`](#capabilities):
+`SessionOptions` shapes the session at creation, and a session is a thread: its settings are fixed here and validated against the agent’s capabilities before any turn runs. `fork` requires `resume` (`InvalidOptions` without it) and is gated by [`Capabilities.sessionFork`](#capabilities):
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
   name="SessionOptions"
 />
 
-A session’s per-turn options are the agent’s minus `resume` and `forkSession`, which the session owns; passing either anyway throws `InvalidOptions`.
+A session’s per-turn options are the agent’s minus `resume` and `forkSession` and the thread’s settings (`model`, `effort`, `cwd`, `env`, `mcp`, `extraArgs`), all of which the session owns; passing one anyway throws `InvalidOptions`.
 
 ## Run options
 

@@ -11,9 +11,48 @@ import type {
   SessionOptions,
 } from "../types.js";
 import { AcpSessionImpl } from "./acp-session.js";
+import { validateOptions } from "./capabilities.js";
 import { RunImpl } from "./run.js";
 
 type Runner = ConstructorParameters<typeof RunImpl>[1];
+
+const SESSION_SETTINGS = [
+  "cwd",
+  "effort",
+  "env",
+  "extraArgs",
+  "mcp",
+  "model",
+] as const;
+
+const settingsOf = (opts: SessionOptions): RunOptions => {
+  const settings: RunOptions = {};
+  for (const key of SESSION_SETTINGS) {
+    const value = opts[key];
+    if (value !== undefined) {
+      Object.assign(settings, { [key]: value });
+    }
+  }
+  return settings;
+};
+
+// JS callers bypass the compile-time omission on `SessionRunOptionsFor`.
+const rejectOwned = (opts: RunOptions): void => {
+  if (opts.resume !== undefined || opts.forkSession !== undefined) {
+    throw new AnyAgentError(
+      "InvalidOptions",
+      "resume and forkSession are owned by the session; use agent.session({ resume, fork })"
+    );
+  }
+  const owned = SESSION_SETTINGS.filter((key) => opts[key] !== undefined);
+  if (owned.length > 0) {
+    const many = owned.length > 1;
+    throw new AnyAgentError(
+      "InvalidOptions",
+      `${owned.join(", ")} ${many ? "are" : "is"} owned by the session; set ${many ? "them" : "it"} on agent.session()`
+    );
+  }
+};
 
 interface PendingTurn {
   opts: RunOptions;
@@ -42,6 +81,8 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   #resumeNext: string | undefined;
   #forkNext: boolean;
   readonly #seedFirstRunOptions: RunOptions | undefined;
+  readonly #settings: RunOptions;
+  readonly #delegated: boolean;
   readonly #pending: PendingTurn[] = [];
   #draining = false;
   #turns = 0;
@@ -52,10 +93,14 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     opts: SessionOptions = {},
     // The mixed-tier fallback constructs an emulated cursor directly; this flag
     // keeps it from re-selecting the native tier and looping back on itself.
+    // Its turns arrive with the outer session's settings already merged in.
     forceEmulated = false
   ) {
     this.agent = agent;
     this.#runner = runner;
+    this.#delegated = forceEmulated;
+    this.#settings = settingsOf(opts);
+    validateOptions(agent.adapter, this.#settings);
     this.#forkNext = opts.fork === true;
     if (
       !forceEmulated &&
@@ -118,15 +163,13 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     );
   }
 
-  run(prompt: string, opts: RunOptions = {}): Run {
+  run(prompt: string, callOpts: RunOptions = {}): Run {
+    if (!this.#delegated) {
+      rejectOwned(callOpts);
+    }
+    const opts: RunOptions = { ...callOpts, ...this.#settings };
     if (this.#native) {
       return this.#native.run(prompt, opts);
-    }
-    if (opts.resume !== undefined || opts.forkSession !== undefined) {
-      throw new AnyAgentError(
-        "InvalidOptions",
-        "resume and forkSession are owned by the session; use agent.session({ resume, fork })"
-      );
     }
 
     let resolveGate: PendingTurn["resolveGate"] = () => {

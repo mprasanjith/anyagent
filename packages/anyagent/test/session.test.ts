@@ -2,8 +2,14 @@ import { expect, test } from "bun:test";
 
 import { AnyAgentError } from "../src/errors.js";
 import { AgentImpl } from "../src/internal/agent.js";
-import type { Adapter, RunOptions } from "../src/types.js";
-import { fakeStreaming, fakeText, runnerFromFixture } from "./fake-adapter.js";
+import type { Adapter, Invocation, RunOptions } from "../src/types.js";
+import {
+  fakeClosedEffort,
+  fakeStreaming,
+  fakeText,
+  runnerFromFixture,
+  sourceFromBody,
+} from "./fake-adapter.js";
 
 const WITH_ID = '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
 const NO_ID = '{"t":"text","v":"ok"}\n{"t":"end"}';
@@ -25,6 +31,25 @@ const recording = (
 const forkable: Adapter = {
   ...fakeStreaming,
   capabilities: { ...fakeStreaming.capabilities, sessionFork: "native" },
+};
+
+const threading: Adapter = {
+  ...fakeStreaming,
+  buildInvocation: (prompt, opts) => ({
+    args: opts.model ? ["-p", prompt, "--model", opts.model] : ["-p", prompt],
+    command: "fake-stream",
+    cwd: opts.cwd,
+    env: opts.env,
+  }),
+};
+
+const SETTINGS = {
+  cwd: "/work",
+  effort: "high",
+  env: { TOKEN: "t" },
+  extraArgs: ["--verbose"],
+  mcp: { db: { command: "npx" } },
+  model: "opus",
 };
 
 test("session() throws where the capability is false", () => {
@@ -142,6 +167,88 @@ test("passing resume or forkSession through a session turn throws InvalidOptions
   );
 });
 
+test("settings from agent.session() ride every turn, resumed ones included", async () => {
+  const calls: RunOptions[] = [];
+  const invocations: Invocation[] = [];
+  const agent = new AgentImpl(
+    recording(threading, calls),
+    (inv: Invocation) => {
+      invocations.push(inv);
+      return sourceFromBody(WITH_ID);
+    }
+  );
+  const session = agent.session(SETTINGS);
+
+  await session.run("first");
+  await session.run("second");
+
+  expect(invocations.map((inv) => inv.cwd)).toEqual(["/work", "/work"]);
+  expect(invocations.map((inv) => inv.env)).toEqual([
+    { TOKEN: "t" },
+    { TOKEN: "t" },
+  ]);
+  for (const inv of invocations) {
+    expect(inv.args).toEqual(expect.arrayContaining(["opus", "--verbose"]));
+  }
+  expect(calls[0]).toMatchObject(SETTINGS);
+  expect(calls[1]).toMatchObject({ ...SETTINGS, resume: "s1" });
+});
+
+test("a setting passed per-turn throws InvalidOptions and spawns nothing", () => {
+  let spawns = 0;
+  const agent = new AgentImpl(fakeStreaming, () => {
+    spawns += 1;
+    return sourceFromBody(WITH_ID);
+  });
+  const session = agent.session({ model: "opus" });
+
+  expect(() => session.run("x", { model: "sonnet" } as RunOptions)).toThrow(
+    "owned by the session"
+  );
+  for (const opts of [
+    { cwd: "/elsewhere" },
+    { effort: "low" },
+    { env: { TOKEN: "t" } },
+    { extraArgs: ["--verbose"] },
+    { mcp: {} },
+  ] as RunOptions[]) {
+    expect(() => session.run("x", opts)).toThrow(
+      expect.objectContaining({ code: "InvalidOptions" })
+    );
+  }
+  expect(spawns).toBe(0);
+});
+
+test("a setting on session.run does not compile", () => {
+  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(WITH_ID));
+  const session = agent.session();
+  expect(() =>
+    // @ts-expect-error model is the session's setting, not a turn option.
+    session.run("x", { model: "opus" })
+  ).toThrow(expect.objectContaining({ code: "InvalidOptions" }));
+  expect(() =>
+    // @ts-expect-error cwd is the session's setting, not a turn option.
+    session.run("x", { cwd: "/elsewhere" })
+  ).toThrow(expect.objectContaining({ code: "InvalidOptions" }));
+});
+
+test("an unsupported setting throws at session(), before any turn", () => {
+  const noModel: Adapter = {
+    ...fakeStreaming,
+    capabilities: { ...fakeStreaming.capabilities, modelSelection: false },
+  };
+  const agent = new AgentImpl(noModel, runnerFromFixture(WITH_ID));
+  expect(() => agent.session({ model: "opus" })).toThrow(
+    expect.objectContaining({ code: "UnsupportedCapability" })
+  );
+
+  const closed = new AgentImpl(fakeClosedEffort, runnerFromFixture(WITH_ID));
+  expect(() => closed.session({ effort: "medium" })).toThrow(
+    expect.objectContaining({ code: "UnsupportedCapability" })
+  );
+  expect(() => closed.session({ effort: "high" })).not.toThrow();
+});
+
 test("a seeded adapter registers the handle on turn one, resumes it after", async () => {
   const calls: RunOptions[] = [];
   const seeded = recording(fakeStreaming, calls, {
@@ -151,16 +258,16 @@ test("a seeded adapter registers the handle on turn one, resumes it after", asyn
     }),
   });
   const agent = new AgentImpl(seeded, runnerFromFixture(NO_ID));
-  const session = agent.session();
+  const session = agent.session({ extraArgs: ["--verbose"] });
   expect(session.id).toBe("seeded-1");
 
   await session.run("first");
   expect(calls[0]?.resume).toBeUndefined();
-  expect(calls[0]?.extraArgs).toEqual(["--name", "seeded-1"]);
+  expect(calls[0]?.extraArgs).toEqual(["--name", "seeded-1", "--verbose"]);
 
   await session.run("second");
   expect(calls[1]?.resume).toBe("seeded-1");
-  expect(calls[1]?.extraArgs).toBeUndefined();
+  expect(calls[1]?.extraArgs).toEqual(["--verbose"]);
 });
 
 test("iterating a session turn reveals the id as the session event arrives", async () => {
