@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { AnyAgentError } from "../src/errors.js";
+import { AnyAgentError } from "../src/errors.js";
 import { AcpSessionImpl } from "../src/internal/acp-session.js";
 import { AgentImpl } from "../src/internal/agent.js";
 import type { Adapter, AgentEvent } from "../src/types.js";
 import {
+  errorResponse,
   request,
   response,
   type ScriptApi,
@@ -105,6 +106,7 @@ test("a native turn translates updates into events, text, and a sessionId", asyn
   expect(result.sessionId).toBe("s1");
   expect(session.id).toBe("s1");
   expect(events.map((e) => e.type)).toEqual([
+    "session",
     "text-delta",
     "reasoning-delta",
     "tool-call",
@@ -332,6 +334,451 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
   await transport.done;
 });
 
+// No transport factory: these drive the default one, spawning `command`.
+const spawningSession = (command: string[]): AcpSessionImpl => {
+  const adapter: Adapter = { ...nativeAdapter, acp: { command } };
+  return new AcpSessionImpl(
+    new AgentImpl(adapter, runnerFromFixture("")),
+    runnerFromFixture("")
+  );
+};
+
+test("a missing ACP binary fails the turn with Invocation and its argv", async () => {
+  const session = spawningSession(["definitely-not-a-real-binary-xyz"]);
+  await expect(session.run("hi")).rejects.toMatchObject({
+    argv: ["definitely-not-a-real-binary-xyz"],
+    code: "Invocation",
+  });
+});
+
+test("stderr past the pipe buffer is drained and lands on the failure", async () => {
+  const bytes = 100_000;
+  const script = `yes 0123456789 | head -c ${bytes} 1>&2; exit 3`;
+  const failure: AnyAgentError = await spawningSession(["sh", "-c", script])
+    .run("hi")
+    .then(
+      () => {
+        throw new Error("the turn resolved");
+      },
+      (error: unknown) => error as AnyAgentError
+    );
+  expect(failure).toMatchObject({
+    argv: ["sh", "-c", script],
+    code: "Invocation",
+  });
+  expect(failure.stderr?.length).toBeGreaterThanOrEqual(bytes);
+});
+
+test("a non-JSON stdout line rejects the turn with Parse", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    await api.next();
+    api.line("Welcome to fake-acp 1.0");
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  await expect(session.run("hi")).rejects.toMatchObject({ code: "Parse" });
+  await transport.done;
+});
+
+test("an agent dying mid-turn rejects the turn with the transport's diagnostics", async () => {
+  let kill = (): void => undefined;
+  const killed = new Promise<void>((resolve) => {
+    kill = resolve;
+  });
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    await api.next();
+    api.emit(
+      update("s1", {
+        content: { text: "half", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    await killed;
+    api.die(
+      new AnyAgentError("Invocation", "fake-acp exited 1", {
+        argv: ["fake-acp"],
+        stderr: "boom",
+      })
+    );
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const run = session.run("hi");
+  const events: AgentEvent[] = [];
+  let thrown: unknown;
+  try {
+    for await (const event of run) {
+      events.push(event);
+      if (event.type === "text-delta") {
+        kill();
+      }
+    }
+  } catch (error) {
+    thrown = error;
+  }
+
+  expect(events.map((e) => e.type)).toEqual(["session", "text-delta"]);
+  const failure = await run.catch((error: unknown) => error);
+  expect(thrown).toBe(failure);
+  expect(failure).toMatchObject({
+    argv: ["fake-acp"],
+    code: "Invocation",
+    stderr: "boom",
+  });
+  await transport.done;
+});
+
+test("aborting a queued turn leaves the in-flight turn untouched", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const first = await api.next();
+    expect(first.params).toMatchObject({
+      prompt: [{ text: "first", type: "text" }],
+    });
+    api.emit(
+      update("s1", {
+        content: { text: "one", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(first.id, { stopReason: "end_turn" }));
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const first = session.run("first");
+  const second = session.run("second");
+  second.abort();
+
+  await expect(second).rejects.toMatchObject({ code: "Aborted" });
+  expect((await first).text).toBe("one");
+  await transport.done;
+});
+
+test("aborting before the connection opens still settles the run Aborted", async () => {
+  const transport = scriptedTransport(async (api) => {
+    // The handshake is never answered, so the turn is still connecting.
+    await api.next();
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const run = session.run("hi");
+  run.abort();
+  await expect(run).rejects.toMatchObject({ code: "Aborted" });
+  await transport.done;
+});
+
+test("an already-aborted signal settles the run without opening a transport", async () => {
+  let opened = 0;
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => {
+      opened += 1;
+      return {
+        close: () => undefined,
+        onDeath: () => undefined,
+        onLine: () => undefined,
+        send: () => undefined,
+      };
+    }
+  );
+  const controller = new AbortController();
+  controller.abort();
+
+  await expect(
+    session.run("hi", { signal: controller.signal })
+  ).rejects.toMatchObject({ code: "Aborted" });
+  expect(opened).toBe(0);
+});
+
+test("opts.signal firing mid-turn cancels the live turn", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(
+      update("s1", {
+        content: { text: "starting", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    const cancel = await api.next();
+    expect(cancel.method).toBe("session/cancel");
+    api.emit(response(prompt.id, { stopReason: "cancelled" }));
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const controller = new AbortController();
+  const run = session.run("long task", { signal: controller.signal });
+  try {
+    for await (const event of run) {
+      if (event.type === "text-delta") {
+        controller.abort();
+      }
+    }
+  } catch (error) {
+    expect(error).toMatchObject({ code: "Aborted" });
+  }
+  await expect(run).rejects.toMatchObject({ code: "Aborted" });
+  await transport.done;
+});
+
+test("a failed turn rejects the turns queued behind it", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const first = await api.next();
+    api.emit(response(first.id, { stopReason: "refusal" }));
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const first = session.run("first");
+  const second = session.run("second");
+
+  const failure = await first.catch((error: unknown) => error);
+  expect(failure).toMatchObject({
+    code: "Invocation",
+    raw: { stopReason: "refusal" },
+  });
+  expect(await second.catch((error: unknown) => error)).toBe(failure);
+  await transport.done;
+});
+
+test("a failed steer leaves the turn in exactly one terminal state", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(
+      update("s1", {
+        content: { text: "working", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    const steer = await api.next();
+    expect(steer.method).toBe("session/prompt");
+    api.emit(errorResponse(steer.id, "this agent refuses mid-turn prompts"));
+    const cancel = await api.next();
+    expect(cancel.method).toBe("session/cancel");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const run = session.run("go");
+  const events: AgentEvent[] = [];
+  let thrown: unknown;
+  try {
+    for await (const event of run) {
+      events.push(event);
+      if (event.type === "text-delta") {
+        session.steer("faster");
+      }
+    }
+  } catch (error) {
+    thrown = error;
+  }
+
+  const failure = await run.catch((error: unknown) => error);
+  expect(failure).toMatchObject({ code: "Invocation" });
+  expect(thrown).toBe(failure);
+  expect(events.some((e) => e.type === "done")).toBe(false);
+  await transport.done;
+});
+
+test("session lands once, first, and session_info_update does not repeat it", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(
+      update("s1", { sessionUpdate: "session_info_update", title: "Pong" })
+    );
+    api.emit(
+      update("s1", {
+        content: { text: "pong", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const run = session.run("hi");
+  const events: AgentEvent[] = [];
+  await collect(events, run);
+  await run;
+
+  expect(events[0]).toMatchObject({ sessionId: "s1", type: "session" });
+  expect(events.filter((e) => e.type === "session")).toHaveLength(1);
+  await transport.done;
+});
+
+test("usage reaches the events and the result", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(
+      update("s1", {
+        cost: { amount: 0.25, currency: "USD" },
+        sessionUpdate: "usage_update",
+        size: 200_000,
+        used: 8641,
+      })
+    );
+    api.emit(
+      update("s1", {
+        content: { text: "ok", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(
+      response(prompt.id, {
+        stopReason: "end_turn",
+        usage: {
+          cachedReadTokens: 1792,
+          inputTokens: 6849,
+          outputTokens: 4,
+          thoughtTokens: 13,
+          totalTokens: 8658,
+        },
+      })
+    );
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const run = session.run("hi");
+  const events: AgentEvent[] = [];
+  await collect(events, run);
+  const result = await run;
+
+  const usages = events.filter((e) => e.type === "usage");
+  expect(usages).toHaveLength(2);
+  expect(usages[0]).toMatchObject({
+    raw: { used: 8641 },
+    usage: { costUsd: 0.25 },
+  });
+  expect(result.usage).toMatchObject({
+    cacheReadTokens: 1792,
+    inputTokens: 6849,
+    outputTokens: 4,
+    reasoningTokens: 13,
+  });
+  expect(result.usage?.cacheWriteTokens).toBeUndefined();
+  expect(events.filter((e) => e.type === "done")).toHaveLength(1);
+  expect(events.at(-1)?.type).toBe("done");
+  await transport.done;
+});
+
+test("a failed tool call reports a tool-result named from its call", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(
+      update("s1", {
+        name: "Read",
+        rawInput: { path: "gone.txt" },
+        sessionUpdate: "tool_call",
+        status: "in_progress",
+        title: "Reading",
+        toolCallId: "t1",
+      })
+    );
+    api.emit(
+      update("s1", {
+        content: [
+          { content: { text: "ENOENT", type: "text" }, type: "content" },
+        ],
+        sessionUpdate: "tool_call_update",
+        status: "failed",
+        toolCallId: "t1",
+      })
+    );
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = new AcpSessionImpl(
+    nativeAgent(),
+    runnerFromFixture(""),
+    {},
+    () => transport
+  );
+  const run = session.run("read it");
+  const events: AgentEvent[] = [];
+  await collect(events, run);
+  await run;
+
+  const toolResult = events.find((e) => e.type === "tool-result");
+  expect(toolResult).toMatchObject({
+    callId: "t1",
+    name: "read",
+    nativeName: "Read",
+    raw: { status: "failed" },
+  });
+  await transport.done;
+});
+
 test("resume reattaches with session/load when loadSession is advertised", async () => {
   const transport = scriptedTransport(async (api) => {
     await handshake(api, { loadSession: true });
@@ -420,6 +867,7 @@ test("an unsupported option rejects before the transport is ever opened", async 
       opened += 1;
       return {
         close: () => undefined,
+        onDeath: () => undefined,
         onLine: () => undefined,
         send: (line) => {
           sent.push(line);
@@ -667,8 +1115,16 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode"]) {
     expect(result.sessionId).toBe(fx.sessionId);
     expect(session.id).toBe(fx.sessionId);
     expect(result.text.length).toBeGreaterThan(0);
+    expect(events[0]).toMatchObject({
+      sessionId: fx.sessionId,
+      type: "session",
+    });
+    expect(events.filter((e) => e.type === "session")).toHaveLength(1);
     expect(events.some((e) => e.type === "text-delta")).toBe(true);
     expect(events.at(-1)?.type).toBe("done");
+    if (fx.promptResult.usage) {
+      expect(result.usage).toBeDefined();
+    }
     await transport.done;
   });
 }

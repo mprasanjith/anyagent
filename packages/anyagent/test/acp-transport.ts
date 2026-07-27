@@ -1,13 +1,16 @@
 import type { AnyMessage, JsonRpcId } from "@agentclientprotocol/sdk";
 
+import type { AnyAgentError } from "../src/errors.js";
 import type { AcpTransport } from "../src/internal/acp.js";
 
 /**
  * The other end of an {@link AcpTransport}, as seen by a test script standing
  * in for an ACP agent. `next` awaits the client's next outgoing message (a
  * request, response, or notification); `emit` pushes one incoming message to
- * the client. A {@link Script} interleaves the two to replay a realistic ACP v1
- * exchange with no subprocess and no network.
+ * the client; `line` pushes one unframed stdout line, as a banner would be; and
+ * `die` kills the channel the way a spawned agent's death does. A
+ * {@link Script} interleaves them to replay a realistic ACP v1 exchange with no
+ * subprocess and no network.
  */
 /**
  * A permissive view of one wire message for a script to assert against — every
@@ -22,7 +25,9 @@ export interface ScriptMessage {
 }
 
 export interface ScriptApi {
+  die: (failure: AnyAgentError) => void;
   emit: (message: AnyMessage) => void;
+  line: (text: string) => void;
   next: () => Promise<ScriptMessage>;
 }
 
@@ -33,6 +38,13 @@ export const response = (
   id: JsonRpcId | undefined,
   result: unknown
 ): AnyMessage => ({ id, jsonrpc: "2.0", result }) as AnyMessage;
+
+/** A JSON-RPC error response for `id`, ready to `emit`. */
+export const errorResponse = (
+  id: JsonRpcId | undefined,
+  message: string
+): AnyMessage =>
+  ({ error: { code: -32_000, message }, id, jsonrpc: "2.0" }) as AnyMessage;
 
 /** A JSON-RPC request from the agent to the client (reverse direction). */
 export const request = (
@@ -61,12 +73,19 @@ export interface ScriptedTransport extends AcpTransport {
 
 export const scriptedTransport = (script: Script): ScriptedTransport => {
   let listener: ((line: string) => void) | undefined;
+  let onDeath: ((failure: AnyAgentError) => void) | undefined;
   const outgoing: AnyMessage[] = [];
   const waiters: Array<(message: AnyMessage) => void> = [];
 
   const api: ScriptApi = {
+    die: (failure) => {
+      onDeath?.(failure);
+    },
     emit: (message) => {
       listener?.(JSON.stringify(message));
+    },
+    line: (text) => {
+      listener?.(text);
     },
     next: () =>
       new Promise<ScriptMessage>((resolve) => {
@@ -82,6 +101,9 @@ export const scriptedTransport = (script: Script): ScriptedTransport => {
   const transport: AcpTransport = {
     close: () => {
       listener = undefined;
+    },
+    onDeath: (cb) => {
+      onDeath = cb;
     },
     onLine: (cb) => {
       listener = cb;

@@ -155,6 +155,10 @@ export abstract class RunHandle extends Promise<RunResult> implements Run {
     }
   }
 
+  protected get settled(): boolean {
+    return this.#settled;
+  }
+
   protected emit(event: AgentEvent): void {
     this.#events.push(event);
     this.#onEvent?.(event);
@@ -162,7 +166,12 @@ export abstract class RunHandle extends Promise<RunResult> implements Run {
     this.#notify = undefined;
   }
 
+  // First settle wins: a late success must not overwrite the failure consumers
+  // were already handed.
   protected finish(failure?: unknown): void {
+    if (this.#settled) {
+      return;
+    }
     this.#failure = failure;
     this.#settled = true;
     this.#notify?.();
