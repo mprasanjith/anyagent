@@ -6,6 +6,8 @@ import { claudeCode } from "../src/claude-code.js";
 import { cline } from "../src/cline.js";
 import { codex } from "../src/codex.js";
 import { runConformance } from "../src/conformance.js";
+import { cursor } from "../src/cursor.js";
+import { geminiCli } from "../src/gemini-cli.js";
 import { goose } from "../src/goose.js";
 import { kiloCode } from "../src/kilo-code.js";
 import { opencode } from "../src/opencode.js";
@@ -15,6 +17,10 @@ import { fakeClosedEffort, fakeStreaming, fakeText } from "./fake-adapter.js";
 
 const read = (p: string) =>
   readFileSync(path.join(import.meta.dir, p), "utf-8");
+
+const transcript = (id: string): Record<string, string> => ({
+  recorded: read(`fixtures/acp/${id}.jsonl`),
+});
 
 test("claude-code passes conformance", async () => {
   await runConformance(claudeCode(), {
@@ -40,7 +46,32 @@ const fixturesFor = (id: string): Record<string, string> =>
   );
 
 test("opencode passes conformance", async () => {
-  await runConformance(opencode(), { fixtures: fixturesFor("opencode") });
+  await runConformance(opencode(), {
+    fixtures: fixturesFor("opencode"),
+    transcripts: transcript("opencode"),
+  });
+});
+
+test("cursor passes conformance", async () => {
+  await runConformance(cursor(), {
+    fixtures: {
+      shell: read("fixtures/cursor/shell.jsonl"),
+      simple: read("fixtures/cursor/simple.jsonl"),
+      tools: read("fixtures/cursor/tools.jsonl"),
+    },
+    transcripts: transcript("cursor"),
+  });
+});
+
+test("gemini-cli passes conformance", async () => {
+  await runConformance(geminiCli(), {
+    fixtures: {
+      readonly: read("fixtures/gemini-cli/readonly.jsonl"),
+      simple: read("fixtures/gemini-cli/simple.jsonl"),
+      tools: read("fixtures/gemini-cli/tools.jsonl"),
+    },
+    transcripts: transcript("gemini-cli"),
+  });
 });
 
 test("kilo-code passes conformance", async () => {
@@ -52,11 +83,17 @@ test("pi passes conformance", async () => {
 });
 
 test("goose passes conformance", async () => {
-  await runConformance(goose(), { fixtures: fixturesFor("goose") });
+  await runConformance(goose(), {
+    fixtures: fixturesFor("goose"),
+    transcripts: transcript("goose"),
+  });
 });
 
 test("cline passes conformance", async () => {
-  await runConformance(cline(), { fixtures: fixturesFor("cline") });
+  await runConformance(cline(), {
+    fixtures: fixturesFor("cline"),
+    transcripts: transcript("cline"),
+  });
 });
 
 const toyFixture = '{"t":"text","v":"Hi"}\n{"t":"end"}';
@@ -113,6 +150,30 @@ test("conformance rejects a result.sessionId that contradicts the session event"
   };
   await expect(
     runConformance(sessionLiar, { fixtures: { simple: "" } })
+  ).rejects.toThrow();
+});
+
+test("conformance rejects a transcript on an adapter with no live tier", async () => {
+  const adapter = opencode();
+  const emulated: Adapter = {
+    ...adapter,
+    capabilities: { ...adapter.capabilities, session: "emulated" },
+  };
+  await expect(
+    runConformance(emulated, {
+      fixtures: {},
+      transcripts: transcript("opencode"),
+    })
+  ).rejects.toThrow();
+});
+
+test("conformance rejects a transcript whose recorded turn never completed", async () => {
+  const refused = read("fixtures/acp/goose.jsonl").replace(
+    '"stopReason":"end_turn"',
+    '"stopReason":"refusal"'
+  );
+  await expect(
+    runConformance(goose(), { fixtures: {}, transcripts: { refused } })
   ).rejects.toThrow();
 });
 

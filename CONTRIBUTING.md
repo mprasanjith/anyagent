@@ -107,6 +107,8 @@ test("hopper passes conformance", async () => {
 });
 ```
 
+An adapter with an ACP endpoint passes `transcripts: { recorded: read("fixtures/acp/hopper.jsonl") }` too, which replays the recorded transcript through a live session.
+
 Run it and confirm green before moving on:
 
 ```bash
@@ -145,7 +147,7 @@ Versioning is driven by [changesets](https://github.com/changesets/changesets). 
 
 ## Contract invariants
 
-`runConformance` in `packages/anyagent/src/conformance.ts` is the executable half of the contract; it asserts what every adapter must uphold: exactly one terminal `done` per stream, `result.text` equal to the concatenated text deltas, a `sessionId` consistent with the `session` event, a valid invocation for whatever the capabilities declare, and an `UnsupportedCapability` throw for everything they do not, `authStatus()` and `models()` included. Read that file rather than reimplement the checks. Conformance helpers (`sourceFromBody`, `fixedRunner`) live in the same file.
+`runConformance` in `packages/anyagent/src/conformance.ts` is the executable half of the contract; it asserts what every adapter must uphold: exactly one terminal `done` per stream, `result.text` equal to the concatenated text deltas, a `sessionId` consistent with the `session` event, a valid invocation for whatever the capabilities declare, and an `UnsupportedCapability` throw for everything they do not, `authStatus()` and `models()` included. Recorded ACP transcripts hold the live tier to those same invariants plus the ones only it can break: a turn opens with its `session` event, an aborted or failed turn reaches exactly one terminal state, and a prompt response carrying usage reaches `RunResult.usage`. Read that file rather than reimplement the checks. Conformance helpers (`sourceFromBody`, `fixedRunner`) live in the same file.
 
 ## KnownAgents for custom adapter authors
 
