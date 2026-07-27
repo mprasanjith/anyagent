@@ -277,10 +277,10 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   // using ChatGPT") prints to stderr, so both streams are read.
   const text = `${res.stdout}\n${res.stderr}`.trim();
   if (res.code !== 0) {
-    return { raw: text, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
   const method = AUTH_METHODS.find(([re]) => re.test(text))?.[1];
-  return { method, raw: text, state: "authenticated" };
+  return { method, state: "authenticated" };
 };
 
 const effortsOf = (model: Json): string[] | undefined => {

@@ -30,7 +30,7 @@ The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an ag
 The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet: update `anyagent-js`, and report the failure upstream with the offending payload on `err.raw`.
 
 <Callout type="info">
-  `Parse` also fires when you pass a `schema` and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
+  `Parse` also fires when you pass a `schema` and the reply fails to parse or validate; the failed checks are on `err.issues` and the agent’s final reply text on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
 </Callout>
 
 ## Aborted
@@ -39,15 +39,16 @@ Your `AbortSignal` fired and the underlying process was terminated, whether from
 
 ## Diagnostic fields
 
-Beyond `message` and `code`, three fields carry what ran and what the CLI said:
+Beyond `message` and `code`, four fields carry what ran and what the CLI said:
 
 | Name     | Type       | Description                                                              |
 | -------- | ---------- | ------------------------------------------------------------------------ |
 | `raw`    | `unknown`  | the underlying cause: a native error, the CLI’s own error payload, or the reply that failed to parse |
 | `argv`   | `string[]` | the exact command line that ran; attached on `Invocation` errors only    |
 | `stderr` | `string`   | what the CLI wrote to stderr; attached on `Invocation` errors only       |
+| `issues` | `string[]` | the schema checks the reply failed; attached on a `schema` run’s `Parse` errors only |
 
-Log all three inside the `catch` when a run fails unexpectedly, so a bug report is actionable:
+Log them inside the `catch` when a run fails unexpectedly, so a bug report is actionable:
 
 ```ts
 console.error(err.message);

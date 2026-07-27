@@ -47,11 +47,22 @@ export class AnyAgentError extends Error {
   readonly raw?: unknown;
   readonly argv?: string[];
   readonly stderr?: string;
+  /**
+   * The schema checks a reply failed, one entry each (for example
+   * `$.name: required`). Present on `code: "Parse"` from a run with a
+   * `schema`; the reply they describe is on `raw`.
+   */
+  readonly issues?: string[];
 
   constructor(
     code: AnyAgentErrorCode,
     message: string,
-    opts?: { raw?: unknown; argv?: string[]; stderr?: string }
+    opts?: {
+      raw?: unknown;
+      argv?: string[];
+      stderr?: string;
+      issues?: string[];
+    }
   ) {
     super(message);
     this.name = "AnyAgentError";
@@ -59,6 +70,7 @@ export class AnyAgentError extends Error {
     this.raw = opts?.raw;
     this.argv = opts?.argv;
     this.stderr = opts?.stderr;
+    this.issues = opts?.issues;
   }
 
   /**

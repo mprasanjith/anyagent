@@ -218,7 +218,7 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
       const parsed = JSON.parse(settings) as Json;
       const selected = parsed?.security?.auth?.selectedType;
       if (typeof selected === "string" && selected.length > 0) {
-        return { method: selected, raw: parsed, state: "unknown" };
+        return { method: selected, state: "unknown" };
       }
     } catch {
       // A corrupt settings file proves nothing either way.

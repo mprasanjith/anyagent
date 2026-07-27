@@ -279,18 +279,18 @@ const makeAuthStatus =
   (dataDir: string) =>
   async (probe: SystemProbe): Promise<AuthStatus> => {
     const providers = new Set<string>();
-    let raw: unknown;
+    let store: unknown;
     const body = await probe.readFile(
       `${probe.homedir()}/.local/share/${dataDir}/auth.json`
     );
     if (body !== undefined) {
       try {
-        raw = JSON.parse(body);
+        store = JSON.parse(body);
       } catch {
         // A corrupt store proves nothing either way; env keys still count.
       }
-      if (raw !== null && typeof raw === "object") {
-        for (const provider of Object.keys(raw)) {
+      if (store !== null && typeof store === "object") {
+        for (const provider of Object.keys(store)) {
           providers.add(provider);
         }
       }
@@ -301,8 +301,8 @@ const makeAuthStatus =
       }
     }
     return providers.size > 0
-      ? { providers: [...providers], raw, state: "authenticated" }
-      : { raw, state: "unauthenticated" };
+      ? { providers: [...providers], state: "authenticated" }
+      : { state: "unauthenticated" };
   };
 
 // `<bin> models` prints one `provider/model` id per line and nothing else.

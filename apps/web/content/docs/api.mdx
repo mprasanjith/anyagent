@@ -125,7 +125,7 @@ Every option is validated against the agent’s capabilities before any process 
 
 The options every supported agent honors; code that types against `BaselineRunOptions` runs unchanged on any agent AnyAgent can drive.
 
-`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed, validated against it, and set on [`RunResult.json`](#runresult); [Run an agent](/docs/run-an-agent) covers the parsing, validation, and retry path.
+`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed, validated against it, and set on [`RunResult.json`](#runresult); `schemaRetries` gives a failed reply one correction attempt (`1`, the default) or none (`0`). [Run an agent](/docs/run-an-agent) covers the parsing, validation, and retry path.
 
 <Callout type="warn">
   Validation covers `type` (including `"integer"`), `properties` and `required` recursively, `items` as a single schema over every element, and `enum`. Every other keyword, such as `minLength`, `pattern`, or `format`, passes without a check, so enforce those in your own code after reading `json`.
@@ -179,7 +179,7 @@ What a finished run gives you back. Holding a `RunResult` means the run succeede
 
 ## AgentEvent
 
-One normalized event from a running agent, as yielded by iterating a [`Run`](#run). `AgentEvent` is a discriminated union on `type` with nine variants. Every variant except `done` carries a `raw` field holding the CLI’s untouched native payload for that event.
+One normalized event from a running agent, as yielded by iterating a [`Run`](#run). `AgentEvent` is a discriminated union on `type` with ten variants. Every variant except `done` and `schema-retry` carries a `raw` field holding the CLI’s untouched native payload for that event.
 
 | `type`            | Payload                                                          | Meaning                                                              |
 | ----------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -191,9 +191,10 @@ One normalized event from a running agent, as yielded by iterating a [`Run`](#ru
 | `file-change`     | `kind: "create" \| "modify" \| "delete"`, `path: string`         | the agent changed a file, on CLIs that report it                      |
 | `usage`           | `usage: Usage`                                                   | token and cost accounting became available                            |
 | `permission-request` | `requestId`, `name`, `nativeName`, `input`, `options: PermissionOption[]` | a live-tier agent asked permission for a tool, offering its own options |
+| `schema-retry`    | `issues: string[]`                                               | the reply failed the run’s `schema`; a corrected one is being asked for |
 | `done`            | `result: RunResult`                                              | the run finished; carries the final result                            |
 
-How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `permission-request` is emitted only by live-tier sessions, which resolve it themselves by allowing the tool.
+How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `permission-request` is emitted only by live-tier sessions, which resolve it themselves by allowing the tool. Every event after a `schema-retry` belongs to the corrected attempt.
 
 Each `permission-request` carries the agent’s own choices as [`PermissionOption`](#agentevent)s — `id`, a normalized `kind` (`allow-once`, `allow-always`, `reject-once`, `reject-always`, or the agent’s own), and the agent’s `label`:
 
@@ -346,6 +347,7 @@ class AnyAgentError extends Error {
   readonly raw?: unknown;
   readonly argv?: string[];
   readonly stderr?: string;
+  readonly issues?: string[];
 }
 
 type AnyAgentErrorCode =

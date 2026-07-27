@@ -5,7 +5,7 @@ description: Detect the coding agent CLI a machine already has installed and dri
 
 import { Card, Cards } from "fumadocs-ui/components/card";
 
-AnyAgent is a TypeScript library that detects which [supported coding agent CLI](/docs/adapters) a machine already has installed (Claude Code, Codex, and more) and drives it programmatically. You call `detect()` and `run()`; AnyAgent handles the flags and output parsing for whichever CLI it found. It’s an ESM module with two runtime dependencies and runs on Node.js 18+ and Bun.
+AnyAgent is a TypeScript library that detects which [supported coding agent CLI](/docs/adapters) a machine already has installed (Claude Code, Codex, and more) and drives it programmatically. You call `detect()` and `run()`; AnyAgent handles the flags and output parsing for whichever CLI it found. It’s an ESM module with two runtime dependencies and runs on Node.js 20+ and Bun.
 
 If your tool needs a coding agent to do its work, AnyAgent lets it use the one your end user already has. Prompts run on their agent, under their login, on their subscription, so you collect no API keys and pay no inference bills. That fits tools that run a defined task against the end user’s own project: setup wizards, migration and codemod runners, changelog or test generators.
 

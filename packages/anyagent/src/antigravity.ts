@@ -268,11 +268,10 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   } catch {
     return { state: "unknown" };
   }
-  const raw = `${res.stdout}\n${res.stderr}`.trim();
   if (res.code !== 0 || modelIds(res.stdout).length === 0) {
-    return { raw, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
-  return { method: "oauth", raw, state: "authenticated" };
+  return { method: "oauth", state: "authenticated" };
 };
 
 const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {

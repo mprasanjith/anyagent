@@ -273,11 +273,10 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
       : { state: "unauthenticated" };
   }
   if (exec.code !== 0 || !parsed?.loggedIn) {
-    return { raw: parsed, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
   return {
     method: parsed.authMethod ?? parsed.subscriptionType,
-    raw: parsed,
     state: "authenticated",
   };
 };

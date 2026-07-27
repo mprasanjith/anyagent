@@ -27,6 +27,13 @@ const evaluate = (text: string, schema: Record<string, unknown>): Parsed => {
   return errors.length ? { errors } : { json: value };
 };
 
+const schemaFailure = (errors: string[], text: string): AnyAgentError =>
+  new AnyAgentError(
+    "Parse",
+    `reply did not match schema: ${errors.join("; ")}`,
+    { issues: errors, raw: text }
+  );
+
 const correctionPrompt = (
   prompt: string,
   previous: string,
@@ -179,18 +186,17 @@ export class RunImpl extends RunHandle {
         const parsed = evaluate(first.text, opts.schema);
         if ("json" in parsed) {
           final = { ...first, json: parsed.json };
+        } else if (opts.schemaRetries === 0) {
+          throw schemaFailure(parsed.errors, first.text);
         } else {
+          this.emit({ issues: parsed.errors, type: "schema-retry" });
           const retry = await this.#attempt(
             correctionPrompt(prompt, first.text, parsed.errors),
             opts
           );
           const second = evaluate(retry.text, opts.schema);
           if ("errors" in second) {
-            throw new AnyAgentError(
-              "Parse",
-              `reply did not match schema: ${second.errors.join("; ")}`,
-              { raw: retry.text }
-            );
+            throw schemaFailure(second.errors, retry.text);
           }
           final = { ...retry, json: second.json };
         }

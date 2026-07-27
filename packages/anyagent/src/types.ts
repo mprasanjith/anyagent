@@ -163,7 +163,8 @@ export interface Capabilities {
    * {@link BaselineRunOptions.schema}. Either way a validated value lands on
    * {@link RunResult.json}. `"native"` means the CLI enforces the shape
    * itself; `"emulated"` is a weaker guarantee — AnyAgent validates the reply
-   * and retries once before giving up.
+   * and, unless {@link BaselineRunOptions.schemaRetries} is `0`, re-asks once
+   * before giving up.
    */
   structuredOutput: CapabilitySupport;
   /**
@@ -190,8 +191,7 @@ export type AuthState = "authenticated" | "unauthenticated" | "unknown";
  * The answer to {@link Agent.authStatus}: whether this CLI looks ready to
  * run. `method` names how it authenticates when known (`"oauth"`,
  * `"api-key"`, a subscription tier); `providers` lists the model providers
- * with credentials on BYOK CLIs. `raw` is the CLI's own payload, untouched,
- * when one exists.
+ * with credentials on BYOK CLIs.
  *
  * This is "are credentials configured", never "were they verified live" — no
  * paid call is ever made on your behalf.
@@ -199,7 +199,6 @@ export type AuthState = "authenticated" | "unauthenticated" | "unknown";
 export interface AuthStatus {
   method?: string;
   providers?: string[];
-  raw?: unknown;
   state: AuthState;
 }
 
@@ -297,12 +296,20 @@ export interface BaselineRunOptions {
   /**
    * A plain JSON Schema object describing the shape you want the reply in.
    * Works on every adapter (see {@link Capabilities.structuredOutput}).
-   * With {@link Agent.run}, the reply is parsed and validated against the
-   * schema and the parsed value lands on {@link RunResult.json}. With
-   * {@link Agent.runStream}, the schema still shapes the run, but you get raw
-   * text events and no parsing.
+   * Awaiting the run gives you the reply parsed and validated against the
+   * schema, on {@link RunResult.json}; iterating yields raw text events, with
+   * no parsing.
    */
   schema?: Record<string, unknown>;
+  /**
+   * How many correction attempts a reply that fails
+   * {@link BaselineRunOptions.schema} gets. `1` (the default) re-asks once,
+   * announced by a `schema-retry` {@link AgentEvent}; `0` fails on the first
+   * bad reply, throwing `AnyAgentError` (`code: "Parse"`) with the failed
+   * checks on `issues` — what you want when your own code owns the correction
+   * loop. Requires `schema` (`InvalidOptions` without it).
+   */
+  schemaRetries?: 0 | 1;
   /** Aborting terminates the process; the run throws `code: "Aborted"`. */
   signal?: AbortSignal;
   /**
@@ -415,8 +422,8 @@ export type RunOptionsFor<C extends Capabilities> = BaselineRunOptions &
 export type RunOptions = BaselineRunOptions & Partial<ExtensionOptions>;
 
 /**
- * One normalized event from a running agent, as yielded by
- * {@link Agent.runStream}:
+ * One normalized event from a running agent, as yielded by iterating a
+ * {@link Run}:
  *
  * - `session` — the CLI assigned this run a session id (also on
  *   {@link RunResult.sessionId}); emitted once, early, so you can persist it
@@ -434,13 +441,17 @@ export type RunOptions = BaselineRunOptions & Partial<ExtensionOptions>;
  * - `permission-request` — the agent asked to run something that needs
  *   approval. AnyAgent currently answers automatically with the first allow
  *   option; the event lets you observe what was asked.
+ * - `schema-retry` — the reply failed the run's
+ *   {@link BaselineRunOptions.schema} and a corrected one is being asked for;
+ *   `issues` are the failed checks. Every event after it belongs to the
+ *   corrected attempt.
  * - `done` — the run finished; carries the final {@link RunResult}.
  *
  * How much text one `text-delta` carries depends on the CLI: a token, a
  * chunk, or a whole assistant message. What you can rely on is that
  * concatenating every delta's `text` reproduces `RunResult.text` exactly.
- * `raw` on each event except `done` is the CLI's untouched native payload for
- * it.
+ * `raw` on each event except `done` and `schema-retry` is the CLI's untouched
+ * native payload for it.
  */
 export type AgentEvent =
   | { type: "session"; sessionId: string; raw?: unknown }
@@ -478,6 +489,7 @@ export type AgentEvent =
       options: PermissionOption[];
       raw?: unknown;
     }
+  | { type: "schema-retry"; issues: string[] }
   | { type: "done"; result: RunResult };
 
 /**
@@ -494,15 +506,15 @@ export interface RunResult {
   /**
    * Every normalized event the run produced, in order (the terminal `done` is
    * excluded). The whole list is held in memory, so for very long agentic
-   * runs prefer consuming {@link Agent.runStream} as events arrive.
+   * runs prefer iterating the {@link Run} as events arrive.
    */
   events: AgentEvent[];
   /**
    * The reply parsed as JSON, present only when a
    * {@link BaselineRunOptions.schema} was passed to {@link Agent.run}. It has
    * been validated against that schema before landing here; a reply that
-   * could not be parsed or validated (even after one retry) throws
-   * `AnyAgentError` (`code: "Parse"`) instead.
+   * could not be parsed or validated throws `AnyAgentError` (`code: "Parse"`)
+   * instead.
    */
   json?: unknown;
   raw: unknown;
@@ -867,10 +879,13 @@ export interface Agent<C extends Capabilities = Capabilities> {
  *
  * The run starts when the call is made and runs to completion unless
  * `abort()` is called or the run's `signal` fires. Breaking out of an
- * iteration loop stops watching, never the agent. On a run with a
+ * iteration loop stops watching, never the agent. When a run fails, iterating
+ * yields the events received so far and then throws the error awaiting
+ * rejects with. On a run with a
  * {@link BaselineRunOptions.schema}, awaiting resolves the parsed result;
- * iterating yields every attempt's events, and the terminal `done` carries
- * the same result awaiting resolves with.
+ * iterating yields every attempt's events, separated by a `schema-retry`
+ * event, and the terminal `done` carries the same result awaiting resolves
+ * with.
  */
 export interface Run extends Promise<RunResult>, AsyncIterable<AgentEvent> {
   /** Stop the agent: the process is terminated and the run throws `code: "Aborted"`. */

@@ -122,7 +122,7 @@ const { dependencies, testCommand } = result.json as {
 };
 ```
 
-When the first reply fails to parse or validate, AnyAgent retries once, re-asking with the errors quoted. When the retry also fails, `run()` throws `code: "Parse"` with the validation errors and the agent’s final reply on `err.raw` ([Handle errors](/docs/errors)).
+When the first reply fails to parse or validate, AnyAgent retries once, re-asking with the errors quoted. When the retry also fails, `run()` throws `code: "Parse"` with the failed checks on `err.issues` and the agent’s final reply on `err.raw` ([Handle errors](/docs/errors)). Pass `schemaRetries: 0` to skip the retry and fail on the first bad reply.
 
 <Callout type="warn">
   The retry is a second full agent run. On an agent that edits files, a run
@@ -131,7 +131,7 @@ When the first reply fails to parse or validate, AnyAgent retries once, re-askin
   agent supports one, so a retry stays side-effect free.
 </Callout>
 
-Iterating a schema run yields raw events from both attempts, but `json` exists only on the final result, never mid-stream.
+Iterating a schema run yields raw events from both attempts, separated by a [`schema-retry`](/docs/api#agentevent) event, but `json` exists only on the final result, never mid-stream.
 
 ## Use skills
 

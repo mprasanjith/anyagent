@@ -258,22 +258,21 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
     return { state: "unknown" };
   }
   if (exec.code !== 0) {
-    return { raw: exec.stderr || exec.stdout, state: "unknown" };
+    return { state: "unknown" };
   }
   const provider = PROVIDER_LINE.exec(exec.stdout)?.groups?.provider;
   if (!provider) {
-    return { raw: exec.stdout, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
   const key = PROVIDER_KEY_ENV[provider];
   if (key && probe.env[key]) {
     return {
       method: "api-key",
       providers: [provider],
-      raw: exec.stdout,
       state: "authenticated",
     };
   }
-  return { providers: [provider], raw: exec.stdout, state: "unknown" };
+  return { providers: [provider], state: "unknown" };
 };
 
 /**

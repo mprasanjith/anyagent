@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 
+import type { AnyAgentError } from "../src/errors.js";
 import { AgentImpl } from "../src/internal/agent.js";
-import type { Adapter, Invocation, OutputSource } from "../src/types.js";
+import type {
+  Adapter,
+  AgentEvent,
+  Invocation,
+  OutputSource,
+} from "../src/types.js";
 import { fakeStreaming, sourceFromBody } from "./fake-adapter.js";
 
 // A streaming adapter that emulates structured output, carrying the (possibly
@@ -63,11 +69,64 @@ test("run() with schema throws Parse when the retry also fails", async () => {
       prompts
     )
   );
-  await expect(agent.run("q", { schema: objectSchema })).rejects.toMatchObject({
-    code: "Parse",
-    raw: '{"n":"still bad"}',
-  });
+  const failure = await agent
+    .run("q", { schema: objectSchema })
+    .catch((e: unknown) => e as AnyAgentError);
+  expect(failure).toMatchObject({ code: "Parse", raw: '{"n":"still bad"}' });
+  expect((failure as AnyAgentError).issues?.length).toBeGreaterThan(0);
   expect(prompts).toHaveLength(2);
+});
+
+test("schemaRetries: 0 fails on the first bad reply without a second attempt", async () => {
+  const prompts: string[] = [];
+  const agent = new AgentImpl(
+    emulated,
+    scriptedRunner([streamOf('{"n":"bad"}'), streamOf('{"n":2}')], prompts)
+  );
+  const failure = await agent
+    .run("q", { schema: objectSchema, schemaRetries: 0 })
+    .catch((e: unknown) => e as AnyAgentError);
+  expect(failure).toMatchObject({ code: "Parse", raw: '{"n":"bad"}' });
+  const { issues } = failure as AnyAgentError;
+  expect(Array.isArray(issues)).toBe(true);
+  expect(issues?.length).toBeGreaterThan(0);
+  expect(issues?.every((i) => typeof i === "string")).toBe(true);
+  expect(prompts).toHaveLength(1);
+});
+
+test("a schema retry is announced between the two attempts' events", async () => {
+  const agent = new AgentImpl(
+    emulated,
+    scriptedRunner([streamOf('{"n":"bad"}'), streamOf('{"n":2}')], [])
+  );
+  const run = agent.run("q", { schema: objectSchema });
+  const events: AgentEvent[] = [];
+  for await (const ev of run) {
+    events.push(ev);
+  }
+  const boundary = events.findIndex((e) => e.type === "schema-retry");
+  const retries = events.filter((e) => e.type === "schema-retry");
+  expect(retries).toHaveLength(1);
+  expect(retries[0]?.type === "schema-retry" && retries[0].issues).toEqual([
+    "$.n: expected number, got string",
+  ]);
+  const deltas = events.flatMap((e, i) =>
+    e.type === "text-delta" ? [{ i, text: e.text }] : []
+  );
+  const textBefore = deltas.filter((d) => d.i < boundary).map((d) => d.text);
+  const textAfter = deltas.filter((d) => d.i > boundary).map((d) => d.text);
+  expect(textBefore.join("")).toBe('{"n":"bad"}');
+  expect(textAfter.join("")).toBe('{"n":2}');
+  expect((await run).json).toEqual({ n: 2 });
+});
+
+test("schemaRetries without schema throws InvalidOptions before spawning", async () => {
+  const prompts: string[] = [];
+  const agent = new AgentImpl(emulated, scriptedRunner([], prompts));
+  await expect(agent.run("q", { schemaRetries: 0 })).rejects.toMatchObject({
+    code: "InvalidOptions",
+  });
+  expect(prompts).toHaveLength(0);
 });
 
 test("iterating a schema run yields text events and a done carrying the parsed json", async () => {

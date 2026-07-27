@@ -232,7 +232,7 @@ const modelWithEffort = (opts: RunOptions): string | undefined => {
 
 const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   // `--trust` always: a headless run otherwise stalls on the workspace-trust
-  // prompt, which nothing in run()/runStream() could answer.
+  // prompt, which nothing in run() could answer.
   const args = ["-p", "--output-format", "stream-json", "--trust"];
   if (opts.readOnly) {
     // Plan mode is enforced read-only (live-verified: writes are refused,
@@ -274,9 +274,9 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
     return res.code === 0 ? { state: "unknown" } : { state: "unauthenticated" };
   }
   if (res.code !== 0 || parsed?.isAuthenticated !== true) {
-    return { raw: parsed, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
-  return { raw: parsed, state: "authenticated" };
+  return { state: "authenticated" };
 };
 
 // One model per `<id> - <label>` line; the header and the trailing tip line
