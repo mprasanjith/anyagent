@@ -1,9 +1,20 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { cursor } from "../src/cursor.js";
 import { AnyAgentError } from "../src/errors.js";
+import { geminiCli } from "../src/gemini-cli.js";
+import { goose } from "../src/goose.js";
+import type { AcpTransport } from "../src/internal/acp.js";
+import type { AcpTransportFactory } from "../src/internal/acp-session.js";
 import { AcpSessionImpl } from "../src/internal/acp-session.js";
 import { AgentImpl } from "../src/internal/agent.js";
-import type { Adapter, AgentEvent } from "../src/types.js";
+import { opencode } from "../src/opencode.js";
+import type {
+  Adapter,
+  AgentEvent,
+  Invocation,
+  SessionOptions,
+} from "../src/types.js";
 import {
   errorResponse,
   request,
@@ -13,7 +24,11 @@ import {
   scriptedTransport,
   update,
 } from "./acp-transport.js";
-import { fakeStreaming, runnerFromFixture } from "./fake-adapter.js";
+import {
+  fakeStreaming,
+  runnerFromFixture,
+  sourceFromBody,
+} from "./fake-adapter.js";
 
 // A native-tier adapter: an ACP endpoint plus `session: "native"`. Everything
 // else mirrors the streaming fake so the emulated fallback has a real parser.
@@ -94,10 +109,10 @@ test("a native turn translates updates into events, text, and a sessionId", asyn
   const session = new AcpSessionImpl(
     nativeAgent(),
     runnerFromFixture(""),
-    {},
+    { cwd: "/repo" },
     () => transport
   );
-  const run = session.run("hi", { cwd: "/repo" });
+  const run = session.run("hi");
   const events: AgentEvent[] = [];
   await collect(events, run);
   const result = await run;
@@ -800,11 +815,11 @@ test("resume reattaches with session/load when loadSession is advertised", async
   const session = new AcpSessionImpl(
     nativeAgent(),
     runnerFromFixture(""),
-    { resume: "s-old" },
+    { cwd: "/repo", resume: "s-old" },
     () => transport
   );
   expect(session.id).toBe("s-old");
-  const result = await session.run("continue", { cwd: "/repo" });
+  const result = await session.run("continue");
   expect(result.text).toBe("resumed");
   expect(result.sessionId).toBe("s-old");
   await transport.done;
@@ -970,13 +985,6 @@ test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", a
   await scripted.done;
 });
 
-test("fork on a live session throws InvalidOptions at construction", () => {
-  const agent = nativeAgent();
-  expect(() => agent.session({ fork: true, resume: "s-old" })).toThrow(
-    expect.objectContaining({ code: "InvalidOptions" })
-  );
-});
-
 test("a native adapter with an acp endpoint routes session() to the live tier", () => {
   const session = nativeAgent().session();
   expect(session.supports("steer")).toBe(true);
@@ -1009,6 +1017,426 @@ test("session capability short of native tier keeps the emulated behavior", asyn
     runnerFromFixture(withId)
   ).session();
   expect(stillEmulated.supports("steer")).toBe(false);
+});
+
+// A live session on one shipped adapter, its ACP endpoint replaced by a
+// scripted transport so no process is launched.
+const liveSession = (
+  adapter: Adapter,
+  opts: SessionOptions,
+  factory: AcpTransportFactory
+): AcpSessionImpl =>
+  new AcpSessionImpl(
+    new AgentImpl(adapter, runnerFromFixture("")),
+    runnerFromFixture(""),
+    opts,
+    factory
+  );
+
+// A transport that answers nothing, for the paths that must not reach the wire.
+const inertTransport = (): AcpTransport => ({
+  close: () => undefined,
+  onDeath: () => undefined,
+  onLine: () => undefined,
+  send: () => undefined,
+});
+
+const sentMethods = (
+  transport: ScriptedTransport
+): { seen: string[]; tapped: ScriptedTransport } => {
+  const seen: string[] = [];
+  return {
+    seen,
+    tapped: {
+      ...transport,
+      send: (line: string) => {
+        const { method } = JSON.parse(line) as { method?: string };
+        if (method !== undefined) {
+          seen.push(method);
+        }
+        transport.send(line);
+      },
+    },
+  };
+};
+
+test("a live cursor session sets model and effort as one config option", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+
+    const config = await api.next();
+    expect(config.method).toBe("session/set_config_option");
+    expect(config.params).toEqual({
+      configId: "model",
+      sessionId: "s1",
+      value: "claude-opus-4-8[effort=high]",
+    });
+    api.emit(response(config.id, { configOptions: [] }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(
+    cursor(),
+    { effort: "high", model: "claude-opus-4-8" },
+    () => transport
+  );
+  await Promise.all([session.run("hi"), transport.done]);
+});
+
+// goose declares `effort: false`, so its live `thinking_effort` channel is only
+// reachable on a shape that allows the option through.
+const gooseWithEffort = (): Adapter => {
+  const adapter = goose();
+  return {
+    ...adapter,
+    capabilities: { ...adapter.capabilities, effort: "native" },
+  };
+};
+
+test("a live goose session sets model and thinking_effort in order", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+
+    const model = await api.next();
+    expect(model.method).toBe("session/set_config_option");
+    expect(model.params).toEqual({
+      configId: "model",
+      sessionId: "s1",
+      value: "anthropic/claude-sonnet-4.5",
+    });
+    api.emit(response(model.id, { configOptions: [] }));
+
+    const effort = await api.next();
+    expect(effort.method).toBe("session/set_config_option");
+    expect(effort.params).toEqual({
+      configId: "thinking_effort",
+      sessionId: "s1",
+      value: "high",
+    });
+    api.emit(response(effort.id, { configOptions: [] }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(
+    gooseWithEffort(),
+    { effort: "high", model: "anthropic/claude-sonnet-4.5" },
+    () => transport
+  );
+  await Promise.all([session.run("hi"), transport.done]);
+});
+
+test("a live opencode session sets its model config option", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+
+    const config = await api.next();
+    expect(config.params).toEqual({
+      configId: "model",
+      sessionId: "s1",
+      value: "openai/gpt-5.4",
+    });
+    api.emit(response(config.id, { configOptions: [] }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(
+    opencode(),
+    { model: "openai/gpt-5.4" },
+    () => transport
+  );
+  await Promise.all([session.run("hi"), transport.done]);
+});
+
+test("effort on a live opencode session throws before anything opens", () => {
+  let opened = 0;
+  expect(
+    () =>
+      new AcpSessionImpl(
+        new AgentImpl(opencode(), runnerFromFixture("")),
+        runnerFromFixture(""),
+        { effort: "high" },
+        () => {
+          opened += 1;
+          return inertTransport();
+        }
+      )
+  ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
+  expect(opened).toBe(0);
+  expect(() =>
+    new AgentImpl(opencode(), runnerFromFixture("")).session({ effort: "high" })
+  ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
+});
+
+test("a live gemini session spawns with its model, --skip-trust, and extraArgs", async () => {
+  let invocation: Invocation | undefined;
+  const session = liveSession(
+    geminiCli(),
+    {
+      cwd: "/work",
+      env: { TOKEN: "x" },
+      extraArgs: ["--foo"],
+      model: "gemini-3-flash",
+    },
+    (inv) => {
+      invocation = inv;
+      return inertTransport();
+    }
+  );
+  // A cwd on the turn changes nothing: the thread's settings own it.
+  const run = session.run("hi", { cwd: "/turn" });
+  run.abort();
+
+  await expect(run).rejects.toMatchObject({ code: "Aborted" });
+  expect(invocation).toEqual({
+    args: ["--acp", "--skip-trust", "-m", "gemini-3-flash", "--foo"],
+    command: "gemini",
+    cwd: "/work",
+    env: { TOKEN: "x" },
+  });
+});
+
+test("a readOnly turn switches the mode and a later turn restores it", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(
+      response(created.id, {
+        configOptions: [
+          {
+            currentValue: "agent",
+            id: "mode",
+            name: "Mode",
+            options: [
+              { name: "Agent", value: "agent" },
+              { name: "Plan", value: "plan" },
+            ],
+            type: "select",
+          },
+        ],
+        sessionId: "s1",
+      })
+    );
+
+    const toPlan = await api.next();
+    expect(toPlan.method).toBe("session/set_config_option");
+    expect(toPlan.params).toEqual({
+      configId: "mode",
+      sessionId: "s1",
+      value: "plan",
+    });
+    api.emit(response(toPlan.id, { configOptions: [] }));
+
+    const first = await api.next();
+    expect(first.method).toBe("session/prompt");
+    api.emit(response(first.id, { stopReason: "end_turn" }));
+
+    const restored = await api.next();
+    expect(restored.method).toBe("session/set_config_option");
+    expect(restored.params).toEqual({
+      configId: "mode",
+      sessionId: "s1",
+      value: "agent",
+    });
+    api.emit(response(restored.id, { configOptions: [] }));
+
+    const second = await api.next();
+    expect(second.method).toBe("session/prompt");
+    api.emit(response(second.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(cursor(), {}, () => transport);
+  await session.run("look", { readOnly: true });
+  await session.run("look again");
+  await transport.done;
+});
+
+test("a readOnly turn denies every tool kind that could change the machine", async () => {
+  const options = [
+    { kind: "reject_once", name: "Reject", optionId: "no" },
+    { kind: "allow_once", name: "Allow", optionId: "yes" },
+  ];
+  const ask = (id: number, kind?: string) =>
+    request(id, "session/request_permission", {
+      options,
+      sessionId: "s1",
+      toolCall: {
+        ...(kind === undefined ? {} : { kind }),
+        rawInput: {},
+        status: "pending",
+        title: "Do a thing",
+        toolCallId: `t${id}`,
+      },
+    });
+  const answers: Record<number, unknown> = {};
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+
+    for (const [id, kind] of [
+      [1, "read"],
+      [2, "execute"],
+      [3, undefined],
+    ] as const) {
+      api.emit(ask(id, kind));
+      // biome-ignore lint/performance/noAwaitInLoops: one answer per request, in order.
+      const answer = await api.next();
+      answers[id] = answer.result;
+    }
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(cursor(), {}, () => transport);
+  await session.run("inspect", { readOnly: true });
+  await transport.done;
+
+  expect(answers[1]).toEqual({
+    outcome: { optionId: "yes", outcome: "selected" },
+  });
+  expect(answers[2]).toEqual({
+    outcome: { optionId: "no", outcome: "selected" },
+  });
+  expect(answers[3]).toEqual({
+    outcome: { optionId: "no", outcome: "selected" },
+  });
+});
+
+test("close ends the live session, settles its turns, and kills the transport", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, { sessionCapabilities: { close: {} } });
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+
+    const closed = await api.next();
+    expect(closed.method).toBe("session/close");
+    expect(closed.params).toEqual({ sessionId: "s1" });
+    api.emit(response(closed.id, {}));
+  });
+
+  const session = liveSession(nativeAdapter, {}, () => transport);
+  await session.run("first");
+  const queued = session.run("second");
+  await session.close();
+
+  await expect(queued).rejects.toMatchObject({ code: "Aborted" });
+  await session.close();
+  expect(() => session.run("third")).toThrow(
+    expect.objectContaining({ code: "InvalidOptions" })
+  );
+  await transport.closed;
+  await transport.done;
+});
+
+test("close skips session/close where the agent never advertised it", async () => {
+  const scripted = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+  const { seen, tapped } = sentMethods(scripted);
+
+  const session = liveSession(nativeAdapter, {}, () => tapped);
+  await session.run("hi");
+  await session.close();
+
+  expect(seen).not.toContain("session/close");
+  await scripted.closed;
+  await scripted.done;
+});
+
+test("closing an emulated session rejects the turns still queued", async () => {
+  const fixture =
+    '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
+  const session = new AgentImpl(
+    fakeStreaming,
+    runnerFromFixture(fixture)
+  ).session();
+  const first = session.run("first");
+  const queued = session.run("second");
+  await session.close();
+
+  expect((await first).text).toBe("ok");
+  await expect(queued).rejects.toMatchObject({ code: "Aborted" });
+  await session.close();
+  expect(() => session.run("third")).toThrow(
+    expect.objectContaining({ code: "InvalidOptions" })
+  );
+});
+
+// A live-tier adapter whose print mode can fork, and whose invocation reports
+// the options the delegate threaded through.
+const forkAdapter: Adapter = {
+  ...nativeAdapter,
+  buildInvocation: (prompt, opts) => ({
+    args: [
+      "-p",
+      prompt,
+      ...(opts.model ? ["--model", opts.model] : []),
+      ...(opts.forkSession ? ["--fork"] : []),
+      ...(opts.resume ? ["--resume", opts.resume] : []),
+    ],
+    command: "fake-acp",
+    cwd: opts.cwd,
+  }),
+  capabilities: { ...nativeAdapter.capabilities, sessionFork: "native" },
+};
+
+test("fork on a live session runs through the print-mode delegate, settings intact", async () => {
+  const fixture =
+    '{"t":"session","v":"s2"}\n{"t":"text","v":"forked"}\n{"t":"end"}';
+  const seen: Invocation[] = [];
+  let opened = 0;
+  const session = new AcpSessionImpl(
+    new AgentImpl(forkAdapter, runnerFromFixture(fixture)),
+    (invocation: Invocation) => {
+      seen.push(invocation);
+      return sourceFromBody(fixture);
+    },
+    { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
+    () => {
+      opened += 1;
+      return inertTransport();
+    }
+  );
+
+  expect(session.supports("steer")).toBe(false);
+  const result = await session.run("branch");
+
+  expect(result.text).toBe("forked");
+  expect(session.id).toBe("s2");
+  expect(opened).toBe(0);
+  expect(seen[0]).toMatchObject({
+    args: ["-p", "branch", "--model", "opus", "--fork", "--resume", "s-old"],
+    cwd: "/repo",
+  });
+});
+
+test("fork without resume throws InvalidOptions at session creation", () => {
+  const agent = new AgentImpl(forkAdapter, runnerFromFixture(""));
+  expect(() => agent.session({ fork: true })).toThrow(
+    expect.objectContaining({ code: "InvalidOptions" })
+  );
 });
 
 // Replay gate (sessions.md §6 M-2): each recorded real ACP transcript is fed
@@ -1102,13 +1530,11 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode"]) {
     const session = new AcpSessionImpl(
       nativeAgent(),
       runnerFromFixture(""),
-      {},
+      { cwd: "/repo" },
       () => transport
     );
     const events: AgentEvent[] = [];
-    const run = session.run("Reply with exactly the word: pong", {
-      cwd: "/repo",
-    });
+    const run = session.run("Reply with exactly the word: pong");
     await collect(events, run);
     const result = await run;
 

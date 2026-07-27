@@ -244,7 +244,14 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * ```
  */
 export const geminiCli = (): Adapter<typeof CAPS> => ({
-  acp: { command: ["gemini", "--acp"] },
+  acp: {
+    // Without --skip-trust the endpoint downgrades its approval mode with only
+    // a stderr notice, so a live turn would silently lose its autonomy.
+    // No `readOnly` option: plan mode's exit_plan_mode self-approves headless,
+    // so mode would be a false guarantee (see readOnly above).
+    command: ["gemini", "--acp", "--skip-trust"],
+    settings: ({ model }) => ({ args: model ? ["-m", model] : [] }),
+  },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

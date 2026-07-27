@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type {
+  McpServer as AcpMcpServer,
   PermissionOption as AcpPermissionOption,
   Usage as AcpUsage,
   ContentBlock,
@@ -15,10 +16,12 @@ import type {
 
 import { AnyAgentError } from "../errors.js";
 import type {
+  AcpSettings,
   Agent,
   AgentEvent,
   Capabilities,
   Invocation,
+  McpConfig,
   OutputSource,
   PermissionOption,
   Run,
@@ -30,7 +33,7 @@ import type {
   ToolName,
   Usage,
 } from "../types.js";
-import type { AcpSession, AcpTransport } from "./acp.js";
+import type { AcpClient, AcpSession, AcpTransport } from "./acp.js";
 import { connect } from "./acp.js";
 import { validateOptions } from "./capabilities.js";
 import { promptWithSchema } from "./emulate.js";
@@ -85,6 +88,47 @@ const toPermissionOption = (option: AcpPermissionOption): PermissionOption => ({
   kind: PERMISSION_KIND[option.kind],
   label: option.name,
 });
+
+// The `ToolKind`s that cannot change the machine. `kind` is optional on the
+// wire, so a read-only turn denies everything else, unannounced included.
+const READ_ONLY_KINDS = new Set<string>(["fetch", "read", "search", "think"]);
+
+const denial = (
+  request: RequestPermissionRequest
+): RequestPermissionOutcome => {
+  const reject = request.options.find(
+    (option) => option.kind === "reject_once" || option.kind === "reject_always"
+  );
+  return reject
+    ? { optionId: reject.optionId, outcome: "selected" }
+    : { outcome: "cancelled" };
+};
+
+const toAcpMcpServers = (mcp: McpConfig | undefined): AcpMcpServer[] => {
+  const servers: AcpMcpServer[] = [];
+  for (const [name, server] of Object.entries(mcp ?? {})) {
+    if (server.url !== undefined) {
+      servers.push({ headers: [], name, type: "http", url: server.url });
+      continue;
+    }
+    if (server.command === undefined) {
+      throw new AnyAgentError(
+        "InvalidOptions",
+        `mcp server "${name}" needs a command or a url`
+      );
+    }
+    servers.push({
+      args: server.args ?? [],
+      command: server.command,
+      env: Object.entries(server.env ?? {}).map(([key, value]) => ({
+        name: key,
+        value,
+      })),
+      name,
+    });
+  }
+  return servers;
+};
 
 const textOf = (content: ContentBlock): string | undefined =>
   content.type === "text" ? content.text : undefined;
@@ -280,6 +324,7 @@ const spawnTransport = (invocation: Invocation): AcpTransport => {
 interface ActiveTurn {
   events: AgentEvent[];
   failure?: AnyAgentError;
+  readOnly: boolean;
   run: AcpTurnRun;
   sessionId?: string;
   text: string[];
@@ -345,11 +390,19 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
   readonly #runner: Runner;
   readonly #transportFactory: AcpTransportFactory;
   readonly #resume: string | undefined;
+  readonly #settings: SessionOptions;
+  readonly #acp: AcpSettings;
+  readonly #mcpServers: AcpMcpServer[];
   #id: string | undefined;
+  #client: AcpClient | undefined;
   #live: AcpSession | undefined;
+  #delegate: SessionImpl<C> | undefined;
   #modePromise: Promise<Mode> | undefined;
   #active: ActiveTurn | undefined;
   #inFlight: AcpTurnRun | undefined;
+  #readOnly = false;
+  #closed = false;
+  #closing: Promise<void> | undefined;
   readonly #queue: QueuedTurn[] = [];
   #draining = false;
 
@@ -359,17 +412,25 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     opts: SessionOptions = {},
     transportFactory: AcpTransportFactory = spawnTransport
   ) {
-    if (opts.fork === true) {
-      throw new AnyAgentError(
-        "InvalidOptions",
-        `${agent.adapter.meta.id}: fork is not yet supported on live sessions`
-      );
-    }
     this.agent = agent;
     this.#runner = runner;
     this.#transportFactory = transportFactory;
     this.#resume = opts.resume;
     this.#id = opts.resume;
+    this.#settings = opts;
+    // Both throw for a setting this endpoint cannot carry — here, before the
+    // constructor returns, so nothing has spawned yet.
+    this.#acp = agent.adapter.acp?.settings?.(opts) ?? {};
+    this.#mcpServers = toAcpMcpServers(opts.mcp);
+    if (opts.fork === true) {
+      // No recorded `session/fork` transcript exists to code against, so a
+      // branch runs on the print tier, whose copy-on-resume flag is verified.
+      this.#delegate = new SessionImpl<C>(agent, runner, opts, true);
+      this.#modePromise = Promise.resolve({
+        delegate: this.#delegate,
+        kind: "emulated",
+      });
+    }
   }
 
   get id(): string | undefined {
@@ -379,7 +440,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
   supports(...keys: SessionKey[]): boolean {
     // The live tier provides `steer`; `respond` waits for the onPermission
     // design, so it stays gated off this build.
-    return keys.every((key) => key === "steer");
+    return this.#delegate === undefined && keys.every((key) => key === "steer");
   }
 
   steer(text: string): void {
@@ -420,7 +481,33 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     );
   }
 
+  close(): Promise<void> {
+    this.#closing ??= this.#teardown();
+    return this.#closing;
+  }
+
+  async #teardown(): Promise<void> {
+    this.#closed = true;
+    for (const queued of this.#queue.splice(0)) {
+      queued.run.settleErr(aborted());
+    }
+    // Settled here rather than cancelled over the wire: the channel is about
+    // to go, so waiting for a stop reason that may never arrive would hang.
+    this.#inFlight?.settleErr(aborted());
+    await this.#delegate?.close();
+    const live = this.#live;
+    if (live && this.#client?.capabilities?.sessionCapabilities?.close) {
+      // The connection dies next either way, so a refused close changes
+      // nothing worth surfacing.
+      await live.close().catch(() => undefined);
+    }
+    this.#client?.close();
+  }
+
   run(prompt: string, opts: RunOptions = {}): Run {
+    if (this.#closed) {
+      throw new AnyAgentError("InvalidOptions", "this session is closed");
+    }
     if (opts.resume !== undefined || opts.forkSession !== undefined) {
       throw new AnyAgentError(
         "InvalidOptions",
@@ -504,11 +591,12 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
       // Before the connection opens, so a live session fails fast on an
       // option this agent cannot honor exactly as every other path does.
       validateOptions(this.agent.adapter, opts);
-      const mode = await this.#ensureMode(opts);
+      const mode = await this.#ensureMode();
       if (mode.kind === "emulated") {
         await this.#bridgeEmulated(mode.delegate, prompt, opts, acpRun);
         return;
       }
+      await this.#applyReadOnly(mode.live, opts.readOnly === true);
       await this.#driveNative(mode.live, prompt, opts, acpRun);
     } catch (error) {
       const failure = AnyAgentError.wrap(error);
@@ -517,56 +605,93 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     }
   }
 
-  #ensureMode(firstOpts: RunOptions): Promise<Mode> {
-    this.#modePromise ??= this.#connect(firstOpts);
+  #ensureMode(): Promise<Mode> {
+    this.#modePromise ??= this.#connect();
     return this.#modePromise;
   }
 
-  async #connect(firstOpts: RunOptions): Promise<Mode> {
-    const command = this.agent.adapter.acp?.command;
-    const bin = command?.[0];
-    if (!bin) {
+  async #connect(): Promise<Mode> {
+    const spec = this.agent.adapter.acp;
+    const bin = spec?.command[0];
+    if (!(spec && bin)) {
       throw new AnyAgentError(
         "UnsupportedCapability",
         `${this.agent.adapter.meta.id} declares no ACP endpoint`
       );
     }
-    // The first turn's cwd is both the child's cwd and the ACP session cwd.
-    const cwd = firstOpts.cwd ?? process.cwd();
+    // The session's cwd is both the child's cwd and the ACP session cwd.
+    const cwd = this.#settings.cwd ?? process.cwd();
     const transport = this.#transportFactory({
-      args: command.slice(1),
+      args: [
+        ...spec.command.slice(1),
+        ...(this.#acp.args ?? []),
+        ...(this.#settings.extraArgs ?? []),
+      ],
       command: bin,
       cwd,
-      env: firstOpts.env,
+      env: this.#settings.env,
     });
     const client = connect(transport, { name: "anyagent" });
+    this.#client = client;
     client.onPermissionRequest((request) => this.#onPermission(request));
     await client.initialize();
 
     if (this.#resume !== undefined) {
       if (client.capabilities?.loadSession) {
-        const live = await client.loadSession({ cwd, sessionId: this.#resume });
-        this.#live = live;
-        this.#id = live.sessionId;
-        return { kind: "native", live };
+        return await this.#open(
+          client.loadSession({
+            cwd,
+            mcpServers: this.#mcpServers,
+            sessionId: this.#resume,
+          })
+        );
       }
       // Mixed tier: the CLI still resumes cross-process through its own flag
       // even though ACP `session/load` is unavailable (gemini). Reattachment
       // falls back to the emulated print-mode cursor for the whole session.
       client.close();
-      const delegate = new SessionImpl<C>(
+      this.#client = undefined;
+      this.#delegate = new SessionImpl<C>(
         this.agent,
         this.#runner,
-        { resume: this.#resume },
+        { ...this.#settings, resume: this.#resume },
         true
       );
-      return { delegate, kind: "emulated" };
+      return { delegate: this.#delegate, kind: "emulated" };
     }
 
-    const live = await client.newSession({ cwd });
+    return await this.#open(
+      client.newSession({ cwd, mcpServers: this.#mcpServers })
+    );
+  }
+
+  async #open(opening: Promise<AcpSession>): Promise<Mode> {
+    const live = await opening;
     this.#live = live;
     this.#id = live.sessionId;
+    for (const option of this.#acp.configOptions ?? []) {
+      // biome-ignore lint/performance/noAwaitInLoops: each option is acknowledged before the next.
+      await live.setConfigOption(option);
+    }
     return { kind: "native", live };
+  }
+
+  // Mode is only used where the agent advertised the option's current value,
+  // so a later turn can always put back what this one found.
+  async #applyReadOnly(live: AcpSession, readOnly: boolean): Promise<void> {
+    const option = this.agent.adapter.acp?.readOnly;
+    if (!option || readOnly === this.#readOnly) {
+      return;
+    }
+    const restore = live.config.get(option.configId);
+    if (restore === undefined) {
+      return;
+    }
+    await live.setConfigOption({
+      configId: option.configId,
+      value: readOnly ? option.value : restore,
+    });
+    this.#readOnly = readOnly;
   }
 
   #onPermission(request: RequestPermissionRequest): RequestPermissionOutcome {
@@ -585,6 +710,9 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
         requestId: request.toolCall.toolCallId,
         type: "permission-request",
       });
+    }
+    if (active?.readOnly && !READ_ONLY_KINDS.has(request.toolCall.kind ?? "")) {
+      return denial(request);
     }
     // Unattended contract: auto-select the first allow-kind option so a plain
     // run never blocks; cancel when the agent offers no way to allow.
@@ -658,11 +786,12 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     opts: RunOptions,
     acpRun: AcpTurnRun
   ): Promise<RunResult> {
-    if (acpRun.signal.aborted) {
+    if (acpRun.signal.aborted || this.#closed) {
       throw aborted();
     }
     const active: ActiveTurn = {
       events: [],
+      readOnly: opts.readOnly === true,
       run: acpRun,
       text: [],
       tools: new Map(),

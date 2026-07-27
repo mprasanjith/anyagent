@@ -298,7 +298,19 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * throwing.
  */
 export const goose = (): Adapter<typeof CAPS> => ({
-  acp: { command: ["goose", "acp"] },
+  acp: {
+    command: ["goose", "acp"],
+    // `thinking_effort` exists only on the live endpoint, so the declared
+    // `effort: false` (a print-tier fact) still gates it everywhere today.
+    settings: ({ effort, model }) => ({
+      configOptions: [
+        ...(model === undefined ? [] : [{ configId: "model", value: model }]),
+        ...(effort === undefined
+          ? []
+          : [{ configId: "thinking_effort", value: effort }]),
+      ],
+    }),
+  },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

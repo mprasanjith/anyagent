@@ -1,6 +1,6 @@
 import type { AnyMessage, JsonRpcId } from "@agentclientprotocol/sdk";
 
-import type { AnyAgentError } from "../src/errors.js";
+import { AnyAgentError } from "../src/errors.js";
 import type { AcpTransport } from "../src/internal/acp.js";
 
 /**
@@ -68,6 +68,8 @@ export const update = (sessionId: string, sessionUpdate: unknown): AnyMessage =>
  * any assertion failure it threw.
  */
 export interface ScriptedTransport extends AcpTransport {
+  /** Resolves once the client tears the channel down. */
+  readonly closed: Promise<void>;
   readonly done: Promise<void>;
 }
 
@@ -76,6 +78,10 @@ export const scriptedTransport = (script: Script): ScriptedTransport => {
   let onDeath: ((failure: AnyAgentError) => void) | undefined;
   const outgoing: AnyMessage[] = [];
   const waiters: Array<(message: AnyMessage) => void> = [];
+  let markClosed = (): void => undefined;
+  const closed = new Promise<void>((resolve) => {
+    markClosed = resolve;
+  });
 
   const api: ScriptApi = {
     die: (failure) => {
@@ -99,8 +105,12 @@ export const scriptedTransport = (script: Script): ScriptedTransport => {
   };
 
   const transport: AcpTransport = {
+    // A real transport kills its child here, so anything still waiting on the
+    // channel must fail rather than hang.
     close: () => {
       listener = undefined;
+      markClosed();
+      onDeath?.(new AnyAgentError("Aborted", "the transport was closed"));
     },
     onDeath: (cb) => {
       onDeath = cb;
@@ -122,5 +132,5 @@ export const scriptedTransport = (script: Script): ScriptedTransport => {
   // The script waits on `next()`, which resolves only once the client has
   // connected and started sending, so starting it here races nothing.
   const done = script(api);
-  return { ...transport, done };
+  return { ...transport, closed, done };
 };

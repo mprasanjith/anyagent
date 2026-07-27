@@ -24,6 +24,8 @@ A session is a thread: the settings you open it with — `model`, `effort`, `cwd
 
 Turns queue: a `run` called while another is in flight starts when it settles, threaded automatically. A failed turn rejects the turns queued behind it; calling `run` again retries from the last good point.
 
+`session.close()` ends the conversation and releases whatever it holds — on a live agent, the process behind it. Turns still queued reject, a closed session refuses new ones ([`InvalidOptions`](/docs/errors)), and calling it twice is safe. `session.id` stays valid, so you can resume later.
+
 ## Persist and continue later
 
 `session.id` is a plain string, set once the first turn reveals it. Store it anywhere and continue from any process:

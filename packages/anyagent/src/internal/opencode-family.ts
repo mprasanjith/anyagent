@@ -340,9 +340,23 @@ export const opencodeFamilyAdapter = (
   const command = spec.meta.bin[0] ?? spec.meta.id;
   return {
     // Both siblings ship an `acp` subcommand (`opencode acp` verified locally,
-    // kilo's documented at the kilo CLI reference); declaring it readies the
-    // shared ACP client without changing today's behavior.
-    acp: { command: [command, "acp"] },
+    // kilo's documented at the kilo CLI reference).
+    acp: {
+      command: [command, "acp"],
+      readOnly: { configId: "mode", value: "plan" },
+      settings: ({ effort, model }) => {
+        if (effort !== undefined) {
+          throw new AnyAgentError(
+            "UnsupportedCapability",
+            `${spec.meta.id}: a live session cannot set reasoning effort; run it outside the session`
+          );
+        }
+        return {
+          configOptions:
+            model === undefined ? [] : [{ configId: "model", value: model }],
+        };
+      },
+    },
     authStatus: makeAuthStatus(spec.dataDir),
     buildInvocation: makeBuildInvocation(command, spec.permissionEnv),
     capabilities: CAPS,

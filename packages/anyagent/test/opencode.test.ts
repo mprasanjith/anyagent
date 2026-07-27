@@ -128,7 +128,7 @@ test("fork and attachments compose with model, session, and variant", () => {
 
 test("declares the acp endpoint and reports fork/attachments as native", () => {
   const agent = opencode();
-  expect(agent.acp).toEqual({ command: ["opencode", "acp"] });
+  expect(agent.acp?.command).toEqual(["opencode", "acp"]);
   expect(agent.capabilities.sessionFork).toBe("native");
   expect(agent.capabilities.attachments).toBe("native");
 });

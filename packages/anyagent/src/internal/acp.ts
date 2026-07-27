@@ -10,6 +10,7 @@ import type {
   PromptResponse,
   RequestPermissionOutcome,
   RequestPermissionRequest,
+  SessionConfigOption,
   SessionNotification,
   SessionUpdate,
   Stream,
@@ -99,11 +100,22 @@ export interface PromptTurn {
   readonly result: Promise<PromptResponse>;
 }
 
+/** One `session/set_config_option` call. */
+export interface ConfigOptionInput {
+  configId: string;
+  value: string;
+}
+
 /** A live ACP session: the unit that prompts, streams, and cancels. */
 export interface AcpSession {
   cancel: () => Promise<void>;
+  /** Ends the session agent-side; the connection itself stays open. */
+  close: () => Promise<void>;
+  /** Each select-type config option's value as the session opened. */
+  readonly config: ReadonlyMap<string, string>;
   prompt: (input: PromptInput, onUpdate?: UpdateListener) => PromptTurn;
   readonly sessionId: string;
+  setConfigOption: (option: ConfigOptionInput) => Promise<void>;
 }
 
 // Shared routing state between the client-app handlers and its sessions.
@@ -141,7 +153,11 @@ const channelFor = (transport: AcpTransport): Channel => {
     }
     dying = true;
     kill(failure);
-    controller?.close();
+    try {
+      controller?.close();
+    } catch {
+      // The connection may have closed the stream first, which is the same end.
+    }
   };
 
   const readable = new ReadableStream<AnyMessage>({
@@ -182,15 +198,52 @@ const channelFor = (transport: AcpTransport): Channel => {
   return { dead, stream: { readable, writable } };
 };
 
+const currentValues = (
+  options: SessionConfigOption[] | null | undefined
+): Map<string, string> => {
+  const config = new Map<string, string>();
+  for (const option of options ?? []) {
+    if (option.type === "select") {
+      config.set(option.id, option.currentValue);
+    }
+  }
+  return config;
+};
+
 class AcpSessionImpl implements AcpSession {
   readonly sessionId: string;
+  readonly config: ReadonlyMap<string, string>;
   readonly #context: ClientContext;
   readonly #dispatch: Dispatch;
 
-  constructor(sessionId: string, context: ClientContext, dispatch: Dispatch) {
+  constructor(
+    sessionId: string,
+    context: ClientContext,
+    dispatch: Dispatch,
+    config: ReadonlyMap<string, string>
+  ) {
     this.sessionId = sessionId;
     this.#context = context;
     this.#dispatch = dispatch;
+    this.config = config;
+  }
+
+  async setConfigOption(option: ConfigOptionInput): Promise<void> {
+    await Promise.race([
+      this.#context.request("session/set_config_option", {
+        configId: option.configId,
+        sessionId: this.sessionId,
+        value: option.value,
+      }),
+      this.#dispatch.dead,
+    ]);
+  }
+
+  async close(): Promise<void> {
+    await Promise.race([
+      this.#context.request("session/close", { sessionId: this.sessionId }),
+      this.#dispatch.dead,
+    ]);
   }
 
   prompt(input: PromptInput, onUpdate?: UpdateListener): PromptTurn {
@@ -289,7 +342,8 @@ export class AcpClient {
     return new AcpSessionImpl(
       response.sessionId,
       this.#connection.agent,
-      this.#dispatch
+      this.#dispatch,
+      currentValues(response.configOptions)
     );
   }
 
@@ -305,7 +359,7 @@ export class AcpClient {
         "the agent did not advertise session/load support"
       );
     }
-    await this.#alive(
+    const response = await this.#alive(
       this.#connection.agent.request("session/load", {
         additionalDirectories: request.additionalDirectories,
         cwd: request.cwd,
@@ -316,7 +370,8 @@ export class AcpClient {
     return new AcpSessionImpl(
       request.sessionId,
       this.#connection.agent,
-      this.#dispatch
+      this.#dispatch,
+      currentValues(response.configOptions)
     );
   }
 

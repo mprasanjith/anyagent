@@ -703,6 +703,39 @@ export interface Detection {
   version?: string;
 }
 
+/** One session configuration option and the value to set it to. */
+export interface AcpConfigOption {
+  configId: string;
+  value: string;
+}
+
+/** What a session's settings become on one CLI's live endpoint. */
+export interface AcpSettings {
+  /** Appended to the endpoint's argv. */
+  args?: string[];
+  /** Applied in order, once the session opens. */
+  configOptions?: AcpConfigOption[];
+}
+
+/**
+ * How to reach and configure one CLI's ACP endpoint. `command` is the argv
+ * that launches it.
+ *
+ * `settings` maps a session's {@link SessionOptions} onto the endpoint's own
+ * channels; throw `AnyAgentError` (`code: "UnsupportedCapability"`) from it
+ * for a setting this endpoint has no channel for, so the session fails before
+ * anything spawns rather than dropping it.
+ *
+ * `readOnly` is the option that confines a turn to reading. Omit it where the
+ * CLI's read-only mode is absent or cannot be trusted; permission denial holds
+ * the line either way.
+ */
+export interface AcpSpec {
+  command: string[];
+  readOnly?: AcpConfigOption;
+  settings?: (opts: SessionOptions) => AcpSettings;
+}
+
 /**
  * The contract for supporting one agent CLI. An adapter is data plus pure
  * functions: it describes how to invoke its CLI and how to read its output,
@@ -718,11 +751,11 @@ export interface Detection {
  */
 export interface Adapter<C extends Capabilities = Capabilities> {
   /**
-   * How to launch this CLI's ACP (Agent Client Protocol) endpoint, when it
-   * ships one; the shared client does the rest. Declaring it is what backs
-   * `session: "native"`.
+   * How to launch and configure this CLI's ACP (Agent Client Protocol)
+   * endpoint, when it ships one; the shared client does the rest. Declaring it
+   * is what backs `session: "native"`.
    */
-  acp?: { command: string[] };
+  acp?: AcpSpec;
   /**
    * Answer {@link Agent.authStatus} from the probe. Required when `authStatus` is declared
    * available; read files and env, or run a
@@ -1010,6 +1043,12 @@ export type SessionKey = "respond" | "steer";
  */
 export interface Session<C extends Capabilities = Capabilities> {
   readonly agent: Agent<C>;
+  /**
+   * End the conversation and release whatever it holds. Turns still queued
+   * reject; a closed session refuses new ones (`InvalidOptions`). Safe to call
+   * twice. `id` stays valid, so the conversation can be resumed later.
+   */
+  close: () => Promise<void>;
   readonly id: string | undefined;
   /**
    * Answer a `permission-request` event: pass the id of one of the event's

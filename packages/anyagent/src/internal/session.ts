@@ -86,6 +86,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   readonly #pending: PendingTurn[] = [];
   #draining = false;
   #turns = 0;
+  #closed = false;
 
   constructor(
     agent: Agent<C>,
@@ -163,7 +164,23 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     );
   }
 
+  close(): Promise<void> {
+    if (this.#native) {
+      return this.#native.close();
+    }
+    this.#closed = true;
+    for (const queued of this.#pending.splice(0)) {
+      queued.rejectGate(new AnyAgentError("Aborted", "the run was aborted"));
+    }
+    // The emulated tier holds no process between turns, so an emptied queue is
+    // the whole teardown.
+    return Promise.resolve();
+  }
+
   run(prompt: string, callOpts: RunOptions = {}): Run {
+    if (this.#closed) {
+      throw new AnyAgentError("InvalidOptions", "this session is closed");
+    }
     if (!this.#delegated) {
       rejectOwned(callOpts);
     }

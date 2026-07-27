@@ -335,7 +335,16 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * Cursor manages them through `agent mcp` configuration.
  */
 export const cursor = (): Adapter<typeof CAPS> => ({
-  acp: { command: ["agent", "acp"] },
+  acp: {
+    command: ["agent", "acp"],
+    // Cursor also advertises `session/set_mode`; the config option is the one
+    // channel it shares with the rest of the live tier.
+    readOnly: { configId: "mode", value: "plan" },
+    settings: ({ effort, model }) => {
+      const value = modelWithEffort({ effort, model });
+      return { configOptions: value ? [{ configId: "model", value }] : [] };
+    },
+  },
   authStatus,
   buildInvocation,
   capabilities: CAPS,
