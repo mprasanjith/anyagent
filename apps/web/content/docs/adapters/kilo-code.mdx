@@ -1,31 +1,33 @@
 ---
 title: Kilo Code
-description: "Use the Kilo CLI through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
+description: "Use the Kilo CLI through AnyAgent: what you can ask for, how it behaves, and the endpoint underneath."
 ---
 
-The `kilo-code` adapter drives the Kilo CLI through `kilo run --format json`; import `kiloCode` from `anyagent-js/kilo-code`. Kilo’s CLI is an opencode fork with the identical headless surface, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode). Kilo is bring-your-own-key (BYOK) with standard provider env vars, or works through a Kilo account (`kilo auth login`); neither changes a flag here.
+The `kilo-code` adapter drives the Kilo CLI over ACP (`kilo acp`); import `kiloCode` from `anyagent-js/kilo-code`. Kilo’s CLI is an opencode fork with the identical endpoint, so this adapter shares its implementation with [the opencode adapter](/docs/adapters/opencode). Kilo is bring-your-own-key (BYOK) with standard provider env vars, or works through a Kilo account (`kilo auth login`); neither changes a channel here.
 
 ## What you can ask for
 
-`readOnly`, `model` (as `"provider/model"`), `effort` (a provider-defined variant name, passed verbatim), `resume`, `forkSession`, `attachments`, and `mcp` all work on the CLI’s own switches and config, and [sessions](/docs/sessions) run in ACP mode over `kilo acp`; `systemPrompt` and `schema` are provided by AnyAgent. `models()` runs `kilo models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/kilo/auth.json` plus the provider key env vars, a hint rather than a guarantee. The full grid is on the [support matrix](/docs/adapters).
+`model` (as `"provider/model"`), `effort`, `readOnly`, `resume`, `forkSession`, `attachments`, and `mcp` work on the endpoint’s own channels; `systemPrompt` and `schema` are provided by AnyAgent. `models()` runs `kilo models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/kilo/auth.json` plus the provider key env vars, a hint rather than a guarantee. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - Detection looks for `kilo`, then `kilocode`, on `PATH`; the first found wins.
-- The session id is surfaced once, on first sight, and lands on `result.sessionId`.
-- `agent.session()` holds one `kilo acp` connection, so it steers too; `fork: true` branches over `session/fork`, and `readOnly` switches the session into plan mode. `agent.session({ effort })` sets the session's effort level, judged by kilo against the levels its current model offers — a name a one-shot `run` accepts can still be refused here.
-- Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
+- Every turn runs on a live connection, so [sessions](/docs/sessions) steer; the session id lands on `result.sessionId` and is what `resume` takes back.
+- `effort` is set after `model`, because kilo scopes the levels it accepts to the session’s current model and refuses any other.
+- `readOnly: true` rests on two mechanisms at once: the session switches into plan mode, which covers edits, and every permission request for a tool that is not reading is denied, which covers the rest.
+- `mcp` servers are added to whatever the machine already configures rather than replacing them, each under the name you key it by.
 
 ## Under the hood
 
-Every run executes `kilo run --format json --auto` with the prompt piped over stdin. [Run options](/docs/api#run-options) append flags:
+Every session launches `kilo acp` and configures it over the protocol; the prompt travels as a content block. [Run options](/docs/api#run-options) become:
 
-| Option           | Flag or env                                                 |
-| ---------------- | ------------------------------------------------------------ |
-| `readOnly: true` | env `KILO_PERMISSION={"bash":"deny","edit":"deny"}`         |
-| `model`          | `--model <provider/model>`                                  |
-| `effort`         | `--variant <name>`                                          |
-| `resume`         | `--session <sessionId>`                                     |
-| `forkSession: true` | `--fork`, alongside `--session`, branching before continuing |
-| `attachments`    | `-f <file>`, repeated once per attachment                  |
-| `mcp`            | env `KILO_CONFIG_CONTENT={"mcp":{…}}`, `type: "local"` per `command`, `type: "remote"` per `url` |
+| Option              | Channel                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `model`             | config option `model`, as `"provider/model"`                                                           |
+| `effort`            | config option `effort`, applied after `model`                                                          |
+| `cwd`               | the cwd of the new session, and of the endpoint process                                                |
+| `readOnly: true`    | config option `mode: "plan"`, plus a denial of every permission request for a tool that could change the machine |
+| `resume`            | `session/load` with the session id                                                                     |
+| `forkSession: true` | `session/fork` with the session id, branching instead of continuing                                    |
+| `attachments`       | a `resource_link` block per file, beside the prompt text                                               |
+| `mcp`               | `mcpServers` on `session/new`, per `command` or `url`                                                  |

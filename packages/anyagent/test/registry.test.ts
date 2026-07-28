@@ -47,25 +47,13 @@ test("the registry ships all ten builtin adapters", () => {
   expect([...byId.keys()].sort()).toEqual([...ALL].sort());
 });
 
-// The ACP adapters still carry the stdout half the core no longer drives;
-// phase 2 deletes it adapter by adapter and this list empties.
-const STDOUT_HALF_REMAINS: readonly string[] = [
-  "cline",
-  "cursor",
-  "gemini-cli",
-  "goose",
-  "kilo-code",
-  "opencode",
-];
-
 test("every builtin declares one mode, with an ACP endpoint exactly where it says", () => {
   for (const adapter of BUILTINS) {
     expect(["acp", "stdout"]).toContain(adapter.mode);
     expect("acp" in adapter).toBe(adapter.mode === "acp");
     if (adapter.mode === "acp") {
-      expect(STDOUT_HALF_REMAINS.includes(adapter.meta.id)).toBe(
-        "parse" in adapter
-      );
+      expect("parse" in adapter).toBe(false);
+      expect("buildInvocation" in adapter).toBe(false);
     }
   }
 });
@@ -98,12 +86,14 @@ test("readOnly is truthy exactly where a no-writes run is guaranteed", () => {
     "pi",
     "gemini-cli",
     "cursor",
+    "cline",
   ]) {
     expect(Boolean(capsOf(id)?.readOnly)).toBe(true);
   }
-  // goose/cline offer no native guarantee; antigravity's plan mode leaks
-  // writes into its always-allowed scratch dirs (live-verified).
-  for (const id of ["goose", "cline", "antigravity"]) {
+  // goose: denial is unverified (its provider auth was dead when probed);
+  // antigravity's plan mode leaks writes into its always-allowed scratch
+  // dirs (live-verified).
+  for (const id of ["goose", "antigravity"]) {
     expect(capsOf(id)?.readOnly).toBe(false);
   }
 });

@@ -1,38 +1,31 @@
-import { AnyAgentError } from "./errors.js";
-import { ndjsonParser } from "./ndjson.js";
 import type {
   AcpAdapter,
-  AgentEvent,
   AuthStatus,
   Capabilities,
-  Invocation,
-  RunOptions,
-  StdoutAdapter,
   SystemProbe,
-  ToolName,
-  Usage,
 } from "./types.js";
 
 const CAPS = {
+  // The endpoint advertises promptCapabilities image/audio/embeddedContext,
+  // but no recorded turn shows an attached file reaching the model.
+  attachments: false,
   // Credentials live in ~/.gemini files, provider env vars, or the OS
   // keychain, so the answer is a best-effort probe, not the CLI's own word.
-  attachments: false,
   authStatus: "probed",
   cwd: "native",
   effort: false,
-  // `--allowed-mcp-server-names` only allowlists servers settings.json already
-  // defines, and `gemini mcp add` writes that file — a run may not edit the
-  // user's config, so stdout mode has no way to define a server for one run.
+  // The endpoint advertises mcpCapabilities, but no recorded turn shows a
+  // server passed to session/new being reached.
   mcp: false,
-  // No listing surface: `--list-sessions` exists, models do not.
+  // The endpoint names its models only inside an open session, which a probe
+  // cannot reach.
   modelListing: false,
   modelSelection: "native",
-  // Headless `--approval-mode default` never registers the mutating tools
-  // (write_file / replace / run_shell_command return tool_not_registered),
-  // so a read-only run is structurally the CLI's own guarantee. Plan mode is
-  // NOT used: headless, `exit_plan_mode` self-approves and the agent then
-  // writes freely (verified live on 0.46).
-  readOnly: "native",
+  // In the endpoint's default mode every mutating tool asks the client for
+  // permission, so the read-only line is the core's denial, not the CLI's own
+  // guarantee. Plan mode is NOT used: `exit_plan_mode` self-approves and the
+  // agent then writes freely (verified live on 0.46).
+  readOnly: "emulated",
   // Reattachment is broken upstream (#15502): the endpoint advertises
   // `loadSession` and `session/load` then fails, so a session here only ever
   // starts fresh.
@@ -40,166 +33,10 @@ const CAPS = {
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
-  // No append-system-prompt flag; GEMINI_SYSTEM_MD replaces the built-in
+  // No append-system-prompt channel; GEMINI_SYSTEM_MD replaces the built-in
   // prompt rather than extending it, so the core folds the text in instead.
   systemPrompt: "emulated",
 } as const satisfies Capabilities;
-
-const TOOL_NAMES: Record<string, ToolName> = {
-  glob: "glob",
-  google_web_search: "webSearch",
-  grep_search: "grep",
-  read_file: "read",
-  replace: "edit",
-  run_shell_command: "bash",
-  search_file_content: "grep",
-  write_file: "write",
-};
-
-const toolName = (nativeName: string): ToolName =>
-  TOOL_NAMES[nativeName] ?? nativeName;
-
-interface Ctx {
-  raw?: unknown;
-  sessionId?: string;
-  text: string[];
-  toolNames: Map<string, string>;
-  usage?: Usage;
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
-type Json = any;
-
-const mapMessage = (
-  obj: Json,
-  ctx: Ctx,
-  strict: boolean
-): AgentEvent | undefined => {
-  if (obj.role === "assistant") {
-    const text = typeof obj.content === "string" ? obj.content : "";
-    ctx.text.push(text);
-    return { raw: obj, text, type: "text-delta" };
-  }
-  if (obj.role === "user") {
-    // The stream echoes the prompt back as a user message; nothing to relay.
-    return;
-  }
-  if (strict) {
-    throw new AnyAgentError("Parse", `unknown message role ${obj.role}`);
-  }
-};
-
-const mapResult = (obj: Json, ctx: Ctx): AgentEvent | undefined => {
-  ctx.raw = obj;
-  // The CLI also exits nonzero on failure, but throwing at the result line
-  // surfaces the agent's own message instead of a bare exit code.
-  if (obj.status !== "success") {
-    throw new AnyAgentError(
-      "Invocation",
-      `gemini-cli: ${obj.error?.message ?? obj.status}`,
-      { raw: obj }
-    );
-  }
-  const { stats } = obj;
-  if (!stats) {
-    return;
-  }
-  ctx.usage = {
-    // `cached` counts prompt tokens served from cache; per-model splits
-    // remain on the event's raw payload.
-    cacheReadTokens: stats.cached,
-    inputTokens: stats.input_tokens,
-    outputTokens: stats.output_tokens,
-  };
-  return { raw: obj, type: "usage", usage: ctx.usage };
-};
-
-const parse = ndjsonParser<Ctx>({
-  finalize: (ctx) => ({
-    events: [],
-    raw: ctx.raw,
-    sessionId: ctx.sessionId,
-    text: ctx.text.join(""),
-    usage: ctx.usage,
-  }),
-  init: () => ({ text: [], toolNames: new Map() }),
-  map: (raw: unknown, ctx, strict) => {
-    const obj = raw as Json;
-    switch (obj.type) {
-      case "init": {
-        if (typeof obj.session_id === "string" && ctx.sessionId === undefined) {
-          ctx.sessionId = obj.session_id;
-          return { raw: obj, sessionId: obj.session_id, type: "session" };
-        }
-        return;
-      }
-      case "message": {
-        return mapMessage(obj, ctx, strict);
-      }
-      case "tool_use": {
-        ctx.toolNames.set(obj.tool_id, obj.tool_name);
-        return {
-          callId: obj.tool_id,
-          input: obj.parameters,
-          name: toolName(obj.tool_name),
-          nativeName: obj.tool_name,
-          raw: obj,
-          type: "tool-call",
-        };
-      }
-      case "tool_result": {
-        const nativeName = ctx.toolNames.get(obj.tool_id) ?? "unknown";
-        return {
-          callId: obj.tool_id,
-          name: toolName(nativeName),
-          nativeName,
-          output: obj.output,
-          raw: obj,
-          type: "tool-result",
-        };
-      }
-      case "result": {
-        return mapResult(obj, ctx);
-      }
-      default: {
-        if (strict) {
-          throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
-        }
-        return;
-      }
-    }
-  },
-});
-
-const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
-  // The prompt travels on stdin: an empty -p keeps headless mode on, and the
-  // CLI composes stdin ahead of the (empty) -p text into one user message,
-  // so prompt size is never capped by the OS argv limit.
-  const args = [
-    "-p",
-    "",
-    "--output-format",
-    "stream-json",
-    // An untrusted cwd exits 55 before doing anything; headless runs always
-    // bypass the workspace-trust gate.
-    "--skip-trust",
-    "--approval-mode",
-    opts.readOnly ? "default" : "yolo",
-  ];
-  if (opts.model) {
-    args.push("-m", opts.model);
-  }
-  if (opts.resume) {
-    args.push("--resume", opts.resume);
-  }
-  return {
-    args,
-    command: "gemini",
-    cwd: opts.cwd,
-    env: opts.env,
-    input: prompt,
-  };
-};
 
 const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   const home = probe.homedir();
@@ -216,7 +53,9 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   const settings = await probe.readFile(`${home}/.gemini/settings.json`);
   if (settings !== undefined) {
     try {
-      const parsed = JSON.parse(settings) as Json;
+      const parsed = JSON.parse(settings) as {
+        security?: { auth?: { selectedType?: unknown } };
+      };
       const selected = parsed?.security?.auth?.selectedType;
       if (typeof selected === "string" && selected.length > 0) {
         return { method: selected, state: "unknown" };
@@ -229,12 +68,11 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
 };
 
 /**
- * The adapter for the Gemini CLI (`gemini`). Runs are headless with the
- * yolo approval mode by default; `readOnly: true` switches to a mode whose
- * toolset carries no write or shell tools at all. `model` passes through in
- * Gemini's own vocabulary (pin one — the CLI's automatic routing can spend
- * minutes on trivial prompts). System prompt and structured output are
- * emulated; usage reports cache reads via the stream's `cached` counter.
+ * The adapter for the Gemini CLI (`gemini`), driven over its ACP endpoint.
+ * A turn runs with full autonomy; `readOnly: true` denies every tool that
+ * could change the machine. `model` passes through in Gemini's own vocabulary
+ * (pin one — the CLI's automatic routing can spend minutes on trivial
+ * prompts). System prompt and structured output are emulated.
  * A session always starts fresh: reattachment is broken upstream (#15502), so
  * `resume` throws.
  *
@@ -245,8 +83,7 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * const result = await create(geminiCli()).run("summarize this repo");
  * ```
  */
-export const geminiCli = (): AcpAdapter<typeof CAPS> &
-  Pick<StdoutAdapter<typeof CAPS>, "buildInvocation" | "parse"> => ({
+export const geminiCli = (): AcpAdapter<typeof CAPS> => ({
   acp: {
     // Without --skip-trust the endpoint downgrades its approval mode with only
     // a stderr notice, so a live turn would silently lose its autonomy.
@@ -256,10 +93,8 @@ export const geminiCli = (): AcpAdapter<typeof CAPS> &
     settings: ({ model }) => ({ args: model ? ["-m", model] : [] }),
   },
   authStatus,
-  buildInvocation,
   capabilities: CAPS,
   detection: {},
   meta: { bin: ["gemini"], id: "gemini-cli", name: "Gemini CLI" },
   mode: "acp",
-  parse,
 });

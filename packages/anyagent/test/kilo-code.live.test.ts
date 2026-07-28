@@ -1,15 +1,14 @@
 import { expect, test } from "bun:test";
 
 import { create } from "../src/index.js";
-import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { kiloCode } from "../src/kilo-code.js";
 import { liveEnabled } from "./live-helper.js";
 
 const live = test.skipIf(!(await liveEnabled("kilo")));
 
 const PROMPT = "Reply with exactly the word: pong";
-// e.g. ANYAGENT_KILO_MODEL=openrouter/openai/gpt-4o-mini with an
-// OPENROUTER_API_KEY in the environment.
+// e.g. ANYAGENT_KILO_MODEL=openai/gpt-5.4-mini with a credential for that
+// provider in kilo's auth store.
 const MODEL = process.env.ANYAGENT_KILO_MODEL;
 
 live(
@@ -25,25 +24,22 @@ live(
 );
 
 // The drift canary; see opencode.live.test.ts — kilo runs the same check
-// against its own binary so a fork-side format change is caught here.
+// against its own endpoint so a fork-side protocol change is caught here.
 live(
-  "live: real output parses clean under strict mode",
+  "live: a real session streams its turn as events",
   async () => {
-    const adapter = kiloCode();
-    const inv = adapter.buildInvocation(PROMPT, MODEL ? { model: MODEL } : {});
-    const source = spawnAndStream(inv);
+    const session = create(kiloCode()).session(MODEL ? { model: MODEL } : {});
     let sawText = false;
-    let finalText: string | undefined;
-    for await (const ev of adapter.parse(source, { strict: true })) {
-      if (ev.type === "text-delta") {
-        sawText = true;
+    try {
+      for await (const event of session.run(PROMPT)) {
+        if (event.type === "text-delta") {
+          sawText = true;
+        }
       }
-      if (ev.type === "done") {
-        finalText = ev.result.text;
-      }
+    } finally {
+      await session.close();
     }
     expect(sawText).toBe(true);
-    expect(typeof finalText).toBe("string");
   },
   120_000
 );

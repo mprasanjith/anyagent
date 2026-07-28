@@ -1,8 +1,0 @@
-{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/tmp/claude-1000/-home-madusha-Documents-Makes-anyagent/f1d83014-26db-4074-a592-1a00a23d4b56/scratchpad/cursor-rec/ws","session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8","model":"Auto","permissionMode":"default"}
-{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Reply with exactly: pong"}]},"session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8"}
-{"type":"thinking","subtype":"delta","text":"The user requested a","session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8","timestamp_ms":1784678568542}
-{"type":"thinking","subtype":"delta","text":" response of exactly","session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8","timestamp_ms":1784678568542}
-{"type":"thinking","subtype":"delta","text":" \"pong\".","session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8","timestamp_ms":1784678568543}
-{"type":"thinking","subtype":"completed","session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8","timestamp_ms":1784678568543}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"pong"}]},"session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8"}
-{"type":"result","subtype":"success","duration_ms":2197,"duration_api_ms":2197,"is_error":false,"result":"pong","session_id":"ac598f1d-3fc1-4da8-ade1-9486e7e152e8","request_id":"0b798b8f-daae-42a9-b0e0-93a4abefddcf","usage":{"inputTokens":8881,"outputTokens":12,"cacheReadTokens":128,"cacheWriteTokens":0}}

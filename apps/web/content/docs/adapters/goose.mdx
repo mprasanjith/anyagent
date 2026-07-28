@@ -1,26 +1,30 @@
 ---
 title: goose
-description: "Use goose through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
+description: "Use goose through AnyAgent: what you can ask for, how it behaves, and the endpoint underneath."
 ---
 
-The `goose` adapter drives `goose run --output-format stream-json --quiet` with the prompt piped over stdin via `-i -`; import `goose` from `anyagent-js/goose`. goose is Apache-2.0 open source and bring-your-own-key (BYOK): pass `model` as `"provider/model"`, or configure a provider in goose’s own config and pass a bare name.
+The `goose` adapter drives the goose CLI over ACP (`goose acp`), detected as the `goose` binary on `PATH`; import `goose` from `anyagent-js/goose`. goose is Apache-2.0 open source and bring-your-own-key (BYOK): configure a provider once with `goose configure`.
 
 ## What you can ask for
 
-`model` and session resume work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly`, `effort`, `mcp`, and model listing are undeclared and throw. `authStatus()` runs `goose info -v` and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`. The full grid is on the [support matrix](/docs/adapters).
+`model`, `effort`, `mcp`, `cwd`, and `resume` work on the endpoint’s own channels; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly`, `attachments`, session forking, and model listing are undeclared and throw. `authStatus()` runs `goose info -v` and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
-- goose sessions are keyed by name and never expose an id headless, so `result.sessionId` stays absent. `agent.session()` generates and threads the name for you; by hand, name the first run via `extraArgs: ["--name", "review-1"]`, then pass `resume` with that name.
-- `model` splits at the first slash only, so an openrouter path like `"openrouter/openai/gpt-5.2"` works verbatim.
-- Usage reports `inputTokens` and `outputTokens` only.
-- A failed run reports the provider error as ordinary assistant text rather than throwing.
+- Every turn runs on a live connection, so [sessions](/docs/sessions) steer; the session id lands on `result.sessionId` and is what `resume` takes back.
+- `model` takes an id the configured provider serves, verbatim (`"anthropic/claude-sonnet-4.5"` on openrouter); a session that leaves it unset uses goose’s own configured model.
+- `effort` is one of `off`, `low`, `medium`, `high`, `max`.
+- `readOnly: true` throws: goose’s `approve` mode asks before every tool call, but no run has verified that denial holds, so the guarantee is not declared.
+- A failed turn reports the provider error as ordinary assistant text rather than throwing.
 
 ## Under the hood
 
-Every run executes `goose run --output-format stream-json --quiet -i -`, with `GOOSE_MODE=auto` set as an env default so approval modes cannot hang a headless run; a `GOOSE_MODE` you pass in `env` wins. [Run options](/docs/api#run-options) append flags:
+Every session launches `goose acp` and configures it over the protocol; the prompt travels as a content block. [Run options](/docs/api#run-options) become:
 
-| Option         | Flag                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------------------- |
-| `model`        | `--provider <provider> --model <model>` from `"provider/model"`; a bare name maps to `--model <name>` alone |
-| `resume`       | `--name <name> --resume`                                                                                     |
+| Option   | Channel                                                 |
+| -------- | ------------------------------------------------------- |
+| `model`  | config option `model`                                   |
+| `effort` | config option `thinking_effort`                         |
+| `mcp`    | the servers on `session/new`, by `command` or by `url`  |
+| `cwd`    | the cwd of the new session, and of the endpoint process |
+| `resume` | `session/load` with the session id                      |

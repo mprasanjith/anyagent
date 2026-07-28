@@ -2,38 +2,25 @@ import {
   type OpencodeFamilyCapabilities,
   opencodeFamilyAdapter,
 } from "./internal/opencode-family.js";
-import type { AcpAdapter, StdoutAdapter } from "./types.js";
+import type { AcpAdapter } from "./types.js";
 
 /**
- * Kilo's capabilities: the family's, with ACP-mode sessions. The recorded
- * handshake at `test/fixtures/acp/kilo-handshake.jsonl` backs the mode —
- * protocol v1, `loadSession`, `sessionCapabilities.fork`, and a `session/new`
- * carrying the `model`, `effort`, and `mode` options the family's spec drives.
+ * Kilo's capabilities: the family's, plus reasoning effort — the ACP
+ * transcript at `test/fixtures/acp/kilo.jsonl` backs them, its session
+ * advertising an `effort` option beside `model` and `mode`.
  */
-export type KiloCodeCapabilities = Omit<OpencodeFamilyCapabilities, "mcp"> & {
-  readonly mcp: "native";
+export type KiloCodeCapabilities = Omit<
+  OpencodeFamilyCapabilities,
+  "effort"
+> & {
+  readonly effort: "native";
 };
 
 /**
  * The adapter for Kilo Code's CLI (`kilo`). Kilo is an opencode fork with the
- * identical headless surface — verified against real `kilo` output, not
- * assumed from the lineage — and behaves like the opencode adapter: full
- * autonomy by default, `readOnly: true` denies file edits and
- * shell (the adapter owns the `KILO_PERMISSION` env var, overriding a value
- * you pass in `env` under that key), `resume` continues a session using
- * `RunResult.sessionId`, `effort` passes a provider-defined variant name
- * verbatim, models use `provider/model` form, and `mcp` servers ride the
- * adapter-owned `KILO_CONFIG_CONTENT` env var, merged into the machine's own
- * configured servers rather than replacing them. Sessions run in ACP mode, over
- * `kilo acp`: `agent.session()` holds one connection, `fork: true` branches
- * through `session/fork`, `readOnly` switches the session into plan mode, and
- * `effort` sets the session's effort level. Both modes pass `effort` through
- * verbatim and let kilo judge it, but they judge differently: a one-shot run's
- * `--variant` takes any provider-defined name, while a session's effort is a
- * closed list scoped to that session's model, so a name a run accepts can still
- * be refused in a session.
- * `authStatus()` answers from kilo's credential store and the standard
- * provider key env vars — a hint, not a guarantee.
+ * identical ACP endpoint — verified against real `kilo` output, not assumed
+ * from the lineage — so every turn runs over `kilo acp`, on a connection
+ * `agent.session()` holds open.
  *
  * ```ts
  * import { create } from "anyagent-js";
@@ -41,21 +28,27 @@ export type KiloCodeCapabilities = Omit<OpencodeFamilyCapabilities, "mcp"> & {
  *
  * const result = await create(kiloCode()).run("summarize this repo");
  * ```
+ *
+ * Models use `provider/model` form; `models()` lists every id the CLI accepts,
+ * and a session sets the one you pick as its `model` option. `effort` sets the
+ * session's effort level, from a list the endpoint scopes to that session's
+ * model — it judges the value, so a name one model accepts can be refused
+ * under another. `readOnly: true` switches the session into plan mode and
+ * denies every tool that is not reading. `resume` continues a conversation
+ * from `RunResult.sessionId`; `fork: true` branches it instead. `mcp` servers
+ * reach the agent with the session, each under the name you key it by.
+ * Attachments ride the prompt as resource links. `authStatus()` answers from
+ * kilo's credential store and the standard provider key env vars — a hint, not
+ * a guarantee.
  */
-export const kiloCode = (): AcpAdapter<KiloCodeCapabilities> &
-  Pick<StdoutAdapter<KiloCodeCapabilities>, "buildInvocation" | "parse"> => {
+export const kiloCode = (): AcpAdapter<KiloCodeCapabilities> => {
   const adapter = opencodeFamilyAdapter({
     acpEffort: "effort",
-    configEnv: "KILO_CONFIG_CONTENT",
     dataDir: "kilo",
     meta: { bin: ["kilo", "kilocode"], id: "kilo-code", name: "Kilo Code" },
-    permissionEnv: "KILO_PERMISSION",
   });
   return {
     ...adapter,
-    capabilities: {
-      ...adapter.capabilities,
-      mcp: "native" as const,
-    },
+    capabilities: { ...adapter.capabilities, effort: "native" as const },
   };
 };

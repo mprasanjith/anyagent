@@ -1,241 +1,37 @@
-import { randomUUID } from "node:crypto";
-import { AnyAgentError } from "./errors.js";
-import { ndjsonParser } from "./ndjson.js";
 import type {
   AcpAdapter,
-  AgentEvent,
   AuthStatus,
   Capabilities,
-  Invocation,
-  RunOptions,
-  StdoutAdapter,
   SystemProbe,
-  ToolName,
 } from "./types.js";
 
 const CAPS = {
   attachments: false,
   authStatus: "probed",
   cwd: "native",
-  // Reasoning effort on goose is env-only per-provider config, unstable
-  // across providers; extraArgs territory.
-  effort: false,
-  // `--with-extension` attaches a server but has no slot for its name: goose
-  // derives one from the command's first token, so two servers launched the
-  // same way (`npx …`, the common case) collide and one is dropped in silence
-  // — verified on 1.43. The ACP endpoint names them properly, but
-  // capabilities are per-adapter, so honoring `mcp` here would be a lie in
-  // stdout mode.
-  mcp: false,
+  // The endpoint publishes `thinking_effort` as a select whose values are
+  // goose's own, not a provider's.
+  effort: "native",
+  // `session/new` takes the servers, and the endpoint advertises
+  // `mcpCapabilities.http`, so both the stdio and the URL shape carry.
+  mcp: "native",
   modelListing: false,
   modelSelection: "native",
-  // GOOSE_MODE=chat disables tools entirely (the agent could not even read
-  // files) and the approve modes hang headless — no honest read-only run
-  // exists.
+  // The `approve` mode ("Ask before every tool call") plus permission denial is
+  // the only candidate mechanism, and it is unverified: a live probe set
+  // `mode: approve` (acknowledged) and asked for a file write, but the turn
+  // failed on provider auth before any tool ran, so no permission request ever
+  // arrived and no denial was exercised.
   readOnly: false,
-  // ACP mode, gated on a recorded real transcript (sessions.md §6 M-2):
-  // test/fixtures/acp/goose.jsonl — initialize on protocolVersion 1, a session
-  // id, an agent_message_chunk streaming "pong", and stopReason end_turn.
+  reasoningEfforts: ["off", "low", "medium", "high", "max"],
   resume: "native",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
-  // `--system` reaches only the one-shot CLI; a live turn carries content
-  // blocks and nothing else, so the core folds the text into the prompt.
+  // A turn carries content blocks and nothing else, so the core folds the
+  // system prompt into the prompt text.
   systemPrompt: "emulated",
 } as const satisfies Capabilities;
-
-// Goose's text-editor tool multiplexes on a `command` argument; each command
-// maps to what it actually does, so `write` and `edit` stay honest.
-const EDITOR_COMMANDS: Record<string, ToolName> = {
-  create: "write",
-  insert: "edit",
-  str_replace: "edit",
-  undo_edit: "edit",
-  write: "write",
-};
-
-// Goose namespaces tools as `<extension>__<tool>` (e.g. `developer__shell`);
-// bare names also occur. Normalization matches on the bare tool; a tool
-// outside the shared vocabulary keeps its full native name.
-const normalizeTool = (nativeName: string, input: unknown): ToolName => {
-  const sep = nativeName.indexOf("__");
-  const bare = sep === -1 ? nativeName : nativeName.slice(sep + 2);
-  if (bare === "shell") {
-    return "bash";
-  }
-  if (bare === "text_editor") {
-    const command = (input as { command?: unknown } | undefined)?.command;
-    return typeof command === "string"
-      ? (EDITOR_COMMANDS[command] ?? nativeName)
-      : nativeName;
-  }
-  return nativeName;
-};
-
-interface Ctx {
-  complete?: unknown;
-  text: string[];
-  tools: Map<string, { name: ToolName; nativeName: string }>;
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
-type Json = any;
-
-const mapContent = (
-  block: Json,
-  raw: Json,
-  ctx: Ctx,
-  strict: boolean
-): AgentEvent | undefined => {
-  switch (block.type) {
-    case "text": {
-      ctx.text.push(block.text);
-      return { raw, text: block.text, type: "text-delta" };
-    }
-    case "thinking": {
-      return { raw, text: block.thinking, type: "reasoning-delta" };
-    }
-    case "redactedThinking": {
-      // Redacted thinking carries no readable text; known, so not a strict
-      // error.
-      return;
-    }
-    case "toolRequest": {
-      const call = block.toolCall?.value ?? {};
-      const nativeName = typeof call.name === "string" ? call.name : "unknown";
-      const name = normalizeTool(nativeName, call.arguments);
-      ctx.tools.set(block.id, { name, nativeName });
-      return {
-        callId: block.id,
-        input: call.arguments,
-        name,
-        nativeName,
-        raw,
-        type: "tool-call",
-      };
-    }
-    case "toolResponse": {
-      const tool = ctx.tools.get(block.id);
-      return {
-        callId: block.id,
-        name: tool?.name ?? "unknown",
-        nativeName: tool?.nativeName ?? "unknown",
-        output: block.toolResult?.value?.content,
-        raw,
-        type: "tool-result",
-      };
-    }
-    default: {
-      if (strict) {
-        throw new AnyAgentError("Parse", `unknown content block ${block.type}`);
-      }
-      return;
-    }
-  }
-};
-
-const parse = ndjsonParser<Ctx>({
-  finalize: (ctx) => {
-    const complete = ctx.complete as Json;
-    const input = complete?.input_tokens;
-    const output = complete?.output_tokens;
-    return {
-      events: [],
-      raw: ctx.complete,
-      // No sessionId: goose's headless stream never reveals one.
-      text: ctx.text.join(""),
-      // A failed run still ends with `complete` but null token counts;
-      // goose reports no cost or cache/reasoning split either way.
-      usage:
-        typeof input === "number" || typeof output === "number"
-          ? {
-              inputTokens: typeof input === "number" ? input : undefined,
-              outputTokens: typeof output === "number" ? output : undefined,
-            }
-          : undefined,
-    };
-  },
-  init: () => ({ text: [], tools: new Map() }),
-  map: (raw: unknown, ctx, strict) => {
-    const obj = raw as Json;
-    switch (obj.type) {
-      // Goose interleaves assistant messages (text tokens, thinking, tool
-      // requests) with user-role tool responses; each content block maps on
-      // its own.
-      case "message": {
-        const out: AgentEvent[] = [];
-        for (const block of obj.message?.content ?? []) {
-          const ev = mapContent(block, obj, ctx, strict);
-          if (ev) {
-            out.push(ev);
-          }
-        }
-        return out;
-      }
-      case "complete": {
-        ctx.complete = obj;
-        const input = obj.input_tokens;
-        const output = obj.output_tokens;
-        if (typeof input !== "number" && typeof output !== "number") {
-          return;
-        }
-        return {
-          raw: obj,
-          type: "usage",
-          usage: {
-            inputTokens: typeof input === "number" ? input : undefined,
-            outputTokens: typeof output === "number" ? output : undefined,
-          },
-        };
-      }
-      default: {
-        if (strict) {
-          throw new AnyAgentError("Parse", `unknown event type ${obj.type}`);
-        }
-        return;
-      }
-    }
-  },
-});
-
-const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
-  // --quiet keeps stdout pure NDJSON (goose otherwise prints a banner);
-  // `-i -` reads the prompt from stdin, so a large prompt never hits the OS
-  // argv size limit.
-  const args = ["run", "--output-format", "stream-json", "--quiet", "-i", "-"];
-  if (opts.model) {
-    // "provider/model" splits at the first slash into --provider/--model;
-    // the model part may itself contain slashes (openrouter paths). A bare
-    // name leaves the provider to goose's own config.
-    const slash = opts.model.indexOf("/");
-    if (slash === -1) {
-      args.push("--model", opts.model);
-    } else {
-      args.push(
-        "--provider",
-        opts.model.slice(0, slash),
-        "--model",
-        opts.model.slice(slash + 1)
-      );
-    }
-  }
-  if (opts.systemPrompt) {
-    args.push("--system", opts.systemPrompt);
-  }
-  if (opts.resume) {
-    args.push("--name", opts.resume, "--resume");
-  }
-  return {
-    args,
-    command: "goose",
-    cwd: opts.cwd,
-    // The autonomous baseline: goose's approve modes would hang a headless
-    // run. A caller-set GOOSE_MODE wins over the default.
-    env: { GOOSE_MODE: "auto", ...opts.env },
-    input: prompt,
-  };
-};
 
 // Providers whose credentials goose reads from a well-known env var. A
 // configured provider whose key is absent here may still hold it in goose's
@@ -283,11 +79,14 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
 };
 
 /**
- * The adapter for the goose CLI (`goose`). Goose is BYOK: pass
- * `model: "provider/model"` — the part before the first `/` picks the
- * provider, the rest is the model in that provider's own naming (so an
- * openrouter path like `"openrouter/openai/gpt-4o-mini"` works verbatim). A
- * bare model name leaves the provider to goose's own config.
+ * The adapter for the goose CLI (`goose`), driven over ACP (`goose acp`).
+ * Goose is BYOK: configure a provider with `goose configure`, and pass `model`
+ * as one of the ids that provider serves (e.g.
+ * `"anthropic/claude-sonnet-4.5"` on openrouter) — it sets the session's
+ * `model` option, and a session that leaves it unset uses goose's configured
+ * default. `effort` sets `thinking_effort` (`off` through `max`), `mcp`
+ * servers ride `session/new`, and `resume` reattaches to a
+ * `RunResult.sessionId` from an earlier turn.
  *
  * ```ts
  * import { create } from "anyagent-js";
@@ -296,23 +95,15 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * const result = await create(goose()).run("summarize this repo");
  * ```
  *
- * Sessions are resumed by name, and goose never reveals a session id
- * headless, so `RunResult.sessionId` stays absent. `agent.session()` handles
- * this for you by generating a name up front; to do it by hand, name the
- * first run via `extraArgs: ["--name", "my-session"]` and pass that same
- * name as `resume`. Goose reports provider errors as ordinary assistant
- * text, so a failed turn returns that text as the reply rather than
- * throwing.
+ * `readOnly: true` throws: goose's `approve` mode is unverified as a
+ * no-writes guarantee. System prompts and `schema` are emulated. Goose reports
+ * provider errors as ordinary assistant text, so a failed turn returns that
+ * text as the reply rather than throwing. `authStatus()` reads `goose info -v`
+ * and the provider's key env var — a hint, not a guarantee.
  */
-export const goose = (): AcpAdapter<typeof CAPS> &
-  Pick<
-    StdoutAdapter<typeof CAPS>,
-    "buildInvocation" | "parse" | "sessionSeed"
-  > => ({
+export const goose = (): AcpAdapter<typeof CAPS> => ({
   acp: {
     command: ["goose", "acp"],
-    // `thinking_effort` exists only on the ACP endpoint, so the declared
-    // `effort: false` (a stdout-mode fact) still gates it everywhere today.
     settings: ({ effort, model }) => ({
       configOptions: [
         ...(model === undefined ? [] : [{ configId: "model", value: model }]),
@@ -323,17 +114,8 @@ export const goose = (): AcpAdapter<typeof CAPS> &
     }),
   },
   authStatus,
-  buildInvocation,
   capabilities: CAPS,
   detection: {},
   meta: { bin: ["goose"], id: "goose", name: "goose" },
   mode: "acp",
-  parse,
-  // Goose sessions are keyed by name and the headless stream never reveals
-  // one, so the session provides the handle: the first turn registers the
-  // name via --name (without --resume), and later turns resume it.
-  sessionSeed: () => {
-    const id = `anyagent-${randomUUID().slice(0, 8)}`;
-    return { firstRunOptions: { extraArgs: ["--name", id] }, id };
-  },
 });

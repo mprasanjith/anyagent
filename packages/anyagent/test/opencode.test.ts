@@ -2,424 +2,185 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { runConformance } from "../src/conformance.js";
-import { spawnAndStream } from "../src/internal/runtime/spawn.js";
+import { AgentImpl } from "../src/internal/agent.js";
 import { opencode } from "../src/opencode.js";
-import type {
-  AgentEvent,
-  Invocation,
-  OutputSource,
-  RunResult,
-} from "../src/types.js";
-import { fakeSystemProbe, sourceFromBody } from "./fake-adapter.js";
-
-const SESSION_ID = /^ses_/u;
-const CALL_ID = /^call_/u;
+import type { RunOptions, SessionOptions } from "../src/types.js";
+import {
+  response,
+  type ScriptMessage,
+  scriptedTransport,
+  update,
+} from "./acp-transport.js";
+import { fakeSystemProbe } from "./fake-adapter.js";
 
 const fixture = (name: string): string =>
   readFileSync(path.join(import.meta.dir, "fixtures/opencode", name), "utf-8");
 
-const bodySource = (lines: unknown[]): OutputSource =>
-  sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
-
-const collectSource = async (
-  src: OutputSource,
-  strict = false
-): Promise<{ events: AgentEvent[]; result?: RunResult }> => {
-  const events: AgentEvent[] = [];
-  for await (const ev of opencode().parse(src, { strict })) {
-    events.push(ev);
-  }
-  const done = events.find((e) => e.type === "done");
-  return { events, result: done?.type === "done" ? done.result : undefined };
+const SESSION_ID = "ses_1";
+const NO_EFFORT = /reasoning effort/u;
+const NEEDS_ENDPOINT = /needs a command or a url/u;
+// The `mode` option as the recorded endpoint advertises it: readOnly puts
+// `plan` in place of the current value and a later turn puts that value back.
+const NEW_SESSION = {
+  configOptions: [
+    {
+      currentValue: "build",
+      id: "mode",
+      options: [{ value: "build" }, { value: "plan" }],
+      type: "select",
+    },
+  ],
+  sessionId: SESSION_ID,
 };
 
-const collect = (name: string) => collectSource(sourceFromBody(fixture(name)));
-
-test("buildInvocation defaults to full autonomy: --auto, no permission env", () => {
-  const inv = opencode().buildInvocation("hi", {});
-  expect(inv.command).toBe("opencode");
-  expect(inv.args.slice(0, 4)).toEqual(["run", "--format", "json", "--auto"]);
-  // Prompt goes to stdin, never argv, so it can't hit the OS argv size limit.
-  expect(inv.input).toBe("hi");
-  expect(inv.args).not.toContain("hi");
-  expect(inv.env?.OPENCODE_PERMISSION).toBeUndefined();
-});
-
-test("readOnly keeps --auto and sets the category deny matrix in the adapter-owned env var", () => {
-  const inv = opencode().buildInvocation("x", { readOnly: true });
-  expect(inv.args).toContain("--auto");
-  expect(JSON.parse(inv.env?.OPENCODE_PERMISSION ?? "")).toEqual({
-    bash: "deny",
-    edit: "deny",
-  });
-});
-
-test("under readOnly the adapter's permission key wins; other caller env survives", () => {
-  const inv = opencode().buildInvocation("x", {
-    env: { FOO: "bar", OPENCODE_PERMISSION: '{"edit":"allow"}' },
-    readOnly: true,
-  });
-  expect(inv.env?.FOO).toBe("bar");
-  expect(JSON.parse(inv.env?.OPENCODE_PERMISSION ?? "")).toEqual({
-    bash: "deny",
-    edit: "deny",
-  });
-});
-
-const NEEDS_ENDPOINT = /needs a command or a url/u;
-
-interface ConfigDoc {
-  mcp?: Record<string, unknown>;
-  theme?: string;
+interface Wire {
+  configured: unknown[];
+  newSession: ScriptMessage;
+  prompt: ScriptMessage;
 }
 
-const mcpConfig = (inv: Invocation): ConfigDoc =>
-  JSON.parse(inv.env?.OPENCODE_CONFIG_CONTENT ?? "{}") as ConfigDoc;
+// One turn against a scripted endpoint, returning what reached the wire.
+const turnOverAcp = async (
+  settings: SessionOptions = {},
+  opts: RunOptions = {}
+): Promise<Wire> => {
+  const wire: Wire = { configured: [], newSession: {}, prompt: {} };
+  const transport = scriptedTransport(async (api) => {
+    const init = await api.next();
+    expect(init.method).toBe("initialize");
+    api.emit(response(init.id, { agentCapabilities: {}, protocolVersion: 1 }));
 
-test("a stdio mcp server maps to a local entry under the caller's own name", () => {
-  const inv = opencode().buildInvocation("hi", {
-    mcp: { mydb: { args: ["-y", "srv"], command: "npx", env: { K: "v" } } },
+    wire.newSession = await api.next();
+    api.emit(response(wire.newSession.id, NEW_SESSION));
+
+    let message = await api.next();
+    while (message.method === "session/set_config_option") {
+      wire.configured.push(message.params);
+      api.emit(response(message.id, {}));
+      // biome-ignore lint/performance/noAwaitInLoops: each option is acknowledged before the next.
+      message = await api.next();
+    }
+    wire.prompt = message;
+    api.emit(
+      update(SESSION_ID, {
+        content: { text: "pong", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(message.id, { stopReason: "end_turn" }));
   });
-  expect(mcpConfig(inv).mcp).toEqual({
-    mydb: {
-      command: ["npx", "-y", "srv"],
-      enabled: true,
-      environment: { K: "v" },
-      type: "local",
-    },
-  });
+  const agent = new AgentImpl(opencode(), { transport: () => transport });
+  const session = agent.session(settings);
+  await session.run("hi", opts);
+  await session.close();
+  await transport.done;
+  return wire;
+};
+
+test("declares the acp endpoint and the family's capabilities", () => {
+  const agent = opencode();
+  expect(agent.mode).toBe("acp");
+  expect(agent.acp.command).toEqual(["opencode", "acp"]);
+  expect(agent.acp.readOnly).toEqual({ configId: "mode", value: "plan" });
+  expect(agent.capabilities.attachments).toBe("native");
+  expect(agent.capabilities.mcp).toBe("native");
+  expect(agent.capabilities.sessionFork).toBe("native");
+  expect(agent.capabilities.structuredOutput).toBe("emulated");
+  expect(agent.capabilities.systemPrompt).toBe("emulated");
 });
 
-test("a url mcp server maps to a remote entry", () => {
-  const inv = opencode().buildInvocation("hi", {
+test("effort has no channel here: the capability is off and the spec refuses it", () => {
+  expect(opencode().capabilities.effort).toBe(false);
+  expect(() => opencode().acp.settings?.({ effort: "high" })).toThrow(
+    NO_EFFORT
+  );
+});
+
+test("a session sets the model as the endpoint's model option", async () => {
+  const wire = await turnOverAcp({
+    model: "openrouter/openai/gpt-4o-mini",
+  });
+  expect(wire.configured).toEqual([
+    {
+      configId: "model",
+      sessionId: SESSION_ID,
+      value: "openrouter/openai/gpt-4o-mini",
+    },
+  ]);
+});
+
+test("readOnly puts the session in plan mode before the turn", async () => {
+  const wire = await turnOverAcp({}, { readOnly: true });
+  expect(wire.configured).toEqual([
+    { configId: "mode", sessionId: SESSION_ID, value: "plan" },
+  ]);
+});
+
+const mcpServers = (wire: Wire): unknown[] =>
+  (wire.newSession.params as { mcpServers: unknown[] }).mcpServers;
+
+test("a stdio mcp server rides session/new under the caller's own name", async () => {
+  const wire = await turnOverAcp({
+    mcp: { mydb: { args: ["-y", "srv"], command: "npx", env: { K: "v" } } },
+  });
+  expect(mcpServers(wire)).toEqual([
+    {
+      args: ["-y", "srv"],
+      command: "npx",
+      env: [{ name: "K", value: "v" }],
+      name: "mydb",
+    },
+  ]);
+});
+
+test("a url mcp server rides session/new as an http server", async () => {
+  const wire = await turnOverAcp({
     mcp: { docs: { url: "https://example.test/mcp" } },
   });
-  expect(mcpConfig(inv).mcp).toEqual({
-    docs: { enabled: true, type: "remote", url: "https://example.test/mcp" },
-  });
+  expect(mcpServers(wire)).toEqual([
+    {
+      headers: [],
+      name: "docs",
+      type: "http",
+      url: "https://example.test/mcp",
+    },
+  ]);
 });
 
 // The failure that keeps goose off this capability: there, both would land
 // under the shared command token and one would vanish.
-test("two servers sharing a command stay distinct — the key is the name", () => {
-  const inv = opencode().buildInvocation("hi", {
+test("two servers sharing a command stay distinct — the key is the name", async () => {
+  const wire = await turnOverAcp({
     mcp: {
       one: { args: ["-y", "a"], command: "npx" },
       two: { args: ["-y", "b"], command: "npx" },
     },
   });
-  expect(Object.keys(mcpConfig(inv).mcp ?? {})).toEqual(["one", "two"]);
+  const names = mcpServers(wire).map(
+    (server) => (server as { name: string }).name
+  );
+  expect(names).toEqual(["one", "two"]);
 });
 
-test("a caller's own config document survives; this run's servers merge in", () => {
-  const inv = opencode().buildInvocation("hi", {
-    env: {
-      OPENCODE_CONFIG_CONTENT: JSON.stringify({
-        mcp: { theirs: { type: "local" } },
-        theme: "nord",
-      }),
+test("an mcp server with neither command nor url fails before anything spawns", () => {
+  const agent = new AgentImpl(opencode(), {
+    transport: () => {
+      throw new Error("nothing may spawn");
     },
-    mcp: { ours: { command: "srv" } },
   });
-  const config = mcpConfig(inv);
-  expect(config.theme).toBe("nord");
-  expect(Object.keys(config.mcp ?? {})).toEqual(["theirs", "ours"]);
+  expect(() => agent.session({ mcp: { broken: {} } })).toThrow(NEEDS_ENDPOINT);
 });
 
-test("an mcp server with neither command nor url fails fast", () => {
-  expect(() =>
-    opencode().buildInvocation("hi", { mcp: { broken: {} } })
-  ).toThrow(NEEDS_ENDPOINT);
-});
-
-test("without mcp the config env var is never written", () => {
-  const inv = opencode().buildInvocation("hi", { env: { FOO: "bar" } });
-  expect(inv.env).toEqual({ FOO: "bar" });
-});
-
-test("buildInvocation emits model/session/variant flags and passes cwd/env", () => {
-  const inv = opencode().buildInvocation("hi", {
-    cwd: "/work",
-    effort: "high",
-    env: { FOO: "bar" },
-    model: "openrouter/openai/gpt-4o-mini",
-    resume: "ses_123",
-  });
-  const at = (flag: string): string | undefined =>
-    inv.args[inv.args.indexOf(flag) + 1];
-  expect(at("--model")).toBe("openrouter/openai/gpt-4o-mini");
-  expect(at("--session")).toBe("ses_123");
-  expect(at("--variant")).toBe("high");
-  expect(inv.cwd).toBe("/work");
-  expect(inv.env).toEqual({ FOO: "bar" });
-});
-
-test("effort passes a provider-defined variant name through verbatim", () => {
-  const inv = opencode().buildInvocation("x", { effort: "brainstorm-v2" });
-  expect(inv.args[inv.args.indexOf("--variant") + 1]).toBe("brainstorm-v2");
-});
-
-test("forkSession adds --fork riding alongside the --session it requires", () => {
-  const inv = opencode().buildInvocation("hi", {
-    forkSession: true,
-    resume: "ses_123",
-  });
-  expect(inv.args).toContain("--fork");
-  // `--fork` needs --continue or --session; the mapped --session satisfies it.
-  expect(inv.args[inv.args.indexOf("--session") + 1]).toBe("ses_123");
-});
-
-test("without forkSession there is no --fork", () => {
-  const inv = opencode().buildInvocation("hi", { resume: "ses_123" });
-  expect(inv.args).not.toContain("--fork");
-});
-
-test("attachments repeat -f once per file", () => {
-  const inv = opencode().buildInvocation("hi", {
-    attachments: ["/a/one.png", "/b/two.pdf"],
-  });
-  const files = inv.args
-    .map((a, i) => (a === "-f" ? inv.args[i + 1] : undefined))
-    .filter((v): v is string => v !== undefined);
-  expect(files).toEqual(["/a/one.png", "/b/two.pdf"]);
-});
-
-test("fork and attachments compose with model, session, and variant", () => {
-  const inv = opencode().buildInvocation("hi", {
-    attachments: ["/x/note.txt"],
-    effort: "high",
-    forkSession: true,
-    model: "openrouter/openai/gpt-4o-mini",
-    resume: "ses_123",
-  });
-  expect(inv.args[inv.args.indexOf("--model") + 1]).toBe(
-    "openrouter/openai/gpt-4o-mini"
+test("attachments ride the prompt as resource links beside its text", async () => {
+  const wire = await turnOverAcp(
+    {},
+    { attachments: ["/a/one.png", "/b/two.pdf"] }
   );
-  expect(inv.args[inv.args.indexOf("--session") + 1]).toBe("ses_123");
-  expect(inv.args).toContain("--fork");
-  expect(inv.args[inv.args.indexOf("--variant") + 1]).toBe("high");
-  expect(inv.args[inv.args.indexOf("-f") + 1]).toBe("/x/note.txt");
-});
-
-test("declares the acp endpoint and reports fork/attachments as native", () => {
-  const agent = opencode();
-  expect(agent.acp?.command).toEqual(["opencode", "acp"]);
-  expect(agent.capabilities.sessionFork).toBe("native");
-  expect(agent.capabilities.attachments).toBe("native");
-});
-
-test("parses a simple text answer with usage summed from step_finish", async () => {
-  const { events, result } = await collect("simple.jsonl");
-  expect(result?.text).toBe("pong");
-  // Values are volatile per run; assert the fields are populated, not magnitudes.
-  expect(typeof result?.usage?.inputTokens).toBe("number");
-  expect(typeof result?.usage?.outputTokens).toBe("number");
-  expect(typeof result?.usage?.costUsd).toBe("number");
-  expect(events.at(-1)?.type).toBe("done");
-});
-
-test("emits session once on first sight and formalizes it on RunResult.sessionId", async () => {
-  const { events, result } = await collect("simple.jsonl");
-  const sessions = events.filter(
-    (e): e is Extract<AgentEvent, { type: "session" }> => e.type === "session"
-  );
-  expect(sessions).toHaveLength(1);
-  expect(events[0]?.type).toBe("session");
-  expect(sessions[0]?.sessionId).toMatch(SESSION_ID);
-  expect(result?.sessionId).toBe(sessions[0]?.sessionId ?? "");
-  // The composed raw payload keeps carrying it too.
-  const raw = result?.raw as { sessionId?: string; stepFinish?: unknown };
-  expect(raw.sessionId).toBe(sessions[0]?.sessionId ?? "");
-  expect(raw.stepFinish).toBeDefined();
-});
-
-test("maps cache tokens from step_finish onto usage events and the summed result", async () => {
-  const { events, result } = await collect("tools.jsonl");
-  const usages = events.filter(
-    (e): e is Extract<AgentEvent, { type: "usage" }> => e.type === "usage"
-  );
-  // The recorded second step was served from the prompt cache.
-  expect(usages.at(-1)?.usage.cacheReadTokens).toBe(6656);
-  expect(result?.usage?.cacheReadTokens).toBe(6656);
-  expect(result?.usage?.cacheWriteTokens).toBe(0);
-  expect(result?.usage?.reasoningTokens).toBe(0);
-});
-
-test("usage sums tokens, cache, reasoning, and cost across steps", async () => {
-  const { result } = await collectSource(
-    bodySource([
-      {
-        part: {
-          cost: 0.1,
-          tokens: {
-            cache: { read: 5, write: 1 },
-            input: 10,
-            output: 1,
-            reasoning: 7,
-          },
-        },
-        type: "step_finish",
-      },
-      {
-        part: {
-          cost: 0.2,
-          tokens: {
-            cache: { read: 5, write: 2 },
-            input: 20,
-            output: 2,
-            reasoning: 3,
-          },
-        },
-        type: "step_finish",
-      },
-    ])
-  );
-  expect(result?.usage?.inputTokens).toBe(30);
-  expect(result?.usage?.outputTokens).toBe(3);
-  expect(result?.usage?.cacheReadTokens).toBe(10);
-  expect(result?.usage?.cacheWriteTokens).toBe(3);
-  expect(result?.usage?.reasoningTokens).toBe(10);
-  expect(result?.usage?.costUsd).toBeCloseTo(0.3);
-});
-
-test("a completed tool_use maps to tool-call then tool-result with names and call id", async () => {
-  const { events } = await collect("tools.jsonl");
-  const call = events.find(
-    (e): e is Extract<AgentEvent, { type: "tool-call" }> =>
-      e.type === "tool-call"
-  );
-  const res = events.find(
-    (e): e is Extract<AgentEvent, { type: "tool-result" }> =>
-      e.type === "tool-result"
-  );
-  expect(call?.name).toBe("read");
-  expect(call?.nativeName).toBe("read");
-  // The CLI's own call correlation id pairs the result with its call.
-  expect(call?.callId).toMatch(CALL_ID);
-  expect(res?.callId).toBe(call?.callId ?? "");
-  expect(String(res?.output)).toContain("petrichor");
-});
-
-test("a tool outside the shared vocabulary keeps its native name — webfetch is not webSearch", async () => {
-  const { events } = await collectSource(
-    bodySource([
-      {
-        part: {
-          callID: "call_1",
-          state: {
-            input: { url: "https://example.com" },
-            output: "ok",
-            status: "completed",
-          },
-          tool: "webfetch",
-        },
-        type: "tool_use",
-      },
-    ])
-  );
-  const call = events.find(
-    (e): e is Extract<AgentEvent, { type: "tool-call" }> =>
-      e.type === "tool-call"
-  );
-  expect(call?.name).toBe("webfetch");
-  expect(call?.nativeName).toBe("webfetch");
-});
-
-test("a named reasoning event maps to reasoning-delta and stays out of result.text", async () => {
-  // strict: the named type must be tolerated, never treated as drift.
-  const { events, result } = await collectSource(
-    bodySource([
-      { part: { text: "let me think" }, type: "reasoning" },
-      { part: { text: "pong" }, type: "text" },
-    ]),
-    true
-  );
-  const reasoning = events.find(
-    (e): e is Extract<AgentEvent, { type: "reasoning-delta" }> =>
-      e.type === "reasoning-delta"
-  );
-  expect(reasoning?.text).toBe("let me think");
-  expect(result?.text).toBe("pong");
-});
-
-test("the edit fixture surfaces the write tool", async () => {
-  const { events } = await collect("edit.jsonl");
-  const call = events.find((e) => e.type === "tool-call");
-  expect(call?.type === "tool-call" && call.name).toBe("write");
-});
-
-test("strict mode tolerates every recorded real shape", async () => {
-  await expect(
-    Promise.all(
-      ["simple.jsonl", "tools.jsonl", "edit.jsonl"].map((f) =>
-        collectSource(sourceFromBody(fixture(f)), true)
-      )
-    )
-  ).resolves.toHaveLength(3);
-});
-
-test("an errored tool state still yields the call and its error output", async () => {
-  const { events } = await collectSource(
-    bodySource([
-      {
-        part: {
-          state: {
-            error: "File not found",
-            input: { filePath: "x" },
-            status: "error",
-          },
-          tool: "read",
-        },
-        type: "tool_use",
-      },
-    ])
-  );
-  const res = events.find((e) => e.type === "tool-result");
-  expect(res?.type === "tool-result" && res.output).toBe("File not found");
-});
-
-test("an error event throws Invocation with the native message", async () => {
-  await expect(
-    collectSource(
-      bodySource([
-        {
-          error: { data: { message: "Model not found" }, name: "UnknownError" },
-          type: "error",
-        },
-      ])
-    )
-  ).rejects.toMatchObject({
-    code: "Invocation",
-    message: expect.stringContaining("Model not found"),
-  });
-});
-
-test("strict mode throws on an unknown top-level event type", async () => {
-  await expect(
-    collectSource(bodySource([{ type: "mystery" }]), true)
-  ).rejects.toMatchObject({
-    code: "Parse",
-    message: expect.stringContaining("mystery"),
-  });
-});
-
-test("a run without step_finish leaves usage undefined", async () => {
-  const { result } = await collectSource(
-    bodySource([{ part: { text: "hi" }, type: "text" }])
-  );
-  expect(result?.usage).toBeUndefined();
-});
-
-test("nonzero exit after valid output fails loud instead of returning it", async () => {
-  const line = JSON.stringify({ part: { text: "hi" }, type: "text" });
-  const src = spawnAndStream({
-    args: ["-c", `printf '%s\\n' '${line}'; exit 1`],
-    command: "sh",
-  });
-  await expect(collectSource(src)).rejects.toMatchObject({
-    code: "Invocation",
-  });
+  expect((wire.prompt.params as { prompt: unknown }).prompt).toEqual([
+    { text: "hi", type: "text" },
+    { name: "one.png", type: "resource_link", uri: "file:///a/one.png" },
+    { name: "two.pdf", type: "resource_link", uri: "file:///b/two.pdf" },
+  ]);
 });
 
 test("authStatus reads the opencode auth store and reports its providers", async () => {
@@ -493,15 +254,5 @@ test("listModels fails loud when the CLI exits nonzero", async () => {
   });
   await expect(opencode().listModels?.(probe)).rejects.toMatchObject({
     code: "Invocation",
-  });
-});
-
-test("opencode passes conformance", async () => {
-  await runConformance(opencode(), {
-    fixtures: {
-      edit: fixture("edit.jsonl"),
-      simple: fixture("simple.jsonl"),
-      tools: fixture("tools.jsonl"),
-    },
   });
 });

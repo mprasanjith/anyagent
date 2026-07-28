@@ -47,35 +47,30 @@ const fixturesFor = (id: string): Record<string, string> =>
 
 test("opencode passes conformance", async () => {
   await runConformance(opencode(), {
-    fixtures: fixturesFor("opencode"),
+    fixtures: {},
     transcripts: transcript("opencode"),
   });
 });
 
 test("cursor passes conformance", async () => {
   await runConformance(cursor(), {
-    fixtures: {
-      shell: read("fixtures/cursor/shell.jsonl"),
-      simple: read("fixtures/cursor/simple.jsonl"),
-      tools: read("fixtures/cursor/tools.jsonl"),
-    },
+    fixtures: {},
     transcripts: transcript("cursor"),
   });
 });
 
 test("gemini-cli passes conformance", async () => {
   await runConformance(geminiCli(), {
-    fixtures: {
-      readonly: read("fixtures/gemini-cli/readonly.jsonl"),
-      simple: read("fixtures/gemini-cli/simple.jsonl"),
-      tools: read("fixtures/gemini-cli/tools.jsonl"),
-    },
+    fixtures: {},
     transcripts: transcript("gemini-cli"),
   });
 });
 
 test("kilo-code passes conformance", async () => {
-  await runConformance(kiloCode(), { fixtures: fixturesFor("kilo-code") });
+  await runConformance(kiloCode(), {
+    fixtures: {},
+    transcripts: transcript("kilo"),
+  });
 });
 
 test("pi passes conformance", async () => {
@@ -84,14 +79,14 @@ test("pi passes conformance", async () => {
 
 test("goose passes conformance", async () => {
   await runConformance(goose(), {
-    fixtures: fixturesFor("goose"),
+    fixtures: {},
     transcripts: transcript("goose"),
   });
 });
 
 test("cline passes conformance", async () => {
   await runConformance(cline(), {
-    fixtures: fixturesFor("cline"),
+    fixtures: {},
     transcripts: transcript("cline"),
   });
 });

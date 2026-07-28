@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 
 import { create } from "../src/index.js";
-import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { opencode } from "../src/opencode.js";
 import { liveEnabled } from "./live-helper.js";
 
@@ -19,7 +18,7 @@ live(
     const agent = create(opencode());
     const res = await agent.run(PROMPT, MODEL ? { model: MODEL } : {});
     expect(res.text.toLowerCase()).toContain("pong");
-    // Real-output check: the parser summed usage from step_finish events.
+    // Real-output check: the endpoint's own usage reached the result.
     expect(typeof res.usage?.outputTokens).toBe("number");
     // The session id must be reachable for resume.
     expect(typeof res.sessionId).toBe("string");
@@ -27,28 +26,24 @@ live(
   120_000
 );
 
-// The drift canary: production parsing is lenient, but the live tests run the
-// real CLI's fresh output through strict mode so an upstream format change
-// (renamed event, new type, moved field) throws instead of silently emitting
-// empty text. Asserts shape, never content — LLM output is non-deterministic.
+// The drift canary: a live turn's notifications are translated as they arrive,
+// so an upstream protocol change surfaces here instead of as an empty answer.
+// Asserts shape, never content — LLM output is non-deterministic.
 live(
-  "live: real output parses clean under strict mode",
+  "live: a real session streams its turn as events",
   async () => {
-    const adapter = opencode();
-    const inv = adapter.buildInvocation(PROMPT, MODEL ? { model: MODEL } : {});
-    const source = spawnAndStream(inv);
+    const session = create(opencode()).session(MODEL ? { model: MODEL } : {});
     let sawText = false;
-    let finalText: string | undefined;
-    for await (const ev of adapter.parse(source, { strict: true })) {
-      if (ev.type === "text-delta") {
-        sawText = true;
+    try {
+      for await (const event of session.run(PROMPT)) {
+        if (event.type === "text-delta") {
+          sawText = true;
+        }
       }
-      if (ev.type === "done") {
-        finalText = ev.result.text;
-      }
+    } finally {
+      await session.close();
     }
     expect(sawText).toBe(true);
-    expect(typeof finalText).toBe("string");
   },
   120_000
 );

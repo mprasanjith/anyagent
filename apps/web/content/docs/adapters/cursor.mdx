@@ -1,28 +1,27 @@
 ---
 title: Cursor
-description: "Use the Cursor CLI through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
+description: "Use the Cursor CLI through AnyAgent: what you can ask for, how it behaves, and the endpoint underneath."
 ---
 
-The `cursor` adapter drives the Cursor CLI in headless stdout mode, detected as the `agent` binary on `PATH` (the legacy `cursor-agent` name also resolves); import `cursor` from `anyagent-js/cursor`.
+The `cursor` adapter drives the Cursor CLI over ACP (`agent acp`), detected as the `agent` binary on `PATH` (the legacy `cursor-agent` name also resolves); import `cursor` from `anyagent-js/cursor`.
 
 ## What you can ask for
 
-`readOnly`, `model`, `effort`, and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is undeclared: reach Cursor’s own `agent mcp` configuration via [`extraArgs`](/docs/run-an-agent). `readOnly` runs plan mode, which the CLI enforces read-only. `authStatus()` asks `agent status --format json` and `models()` parses `agent --list-models`, every listed id valid verbatim as `model`. The full grid is on the [support matrix](/docs/adapters).
+`readOnly`, `model`, `effort`, and `resume` work on the endpoint’s own channels; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is undeclared: reach Cursor’s own `agent mcp` configuration via [`extraArgs`](/docs/run-an-agent). `readOnly` runs plan mode, which the CLI enforces read-only. `authStatus()` asks `agent status --format json` and `models()` parses `agent --list-models`, every listed id valid verbatim as `model`. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
-- `effort` has no standalone flag; it rides in the model id’s bracket overrides, so `effort` without `model` throws `InvalidOptions`. `model: "m", effort: "high"` becomes `--model m[effort=high]`.
+- Every turn runs on a live connection, so [sessions](/docs/sessions) steer and surface permission requests; the session id lands on `result.sessionId` and is what `resume` takes back.
+- `effort` has no channel of its own; it rides in the model id’s bracket overrides, so `effort` without `model` throws `InvalidOptions`. `model: "m", effort: "high"` becomes `m[effort=high]`.
 - Effort and speed variants are also baked into model ids (`gpt-5.3-codex-low`, `…-high-fast`); picking one of those needs no `effort`.
-- The init event’s session id lands on `result.sessionId`; pass it back as `resume`.
-- Usage reports cache reads and writes as separate line items; no cost and no reasoning tokens are reported.
 
 ## Under the hood
 
-Every run executes `agent -p --output-format stream-json --trust --force` with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
+Every session launches `agent acp` and configures it over the protocol. [Run options](/docs/api#run-options) become:
 
-| Option           | Flag                                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| `readOnly: true` | `--mode plan` in place of `--force`                                                        |
-| `model`          | `--model <id>`, bracket overrides pass through verbatim (`"claude-opus-4-8[context=1m]"`) |
-| `effort`         | compiled into the model’s bracket overrides                                                |
-| `resume`         | `--resume <chatId>`                                                                        |
+| Option           | Channel                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------- |
+| `readOnly: true` | config option `mode` set to `plan`, put back on the next turn that does not ask for it              |
+| `model`          | config option `model`, bracket overrides pass through verbatim (`"claude-opus-4-8[context=1m]"`)     |
+| `effort`         | compiled into the model’s bracket overrides                                                          |
+| `resume`         | `session/load` with the chat id                                                                       |

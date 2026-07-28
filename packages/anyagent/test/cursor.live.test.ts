@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { cursor } from "../src/cursor.js";
 import { create } from "../src/index.js";
-import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { liveEnabled } from "./live-helper.js";
 
 const live = test.skipIf(!(await liveEnabled("agent")));
@@ -15,37 +17,42 @@ live(
     const agent = create(cursor());
     const res = await agent.run(PROMPT, { readOnly: true });
     expect(res.text.toLowerCase()).toContain("pong");
-    // Real-output check: the parser extracted the camelCase usage block.
-    expect(typeof res.usage?.inputTokens).toBe("number");
     // The chat id must be reachable for resume.
     expect(typeof res.sessionId).toBe("string");
   },
   120_000
 );
 
-// The drift canary: production parsing is lenient, but the live tests run the
-// real CLI's fresh output through strict mode so an upstream format change
-// (renamed event, new type, moved field) throws instead of silently emitting
-// empty text. Asserts shape, never content — LLM output is non-deterministic.
+// The drift canary: the endpoint's config options are the adapter's whole
+// mapping, and a renamed id silently stops applying. A live turn that asks for
+// a file under `readOnly` proves `mode: plan` still reaches the real CLI and
+// still refuses writes. Asserts shape, never content — LLM output is
+// non-deterministic.
 live(
-  "live: real output parses clean under strict mode",
+  "live: an ACP session still maps readOnly onto enforced plan mode",
   async () => {
-    const adapter = cursor();
-    const inv = adapter.buildInvocation(PROMPT, { readOnly: true });
-    const source = spawnAndStream(inv);
-    let sawText = false;
-    let finalText: string | undefined;
-    const stream = adapter.parse(source, { strict: true });
-    for await (const ev of stream) {
-      if (ev.type === "text-delta") {
-        sawText = true;
+    const dir = mkdtempSync(path.join(tmpdir(), "anyagent-cursor-"));
+    const session = create(cursor()).session({ cwd: dir });
+    try {
+      let sawText = false;
+      const run = session.run(
+        "Create a file named canary.txt containing the word hi",
+        { readOnly: true }
+      );
+      for await (const ev of run) {
+        if (ev.type === "text-delta") {
+          sawText = true;
+        }
       }
-      if (ev.type === "done") {
-        finalText = ev.result.text;
-      }
+      const res = await run;
+      expect(sawText).toBe(true);
+      expect(typeof res.text).toBe("string");
+      expect(typeof session.id).toBe("string");
+      expect(existsSync(path.join(dir, "canary.txt"))).toBe(false);
+    } finally {
+      await session.close();
+      rmSync(dir, { force: true, recursive: true });
     }
-    expect(sawText).toBe(true);
-    expect(typeof finalText).toBe("string");
   },
   120_000
 );
