@@ -87,15 +87,13 @@ test("readOnly is truthy exactly where a no-writes run is guaranteed", () => {
     "gemini-cli",
     "cursor",
     "cline",
+    "goose",
   ]) {
     expect(Boolean(capsOf(id)?.readOnly)).toBe(true);
   }
-  // goose: denial is unverified (its provider auth was dead when probed);
-  // antigravity's plan mode leaks writes into its always-allowed scratch
-  // dirs (live-verified).
-  for (const id of ["goose", "antigravity"]) {
-    expect(capsOf(id)?.readOnly).toBe(false);
-  }
+  // antigravity's plan mode leaks writes into its always-allowed scratch dirs
+  // (live-verified).
+  expect(capsOf("antigravity")?.readOnly).toBe(false);
 });
 
 test("modelListing is native exactly where a real list command exists", () => {

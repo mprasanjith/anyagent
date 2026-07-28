@@ -784,17 +784,11 @@ const countingPrompts = (
 
 test("an unsupported option rejects before the transport is ever opened", async () => {
   let opened = 0;
-  const sent: string[] = [];
+  // A throwing factory keeps a regression that validates too late a clean
+  // failure: an inert transport would leave the turn waiting forever.
   const session = new AcpSessionImpl(acpAgent(), {}, () => {
     opened += 1;
-    return {
-      close: () => undefined,
-      onDeath: () => undefined,
-      onLine: () => undefined,
-      send: (line) => {
-        sent.push(line);
-      },
-    };
+    throw new Error("the transport was opened for a rejected turn");
   });
 
   // `attachments` is false on the fake adapter.
@@ -802,7 +796,6 @@ test("an unsupported option rejects before the transport is ever opened", async 
     session.run("hi", { attachments: ["a.png"] })
   ).rejects.toMatchObject({ code: "UnsupportedCapability" });
   expect(opened).toBe(0);
-  expect(sent).toEqual([]);
 });
 
 test("a schema turn re-asks once, emits schema-retry, and resolves with json", async () => {
@@ -1065,16 +1058,6 @@ test("a live cursor session sets model and effort as one config option", async (
   await Promise.all([session.run("hi"), transport.done]);
 });
 
-// goose declares `effort: false`, so its live `thinking_effort` channel is only
-// reachable on a shape that allows the option through.
-const gooseWithEffort = (): Adapter => {
-  const adapter = goose();
-  return {
-    ...adapter,
-    capabilities: { ...adapter.capabilities, effort: "native" },
-  };
-};
-
 test("a live goose session sets model and thinking_effort in order", async () => {
   const transport = scriptedTransport(async (api) => {
     await handshake(api, {});
@@ -1105,7 +1088,7 @@ test("a live goose session sets model and thinking_effort in order", async () =>
   });
 
   const session = acpSession(
-    gooseWithEffort(),
+    goose(),
     { effort: "high", model: "anthropic/claude-sonnet-4.5" },
     () => transport
   );
@@ -1734,10 +1717,10 @@ test("replays the recorded opencode session/fork handshake", async () => {
   await transport.done;
 });
 
-// kilo's transcript stops at `session/new`: the machine that recorded it held no
-// kilo credentials, so there is no prompt turn to replay. What it does carry is
-// the handshake and the option set the family's AcpSpec drives, which is what
-// the test below answers for; the turn ends on a synthetic stop.
+// kilo-handshake.jsonl is a handshake-only recording — kilo's advertised
+// capabilities and the option set `session/new` answers with, which is all the
+// fork path needs; the turn below ends on a synthetic stop. The full recorded
+// turn is kilo.jsonl, which backs conformance.
 interface HandshakeFixture {
   initResult: Record<string, unknown>;
   newResult: Record<string, unknown>;

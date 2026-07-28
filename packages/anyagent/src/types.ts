@@ -762,6 +762,7 @@ export interface AdapterCore<C extends Capabilities = Capabilities> {
  */
 export interface StdoutAdapter<C extends Capabilities = Capabilities>
   extends AdapterCore<C> {
+  acp?: never;
   /**
    * Map a prompt plus validated options to the exact process to spawn. Pure:
    * build the {@link Invocation}, never launch it.
@@ -777,15 +778,6 @@ export interface StdoutAdapter<C extends Capabilities = Capabilities>
     source: OutputSource,
     opts: { strict: boolean }
   ) => AsyncGenerator<AgentEvent, RunResult>;
-  /**
-   * Provide a session handle up front, for CLIs that never reveal one
-   * headless. `id` becomes the session's resume handle, and
-   * `firstRunOptions` are merged into the session's first turn so the CLI
-   * registers it (goose: `extraArgs: ["--name", id]`). Later turns pass `id`
-   * back as {@link ExtensionOptions.resume}. Omit when the CLI reveals a
-   * session id in its output.
-   */
-  sessionSeed?: () => SessionSeed;
 }
 
 /**
@@ -797,7 +789,10 @@ export interface StdoutAdapter<C extends Capabilities = Capabilities>
 export interface AcpAdapter<C extends Capabilities = Capabilities>
   extends AdapterCore<C> {
   acp: AcpSpec;
+  buildInvocation?: never;
   mode: "acp";
+  parse?: never;
+  sessionSeed?: never;
 }
 
 /**
@@ -809,15 +804,6 @@ export interface AcpAdapter<C extends Capabilities = Capabilities>
 export type Adapter<C extends Capabilities = Capabilities> =
   | AcpAdapter<C>
   | StdoutAdapter<C>;
-
-/**
- * What {@link Adapter.sessionSeed} returns: the handle a session's later
- * turns resume under, and the options that register it on the first turn.
- */
-export interface SessionSeed {
-  firstRunOptions?: RunOptions;
-  id: string;
-}
 
 /**
  * A ready-to-run handle on one installed coding agent; get one from

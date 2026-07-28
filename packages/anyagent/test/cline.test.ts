@@ -167,7 +167,6 @@ test("the endpoint has no effort channel, so a session refuses it", () => {
 
 test("conformance holds over the recorded transcript", async () => {
   await runConformance(cline(), {
-    fixtures: {},
     transcripts: {
       recorded: readFileSync(
         path.join(import.meta.dir, "fixtures/acp/cline.jsonl"),

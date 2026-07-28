@@ -47,28 +47,24 @@ const fixturesFor = (id: string): Record<string, string> =>
 
 test("opencode passes conformance", async () => {
   await runConformance(opencode(), {
-    fixtures: {},
     transcripts: transcript("opencode"),
   });
 });
 
 test("cursor passes conformance", async () => {
   await runConformance(cursor(), {
-    fixtures: {},
     transcripts: transcript("cursor"),
   });
 });
 
 test("gemini-cli passes conformance", async () => {
   await runConformance(geminiCli(), {
-    fixtures: {},
     transcripts: transcript("gemini-cli"),
   });
 });
 
 test("kilo-code passes conformance", async () => {
   await runConformance(kiloCode(), {
-    fixtures: {},
     transcripts: transcript("kilo"),
   });
 });
@@ -79,14 +75,12 @@ test("pi passes conformance", async () => {
 
 test("goose passes conformance", async () => {
   await runConformance(goose(), {
-    fixtures: {},
     transcripts: transcript("goose"),
   });
 });
 
 test("cline passes conformance", async () => {
   await runConformance(cline(), {
-    fixtures: {},
     transcripts: transcript("cline"),
   });
 });
@@ -149,11 +143,11 @@ test("conformance rejects a result.sessionId that contradicts the session event"
 });
 
 test("conformance rejects a transcript on an adapter with no ACP mode", async () => {
+  // The XOR is a compile error on a typed adapter, so the backstop is only
+  // reachable through the union.
+  const dynamic = fakeStreaming as Adapter;
   await expect(
-    runConformance(fakeStreaming, {
-      fixtures: {},
-      transcripts: transcript("opencode"),
-    })
+    runConformance(dynamic, { transcripts: transcript("opencode") })
   ).rejects.toThrow();
 });
 
@@ -163,7 +157,7 @@ test("conformance rejects a transcript whose recorded turn never completed", asy
     '"stopReason":"refusal"'
   );
   await expect(
-    runConformance(goose(), { fixtures: {}, transcripts: { refused } })
+    runConformance(goose(), { transcripts: { refused } })
   ).rejects.toThrow();
 });
 
@@ -174,7 +168,7 @@ test("conformance rejects a native systemPrompt on an ACP-mode adapter", async (
     capabilities: { ...adapter.capabilities, systemPrompt: "native" },
   };
   await expect(
-    runConformance(liar, { fixtures: {}, transcripts: transcript("cursor") })
+    runConformance(liar, { transcripts: transcript("cursor") })
   ).rejects.toThrow();
 });
 

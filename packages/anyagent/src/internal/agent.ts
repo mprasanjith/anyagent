@@ -37,8 +37,7 @@ export interface AgentDeps {
 }
 
 // The concrete {@link Agent}: every turn is a session turn, so `run` opens a
-// thread for one turn and closes it again, and discovery answers through the
-// injected probe.
+// thread for one turn and closes it again.
 export class AgentImpl<C extends Capabilities = Capabilities>
   implements Agent<C>
 {

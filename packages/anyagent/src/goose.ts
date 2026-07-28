@@ -17,12 +17,12 @@ const CAPS = {
   mcp: "native",
   modelListing: false,
   modelSelection: "native",
-  // The `approve` mode ("Ask before every tool call") plus permission denial is
-  // the only candidate mechanism, and it is unverified: a live probe set
-  // `mode: approve` (acknowledged) and asked for a file write, but the turn
-  // failed on provider auth before any tool ran, so no permission request ever
-  // arrived and no denial was exercised.
-  readOnly: false,
+  // Permission denial is the guarantee, and it only reaches goose in `approve`
+  // mode: live-verified on a mutating turn, the default `auto` mode ran the
+  // write with no permission request at all, while `approve` asked before every
+  // call (`kind: "other"` throughout — no read-only kind among them) and
+  // rejecting each one left the file uncreated.
+  readOnly: "emulated",
   reasoningEfforts: ["off", "low", "medium", "high", "max"],
   resume: "native",
   sessionFork: false,
@@ -95,15 +95,20 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * const result = await create(goose()).run("summarize this repo");
  * ```
  *
- * `readOnly: true` throws: goose's `approve` mode is unverified as a
- * no-writes guarantee. System prompts and `schema` are emulated. Goose reports
- * provider errors as ordinary assistant text, so a failed turn returns that
- * text as the reply rather than throwing. `authStatus()` reads `goose info -v`
- * and the provider's key env var — a hint, not a guarantee.
+ * `readOnly: true` runs the turn in goose's `approve` mode and denies each
+ * tool call it asks about; goose labels those `other` rather than by kind, so
+ * a read-only turn answers from the conversation. System prompts and `schema`
+ * are emulated. Goose reports provider errors as ordinary assistant text, so a
+ * failed turn returns that text as the reply rather than throwing.
+ * `authStatus()` reads `goose info -v` and the provider's key env var — a
+ * hint, not a guarantee.
  */
 export const goose = (): AcpAdapter<typeof CAPS> => ({
   acp: {
     command: ["goose", "acp"],
+    // Not a read-only mode — `approve` only makes goose ask, which is what
+    // puts every tool call in front of the core's denial.
+    readOnly: { configId: "mode", value: "approve" },
     settings: ({ effort, model }) => ({
       configOptions: [
         ...(model === undefined ? [] : [{ configId: "model", value: model }]),

@@ -161,7 +161,6 @@ test("listModels throws Parse when no model lines are found", async () => {
 
 test("cursor passes the adapter conformance suite", async () => {
   await runConformance(cursor(), {
-    fixtures: {},
     transcripts: { recorded: transcript },
   });
 });

@@ -44,10 +44,17 @@ test("the capabilities match what the endpoint carries", () => {
     "high",
     "max",
   ]);
-  // `approve` mode is unverified as a no-writes guarantee.
-  expect(caps.readOnly).toBe(false);
+  expect(caps.readOnly).toBe("emulated");
   expect(caps.systemPrompt).toBe("emulated");
   expect(caps.structuredOutput).toBe("emulated");
+});
+
+test("readOnly rests on permission denial, reached through approve mode", () => {
+  const adapter = goose();
+  expect(adapter.capabilities.readOnly).toBe("emulated");
+  // The default `auto` mode runs tools without asking, so denial needs the
+  // mode switch to have anything to deny.
+  expect(adapter.acp.readOnly).toEqual({ configId: "mode", value: "approve" });
 });
 
 test("a session's model and effort become config options", () => {
@@ -180,7 +187,6 @@ test("authStatus: exec failure or nonzero exit is unknown", async () => {
 
 test("goose passes conformance over its recorded transcript", async () => {
   await runConformance(goose(), {
-    fixtures: {},
     transcripts: {
       recorded: readFileSync(
         path.join(import.meta.dir, "fixtures/acp/goose.jsonl"),

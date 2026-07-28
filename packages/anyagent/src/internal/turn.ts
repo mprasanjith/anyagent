@@ -328,9 +328,8 @@ export const runTurn = async (
   );
 };
 
-// One CLI process: spawn, relay the adapter's events except its `done` (the
-// turn emits one of those, carrying the final result), and return the
-// attempt's result.
+// The stdout-mode `attempt`: one CLI process, and the adapter's `done` stays
+// with it.
 export const spawnOnce = async (
   adapter: StdoutAdapter,
   runner: Runner,

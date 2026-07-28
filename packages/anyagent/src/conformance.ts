@@ -43,18 +43,39 @@ const assert: (cond: boolean, msg: string) => asserts cond = (cond, msg) => {
   }
 };
 
-/** What {@link runConformance} needs from an adapter's test suite. */
-export interface ConformanceOptions {
-  /** Map of scenario name to the raw stdout an adapter's CLI would emit. */
-  fixtures: Record<string, string>;
+/** What {@link runConformance} needs from an `acp`-mode adapter's suite. */
+export interface AcpConformanceOptions {
+  fixtures?: never;
   /**
    * Map of scenario name to a recorded ACP transcript (the JSONL
    * `anyagent-record` writes). Each is replayed through a live session, so an
    * `acp`-mode adapter answers for the same invariants a stdout-mode one does
    * from its fixtures.
    */
-  transcripts?: Record<string, string>;
+  transcripts: Record<string, string>;
 }
+
+/** What {@link runConformance} needs from a `stdout`-mode adapter's suite. */
+export interface StdoutConformanceOptions {
+  /** Map of scenario name to the raw stdout an adapter's CLI would emit. */
+  fixtures: Record<string, string>;
+  transcripts?: never;
+}
+
+/**
+ * The recordings {@link runConformance} replays for adapter `A`: transcripts
+ * over ACP, fixtures over stdout. A mode answers from its own recordings
+ * only, so passing the other mode's key is a compile error. An adapter typed
+ * as the bare {@link Adapter} union takes either shape and is held to the
+ * same line at runtime.
+ */
+export type ConformanceOptionsFor<A extends Adapter> = [A] extends [
+  { mode: "acp" },
+]
+  ? AcpConformanceOptions
+  : [A] extends [{ mode: "stdout" }]
+    ? StdoutConformanceOptions
+    : AcpConformanceOptions | StdoutConformanceOptions;
 
 const PROMPT = "conformance prompt";
 
@@ -398,39 +419,48 @@ const throwsUnsupported = async (
 
 /**
  * The executable half of the adapter contract. Feed it your adapter and its
- * recorded stdout fixtures, and it asserts the invariants every adapter must
- * uphold: exactly one terminal `done` event per stream, `result.text` equal
- * to the concatenated text-deltas, a `sessionId` consistent with the
- * `session` event, a valid invocation for whatever the capabilities
- * declare, and an `UnsupportedCapability` throw for everything it does not.
- * Pass `transcripts` as well and the same invariants are checked in ACP mode,
- * plus the ones only it can break: a turn opens with its `session`
- * event, an aborted or failed turn reaches exactly one terminal state, and a
- * prompt response carrying usage reaches `RunResult.usage`.
- * Add a `runConformance` test before shipping a new adapter; it is what
- * keeps the adapters uniform.
+ * recordings — stdout fixtures in stdout mode, ACP transcripts in ACP mode —
+ * and it asserts the invariants every adapter must uphold: exactly one
+ * terminal `done` event per stream, `result.text` equal to the concatenated
+ * text-deltas, a `sessionId` consistent with the `session` event, a valid
+ * invocation for whatever the capabilities declare, and an
+ * `UnsupportedCapability` throw for everything it does not. A replayed
+ * transcript also answers for what only a live turn can break: a turn opens
+ * with its `session` event, an aborted or failed turn reaches exactly one
+ * terminal state, and a prompt response carrying usage reaches
+ * `RunResult.usage`. Add a `runConformance` test before shipping a new
+ * adapter; it is what keeps the adapters uniform.
  */
-export const runConformance = async (
-  adapter: Adapter,
-  opts: ConformanceOptions
+export const runConformance = async <A extends Adapter>(
+  adapter: A,
+  opts: ConformanceOptionsFor<A>
 ): Promise<void> => {
   const caps = adapter.capabilities;
   const agentOf = () => new AgentImpl(adapter, { runner: fixedRunner("") });
   const runWith = (runOpts: RunOptions) => () => agentOf().run("x", runOpts);
+  // The XOR is a compile error on a typed adapter; these hold the same line
+  // for one reached through the `Adapter` union.
+  const recorded: AcpConformanceOptions | StdoutConformanceOptions = opts;
 
   if (adapter.mode === "stdout") {
-    await Promise.all(
-      Object.entries(opts.fixtures).map(([name, body]) =>
-        checkStdoutStream(adapter, name, body)
-      )
-    );
-  }
-
-  const transcripts = Object.entries(opts.transcripts ?? {});
-  if (transcripts.length > 0) {
     assert(
-      adapter.mode === "acp",
+      recorded.transcripts === undefined,
       "a recorded ACP transcript belongs to an adapter that drives its CLI over ACP"
+    );
+    const fixtures = Object.entries(recorded.fixtures ?? {});
+    assert(fixtures.length > 0, "a stdout-mode adapter needs stdout fixtures");
+    await Promise.all(
+      fixtures.map(([name, body]) => checkStdoutStream(adapter, name, body))
+    );
+  } else {
+    assert(
+      recorded.fixtures === undefined,
+      "an acp-mode adapter has no stdout of its own to record fixtures from"
+    );
+    const transcripts = Object.entries(recorded.transcripts ?? {});
+    assert(
+      transcripts.length > 0,
+      "an acp-mode adapter needs recorded ACP transcripts"
     );
     await Promise.all(
       transcripts.map(([name, text]) => checkTranscript(adapter, name, text))

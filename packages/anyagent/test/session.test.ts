@@ -258,27 +258,6 @@ test("an unsupported setting throws at session(), before any turn", () => {
   expect(() => closed.session({ effort: "high" })).not.toThrow();
 });
 
-test("a seeded adapter registers the handle on turn one, resumes it after", async () => {
-  const calls: RunOptions[] = [];
-  const seeded = recording(fakeStreaming, calls, {
-    sessionSeed: () => ({
-      firstRunOptions: { extraArgs: ["--name", "seeded-1"] },
-      id: "seeded-1",
-    }),
-  });
-  const agent = new AgentImpl(seeded, { runner: runnerFromFixture(NO_ID) });
-  const session = agent.session({ extraArgs: ["--verbose"] });
-  expect(session.id).toBe("seeded-1");
-
-  await session.run("first");
-  expect(calls[0]?.resume).toBeUndefined();
-  expect(calls[0]?.extraArgs).toEqual(["--name", "seeded-1", "--verbose"]);
-
-  await session.run("second");
-  expect(calls[1]?.resume).toBe("seeded-1");
-  expect(calls[1]?.extraArgs).toEqual(["--verbose"]);
-});
-
 test("iterating a session turn reveals the id as the session event arrives", async () => {
   const agent = new AgentImpl(fakeStreaming, {
     runner: runnerFromFixture(WITH_ID),
@@ -307,9 +286,10 @@ test("steer and respond throw in stdout mode, and supports says so", () => {
   );
 });
 
-test("a session on an id-concealing, unseeded adapter fails the second turn honestly", async () => {
-  const concealing = { ...fakeStreaming, sessionSeed: undefined };
-  const agent = new AgentImpl(concealing, { runner: runnerFromFixture(NO_ID) });
+test("a session on an id-concealing adapter fails the second turn honestly", async () => {
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(NO_ID),
+  });
   const session = agent.session();
   await session.run("first");
   await expect(session.run("second")).rejects.toMatchObject({

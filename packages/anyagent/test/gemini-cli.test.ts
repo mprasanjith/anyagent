@@ -95,7 +95,6 @@ test("authStatus: a corrupt settings.json still reads as unauthenticated", async
 
 test("conformance holds over the recorded transcript", async () => {
   await runConformance(geminiCli(), {
-    fixtures: {},
     transcripts: { recorded: transcript },
   });
 });

@@ -27,9 +27,9 @@ Confirm the CLI's row in `docs/specs/harness-audit.md`: invocation, streaming fo
 An adapter drives its CLI one way, declared on `mode`. Prefer `"acp"` where the CLI ships an ACP endpoint: the protocol carries streaming, permissions, attachments, and steering, so there is no output format to track.
 
 - `mode: "acp"` (`AcpAdapter`) declares `acp`: the argv that launches the endpoint, an optional `readOnly` config option, and an optional `settings` mapping a session's `SessionOptions` onto the endpoint's own channels. Throw `AnyAgentError` (`code: "UnsupportedCapability"`) from `settings` for a setting the endpoint has no channel for, so the session fails before anything spawns rather than dropping it. Declare `readOnly` only where the endpoint's own option is trustworthy; permission denial holds the line otherwise. `systemPrompt` and `structuredOutput` are never `"native"` here — a live turn carries content blocks and nothing else, so the core emulates both.
-- `mode: "stdout"` (`StdoutAdapter`) declares `buildInvocation` and `parse` (see step 3), plus `sessionSeed` for a CLI that reveals no session id headless (goose).
+- `mode: "stdout"` (`StdoutAdapter`) declares `buildInvocation` and `parse` (see step 3). Sessions here are client-side bookkeeping over one process per turn, so the CLI must reveal a session id in its output for a second turn to resume.
 
-Write the adapter in `packages/anyagent/src/hopper.ts` and export it as a factory function. Full field-level docs live in the TSDoc on those interfaces (and `AdapterMeta`, `DetectionSpec`, `Invocation`, `OutputSource`, `SessionSeed`) in `packages/anyagent/src/types.ts`.
+The two field sets are mutually exclusive: declaring the other mode's fields is a compile error. Write the adapter in `packages/anyagent/src/hopper.ts` and export it as a factory function. Full field-level docs live in the TSDoc on those interfaces (and `AdapterMeta`, `DetectionSpec`, `Invocation`, `OutputSource`) in `packages/anyagent/src/types.ts`.
 
 Two constraints that are not in the types:
 
@@ -101,7 +101,7 @@ bun src/internal/record-acp.ts hopper /tmp/hopper-scratch
 
 ### 6. Run the conformance suite
 
-`runConformance` replays your recording through the full pipeline and asserts the contract invariants: a stdout adapter passes `fixtures`, an ACP adapter passes `transcripts`. Add a test to `packages/anyagent/test/conformance.test.ts`:
+`runConformance` replays your recording through the full pipeline and asserts the contract invariants: a stdout adapter passes `fixtures`, an ACP adapter passes `transcripts`, and the other mode's key is a compile error. Add a test to `packages/anyagent/test/conformance.test.ts`:
 
 ```ts
 import { test } from "bun:test";

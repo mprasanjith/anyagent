@@ -7,24 +7,25 @@ The `goose` adapter drives the goose CLI over ACP (`goose acp`), detected as the
 
 ## What you can ask for
 
-`model`, `effort`, `mcp`, `cwd`, and `resume` work on the endpoint’s own channels; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly`, `attachments`, session forking, and model listing are undeclared and throw. `authStatus()` runs `goose info -v` and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`. The full grid is on the [support matrix](/docs/adapters).
+`model`, `effort`, `mcp`, `cwd`, and `resume` work on the endpoint’s own channels; `readOnly`, `systemPrompt`, and `schema` are provided by AnyAgent. `attachments`, session forking, and model listing are undeclared and throw. `authStatus()` runs `goose info -v` and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - Every turn runs on a live connection, so [sessions](/docs/sessions) steer; the session id lands on `result.sessionId` and is what `resume` takes back.
 - `model` takes an id the configured provider serves, verbatim (`"anthropic/claude-sonnet-4.5"` on openrouter); a session that leaves it unset uses goose’s own configured model.
 - `effort` is one of `off`, `low`, `medium`, `high`, `max`.
-- `readOnly: true` throws: goose’s `approve` mode asks before every tool call, but no run has verified that denial holds, so the guarantee is not declared.
+- `readOnly: true` is enforced by denial: the turn runs in goose’s `approve` mode, which asks before every tool call, and AnyAgent rejects each one. goose labels those requests `other` rather than by kind, so a read-only turn answers from the conversation rather than by reading files.
 - A failed turn reports the provider error as ordinary assistant text rather than throwing.
 
 ## Under the hood
 
 Every session launches `goose acp` and configures it over the protocol; the prompt travels as a content block. [Run options](/docs/api#run-options) become:
 
-| Option   | Channel                                                 |
-| -------- | ------------------------------------------------------- |
-| `model`  | config option `model`                                   |
-| `effort` | config option `thinking_effort`                         |
-| `mcp`    | the servers on `session/new`, by `command` or by `url`  |
-| `cwd`    | the cwd of the new session, and of the endpoint process |
-| `resume` | `session/load` with the session id                      |
+| Option           | Channel                                                     |
+| ---------------- | ----------------------------------------------------------- |
+| `model`          | config option `model`                                       |
+| `effort`         | config option `thinking_effort`                             |
+| `mcp`            | the servers on `session/new`, by `command` or by `url`      |
+| `cwd`            | the cwd of the new session, and of the endpoint process     |
+| `resume`         | `session/load` with the session id                          |
+| `readOnly: true` | config option `mode: approve`, plus denial of every request |

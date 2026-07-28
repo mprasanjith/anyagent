@@ -37,7 +37,6 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   #id: string | undefined;
   #resumeNext: string | undefined;
   #forkNext: boolean;
-  readonly #seedFirstRunOptions: RunOptions | undefined;
   readonly #settings: RunOptions;
   readonly #queue = new TurnQueue();
   #turns = 0;
@@ -66,12 +65,6 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     if (opts.resume !== undefined) {
       this.#id = opts.resume;
       this.#resumeNext = opts.resume;
-      return;
-    }
-    const seed = adapter.sessionSeed?.();
-    if (seed) {
-      this.#id = seed.id;
-      this.#seedFirstRunOptions = seed.firstRunOptions;
     }
   }
 
@@ -135,16 +128,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   }
 
   #threadedOptions(opts: RunOptions): RunOptions {
-    // The seed applies to whichever turn runs first — including a retry
-    // after a failed first turn, when the conversation never started.
-    const seed = this.#turns === 0 ? this.#seedFirstRunOptions : undefined;
-    const merged: RunOptions = { ...seed, ...opts };
-    if (seed?.extraArgs || opts.extraArgs) {
-      merged.extraArgs = [
-        ...(seed?.extraArgs ?? []),
-        ...(opts.extraArgs ?? []),
-      ];
-    }
+    const merged: RunOptions = { ...opts };
     if (this.#resumeNext !== undefined) {
       merged.resume = this.#resumeNext;
     }
