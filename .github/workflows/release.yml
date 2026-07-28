@@ -9,6 +9,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   contents: write
+  id-token: write
   pull-requests: write
 
 jobs:
@@ -21,6 +22,15 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      # Publishing authenticates through npm's trusted publisher (OIDC), which
+      # needs Node >= 22.14 and npm >= 11.5.1 — newer than the runner's stock
+      # pair. `changeset publish` shells out to whichever npm is on PATH.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: npm install -g npm@11.18.0
+
       - run: bun install --frozen-lockfile
 
       - name: Create release PR or publish to npm
@@ -29,4 +39,3 @@ jobs:
           publish: bun run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
