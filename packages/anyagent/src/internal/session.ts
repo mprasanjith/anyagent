@@ -3,6 +3,8 @@ import type {
   Agent,
   AgentEvent,
   Capabilities,
+  Invocation,
+  OutputSource,
   Run,
   RunOptions,
   RunResult,
@@ -12,9 +14,10 @@ import type {
   StdoutAdapter,
 } from "../types.js";
 import { validateOptions } from "./capabilities.js";
-import { RunImpl } from "./run.js";
+import type { TurnRun } from "./turn.js";
+import { runTurn, spawnOnce, TurnQueue } from "./turn.js";
 
-type Runner = ConstructorParameters<typeof RunImpl>[1];
+type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
 const SESSION_SETTINGS = [
   "cwd",
@@ -54,18 +57,10 @@ const rejectOwned = (opts: RunOptions): void => {
   }
 };
 
-interface PendingTurn {
-  opts: RunOptions;
-  rejectGate: (failure: unknown) => void;
-  resolveGate: (threaded: RunOptions) => void;
-  run: Run;
-}
-
 // The concrete {@link Session}: client-side bookkeeping over the agent's
-// one-process-per-turn model. Turns queue through an explicit FIFO — each
-// gate resolves with the threaded options once every earlier turn settled. A
-// failed turn rejects the turns queued behind it and the queue resets to the
-// last good handle, so a later `run` retries from there.
+// one-process-per-turn model. The resume handle is threaded at dequeue, so a
+// turn that failed leaves the queue on the last good handle and a later `run`
+// retries from there.
 export class SessionImpl<C extends Capabilities = Capabilities>
   implements Session<C>
 {
@@ -77,8 +72,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   #forkNext: boolean;
   readonly #seedFirstRunOptions: RunOptions | undefined;
   readonly #settings: RunOptions;
-  readonly #pending: PendingTurn[] = [];
-  #draining = false;
+  readonly #queue = new TurnQueue();
   #turns = 0;
   #closed = false;
 
@@ -138,9 +132,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
 
   close(): Promise<void> {
     this.#closed = true;
-    for (const queued of this.#pending.splice(0)) {
-      queued.rejectGate(new AnyAgentError("Aborted", "the run was aborted"));
-    }
+    this.#queue.abandonQueued();
     // Stdout mode holds no process between turns, so an emptied queue is the
     // whole teardown.
     return Promise.resolve();
@@ -152,65 +144,27 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     }
     rejectOwned(callOpts);
     const opts: RunOptions = { ...callOpts, ...this.#settings };
-
-    let resolveGate: PendingTurn["resolveGate"] = () => {
-      throw new Error("unreachable: promise executors run synchronously");
-    };
-    let rejectGate: PendingTurn["rejectGate"] = () => {
-      throw new Error("unreachable: promise executors run synchronously");
-    };
-    const gate = new Promise<RunOptions>((resolve, reject) => {
-      resolveGate = resolve;
-      rejectGate = reject;
-    });
-
-    const run = new RunImpl(
-      this.#adapter,
-      this.#runner,
-      prompt,
-      opts,
-      gate,
-      (event) => {
-        this.#capture(event);
-      }
+    return this.#queue.add(
+      (turn) => this.#turn(prompt, opts, turn),
+      opts.signal
     );
-    this.#pending.push({ opts, rejectGate, resolveGate, run });
-    this.#drain();
-    return run;
   }
 
-  #drain(): void {
-    if (this.#draining) {
-      return;
-    }
-    this.#draining = true;
-    this.#processQueue().finally(() => {
-      this.#draining = false;
-      if (this.#pending.length > 0) {
-        this.#drain();
-      }
-    });
-  }
-
-  async #processQueue(): Promise<void> {
-    let turn = this.#pending.shift();
-    while (turn) {
-      // biome-ignore lint/performance/noAwaitInLoops: turns are sequential by contract — each waits for the previous.
-      await this.#runTurn(turn);
-      turn = this.#pending.shift();
-    }
-  }
-
-  async #runTurn(turn: PendingTurn): Promise<void> {
-    try {
-      turn.resolveGate(this.#threadedOptions(turn.opts));
-      this.#endTurn(await turn.run);
-    } catch (failure) {
-      turn.rejectGate(failure);
-      for (const queued of this.#pending.splice(0)) {
-        queued.rejectGate(failure);
-      }
-    }
+  async #turn(prompt: string, opts: RunOptions, run: TurnRun): Promise<void> {
+    const emit = (event: AgentEvent): void => {
+      this.#capture(event);
+      run.push(event);
+    };
+    const result = await runTurn(
+      this.#adapter,
+      prompt,
+      this.#threadedOptions(opts),
+      (composed) =>
+        spawnOnce(this.#adapter, this.#runner, composed, run.signal, emit),
+      emit
+    );
+    this.#endTurn(result);
+    run.settleOk(result);
   }
 
   #threadedOptions(opts: RunOptions): RunOptions {

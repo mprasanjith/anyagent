@@ -35,9 +35,9 @@ import type {
 } from "../types.js";
 import type { AcpClient, AcpSession, AcpTransport } from "./acp.js";
 import { connect } from "./acp.js";
-import { validateOptions } from "./capabilities.js";
 import { promptWithSchema } from "./emulate.js";
-import { RunHandle, runWithSchema } from "./run.js";
+import type { Composed, TurnRun } from "./turn.js";
+import { runTurn, TurnQueue } from "./turn.js";
 
 /**
  * Builds the {@link AcpTransport} for an ACP-mode session. The default spawns the
@@ -132,14 +132,6 @@ const textOf = (content: ContentBlock): string | undefined =>
 
 const aborted = (): AnyAgentError =>
   new AnyAgentError("Aborted", "the run was aborted");
-
-const whenAborted = (signal: AbortSignal, listener: () => void): void => {
-  if (signal.aborted) {
-    listener();
-    return;
-  }
-  signal.addEventListener("abort", listener);
-};
 
 interface ToolIdentity {
   name: ToolName;
@@ -320,51 +312,10 @@ interface ActiveTurn {
   events: AgentEvent[];
   failure?: AnyAgentError;
   readOnly: boolean;
-  run: AcpTurnRun;
+  run: TurnRun;
   sessionId?: string;
   text: string[];
   tools: Map<string, ToolIdentity>;
-}
-
-interface QueuedTurn {
-  run: AcpTurnRun;
-  task: () => Promise<void>;
-}
-
-// A {@link Run} fed by translated ACP notifications rather than a spawned CLI.
-// `abort` reaches this turn only; the session decides what that means. Settling
-// is first-wins.
-class AcpTurnRun extends RunHandle {
-  readonly #controller = new AbortController();
-
-  get signal(): AbortSignal {
-    return this.#controller.signal;
-  }
-
-  override abort(): void {
-    this.#controller.abort();
-  }
-
-  push(event: AgentEvent): void {
-    this.emit(event);
-  }
-
-  settleOk(result: RunResult): void {
-    if (this.settled) {
-      return;
-    }
-    this.emit({ result, type: "done" });
-    this.finish();
-    this.resolve(result);
-  }
-
-  settleErr(failure: unknown): void {
-    if (this.settled) {
-      return;
-    }
-    this.finish(failure);
-    this.reject(failure);
-  }
 }
 
 // The ACP-mode {@link Session}: one connection for its lifetime. It is lazy —
@@ -388,12 +339,19 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
   #live: AcpSession | undefined;
   #opening: Promise<AcpSession> | undefined;
   #active: ActiveTurn | undefined;
-  #inFlight: AcpTurnRun | undefined;
   #readOnly = false;
   #closed = false;
   #closing: Promise<void> | undefined;
-  readonly #queue: QueuedTurn[] = [];
-  #draining = false;
+  // An aborted turn in flight is cancelled over the wire and ends on the stop
+  // reason that comes back; before the connection opens there is nothing to
+  // cancel.
+  readonly #queue = new TurnQueue(() => {
+    const live = this.#live;
+    // The turn still ends through its `cancelled` stop reason if the notify
+    // never lands, so a send failure is nothing to surface.
+    live?.cancel().catch(() => undefined);
+    return live !== undefined;
+  });
 
   constructor(
     agent: Agent<C>,
@@ -483,12 +441,10 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
 
   async #teardown(): Promise<void> {
     this.#closed = true;
-    for (const queued of this.#queue.splice(0)) {
-      queued.run.settleErr(aborted());
-    }
+    this.#queue.abandonQueued();
     // Settled here rather than cancelled over the wire: the channel is about
     // to go, so waiting for a stop reason that may never arrive would hang.
-    this.#inFlight?.settleErr(aborted());
+    this.#queue.inFlight?.settleErr(aborted());
     const live = this.#live;
     if (live && this.#client?.capabilities?.sessionCapabilities?.close) {
       // The connection dies next either way, so a refused close changes
@@ -508,87 +464,27 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
         "resume and forkSession are owned by the session; use agent.session({ resume, fork })"
       );
     }
-    const acpRun = new AcpTurnRun();
-    const turn: QueuedTurn = {
-      run: acpRun,
-      task: () => this.#turn(prompt, opts, acpRun),
-    };
-    this.#queue.push(turn);
-    whenAborted(acpRun.signal, () => {
-      this.#abortTurn(turn);
-    });
-    if (opts.signal) {
-      whenAborted(opts.signal, () => {
-        acpRun.abort();
-      });
-    }
-    this.#drain();
-    return acpRun;
+    return this.#queue.add(
+      (turn) => this.#turn(prompt, opts, turn),
+      opts.signal
+    );
   }
 
-  // Turn-scoped: aborting a queued turn never disturbs the one in flight.
-  #abortTurn(turn: QueuedTurn): void {
-    if (this.#inFlight === turn.run && this.#live) {
-      // The turn still ends through its `cancelled` stop reason if the notify
-      // never lands, so a send failure is nothing to surface.
-      this.#live.cancel().catch(() => undefined);
-      return;
-    }
-    const at = this.#queue.indexOf(turn);
-    if (at >= 0) {
-      this.#queue.splice(at, 1);
-    }
-    turn.run.settleErr(aborted());
-  }
-
-  #drain(): void {
-    if (this.#draining) {
-      return;
-    }
-    this.#draining = true;
-    this.#processQueue().finally(() => {
-      this.#draining = false;
-      if (this.#queue.length > 0) {
-        this.#drain();
-      }
-    });
-  }
-
-  async #processQueue(): Promise<void> {
-    let turn = this.#queue.shift();
-    while (turn) {
-      this.#inFlight = turn.run;
-      try {
-        // biome-ignore lint/performance/noAwaitInLoops: one live turn at a time by contract.
-        await turn.task();
-      } catch (failure) {
-        // The conversation is broken where it stands, as in stdout mode.
-        for (const queued of this.#queue.splice(0)) {
-          queued.run.settleErr(failure);
-        }
-      } finally {
-        this.#inFlight = undefined;
-      }
-      turn = this.#queue.shift();
-    }
-  }
-
-  async #turn(
-    prompt: string,
-    opts: RunOptions,
-    acpRun: AcpTurnRun
-  ): Promise<void> {
+  async #turn(prompt: string, opts: RunOptions, run: TurnRun): Promise<void> {
     try {
-      // Before the connection opens, so a session fails fast on an
-      // option this agent cannot honor exactly as every other path does.
-      validateOptions(this.agent.adapter, opts);
-      const live = await this.#ensureLive();
-      await this.#applyReadOnly(live, opts.readOnly === true);
-      await this.#driveAcp(live, prompt, opts, acpRun);
+      const final = await runTurn(
+        this.agent.adapter,
+        prompt,
+        opts,
+        (composed) => this.#promptOnce(composed, run),
+        (event) => {
+          run.push(event);
+        }
+      );
+      this.#id = this.#live?.sessionId ?? this.#id;
+      run.settleOk(final);
     } catch (error) {
-      const failure = AnyAgentError.wrap(error);
-      acpRun.settleErr(failure);
-      throw failure;
+      throw AnyAgentError.wrap(error);
     }
   }
 
@@ -738,39 +634,19 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     }
   }
 
-  async #driveAcp(
-    live: AcpSession,
-    prompt: string,
-    opts: RunOptions,
-    acpRun: AcpTurnRun
-  ): Promise<void> {
-    const final = await runWithSchema(
-      prompt,
-      opts,
-      (text) => this.#promptOnce(live, text, opts, acpRun),
-      (event) => {
-        acpRun.push(event);
-      }
-    );
-    this.#id = live.sessionId;
-    acpRun.settleOk(final);
-  }
-
   // Failures throw so the caller settles the handle once, after the schema
   // contract has had its say.
-  async #promptOnce(
-    live: AcpSession,
-    prompt: string,
-    opts: RunOptions,
-    acpRun: AcpTurnRun
-  ): Promise<RunResult> {
-    if (acpRun.signal.aborted || this.#closed) {
+  async #promptOnce(composed: Composed, run: TurnRun): Promise<RunResult> {
+    if (run.signal.aborted || this.#closed) {
       throw aborted();
     }
+    const { opts } = composed;
+    const live = await this.#ensureLive();
+    await this.#applyReadOnly(live, opts.readOnly === true);
     const active: ActiveTurn = {
       events: [],
       readOnly: opts.readOnly === true,
-      run: acpRun,
+      run,
       text: [],
       tools: new Map(),
     };
@@ -778,8 +654,8 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     this.#emitSession(active, live.sessionId);
     const text =
       opts.schema === undefined
-        ? prompt
-        : promptWithSchema(prompt, opts.schema);
+        ? composed.prompt
+        : promptWithSchema(composed.prompt, opts.schema);
     const turn = live.prompt(text, (update, notification) => {
       this.#onUpdate(active, update, notification);
     });

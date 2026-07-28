@@ -3,6 +3,7 @@ import { AnyAgentError } from "../errors.js";
 import type {
   Adapter,
   Agent,
+  AgentEvent,
   AuthStatus,
   Capabilities,
   ExtensionKey,
@@ -19,13 +20,19 @@ import type {
 } from "../types.js";
 import { EXTENSION_CAPABILITY } from "../types.js";
 import { AcpSessionImpl } from "./acp-session.js";
-import { RunImpl, rejectedRun } from "./run.js";
 import {
   realSystemProbe,
   spawnAndStream,
   spawnChild,
 } from "./runtime/spawn.js";
 import { SessionImpl } from "./session.js";
+import {
+  rejectedRun,
+  runTurn,
+  spawnOnce,
+  TurnRun,
+  whenAborted,
+} from "./turn.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
@@ -70,14 +77,38 @@ export class AgentImpl<C extends Capabilities = Capabilities>
 
   run(prompt: string, opts: RunOptions = {}): Run {
     const { adapter } = this;
-    return adapter.mode === "stdout"
-      ? new RunImpl(adapter, this.runner, prompt, opts)
-      : rejectedRun(
-          new AnyAgentError(
-            "UnsupportedCapability",
-            `${adapter.meta.id} runs every turn over its ACP endpoint`
-          )
-        );
+    if (adapter.mode !== "stdout") {
+      return rejectedRun(
+        new AnyAgentError(
+          "UnsupportedCapability",
+          `${adapter.meta.id} runs every turn over its ACP endpoint`
+        )
+      );
+    }
+    const run = new TurnRun();
+    const emit = (event: AgentEvent): void => {
+      run.push(event);
+    };
+    if (opts.signal) {
+      whenAborted(opts.signal, () => {
+        run.abort();
+      });
+    }
+    runTurn(
+      adapter,
+      prompt,
+      opts,
+      (composed) => spawnOnce(adapter, this.runner, composed, run.signal, emit),
+      emit
+    ).then(
+      (result) => {
+        run.settleOk(result);
+      },
+      (failure: unknown) => {
+        run.settleErr(failure);
+      }
+    );
+    return run;
   }
 
   session(opts: SessionOptions = {}): Session<C> {
