@@ -8,7 +8,7 @@ import type { Adapter } from "./types.js";
  * Kilo's capabilities: the family's, with sessions live. The recorded
  * handshake at `test/fixtures/acp/kilo-handshake.jsonl` backs the native tier —
  * protocol v1, `loadSession`, `sessionCapabilities.fork`, and a `session/new`
- * carrying the `model` and `mode` options the family's spec drives.
+ * carrying the `model`, `effort`, and `mode` options the family's spec drives.
  */
 export type KiloCodeCapabilities = Omit<
   OpencodeFamilyCapabilities,
@@ -27,7 +27,12 @@ export type KiloCodeCapabilities = Omit<
  * adapter-owned `KILO_CONFIG_CONTENT` env var, merged into the machine's own
  * configured servers rather than replacing them. Sessions are live, over
  * `kilo acp`: `agent.session()` holds one connection, `fork: true` branches
- * through `session/fork`, and `readOnly` switches the session into plan mode.
+ * through `session/fork`, `readOnly` switches the session into plan mode, and
+ * `effort` sets the session's effort level. Both tiers pass `effort` through
+ * verbatim and let kilo judge it, but they judge differently: a one-shot run's
+ * `--variant` takes any provider-defined name, while a live session's effort is
+ * a closed list scoped to that session's model, so a name a run accepts can
+ * still be refused in a session.
  * `authStatus()` answers from kilo's credential store and the standard
  * provider key env vars — a hint, not a guarantee.
  *
@@ -40,6 +45,7 @@ export type KiloCodeCapabilities = Omit<
  */
 export const kiloCode = (): Adapter<KiloCodeCapabilities> => {
   const adapter = opencodeFamilyAdapter({
+    acpEffort: "effort",
     configEnv: "KILO_CONFIG_CONTENT",
     dataDir: "kilo",
     meta: { bin: ["kilo", "kilocode"], id: "kilo-code", name: "Kilo Code" },

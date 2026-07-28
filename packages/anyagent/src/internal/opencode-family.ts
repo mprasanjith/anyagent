@@ -1,6 +1,7 @@
 import { AnyAgentError } from "../errors.js";
 import { ndjsonParser } from "../ndjson.js";
 import type {
+  AcpConfigOption,
   Adapter,
   AdapterMeta,
   AgentEvent,
@@ -388,6 +389,12 @@ const makeListModels =
 
 export interface OpencodeFamilySpec {
   /**
+   * The live endpoint's config option id for reasoning effort. Omit it where
+   * the endpoint advertises no such option — a sibling without one throws for
+   * `effort` on a live session instead.
+   */
+  acpEffort?: string;
+  /**
    * The adapter-owned env var carrying an inline config document, which is how
    * a run's MCP servers are delivered. Omit it where the CLI's own name for it
    * is unverified — a sibling without one cannot declare `mcp`.
@@ -411,16 +418,22 @@ export const opencodeFamilyAdapter = (
       command: [command, "acp"],
       readOnly: { configId: "mode", value: "plan" },
       settings: ({ effort, model }) => {
-        if (effort !== undefined) {
-          throw new AnyAgentError(
-            "UnsupportedCapability",
-            `${spec.meta.id}: a live session cannot set reasoning effort; run it outside the session`
-          );
+        const configOptions: AcpConfigOption[] = [];
+        if (model !== undefined) {
+          configOptions.push({ configId: "model", value: model });
         }
-        return {
-          configOptions:
-            model === undefined ? [] : [{ configId: "model", value: model }],
-        };
+        if (effort !== undefined) {
+          if (spec.acpEffort === undefined) {
+            throw new AnyAgentError(
+              "UnsupportedCapability",
+              `${spec.meta.id}: a live session cannot set reasoning effort; run it outside the session`
+            );
+          }
+          // Ordered after `model`: the endpoint scopes the effort levels it
+          // accepts to the session's current model, and rejects any other.
+          configOptions.push({ configId: spec.acpEffort, value: effort });
+        }
+        return { configOptions };
       },
     },
     authStatus: makeAuthStatus(spec.dataDir),

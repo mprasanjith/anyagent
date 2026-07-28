@@ -10,7 +10,7 @@
 
 **New** — live sessions honor a thread's settings through the agent's own channels: `model` and `effort` reach the running agent, and `cwd`, `env`, `extraArgs`, and `mcp` reach its endpoint. A setting the live tier cannot carry throws `UnsupportedCapability` at `agent.session()` rather than being dropped. A `readOnly` turn switches the agent into its read-only mode and denies every tool that could change the machine; the next turn without it restores the mode. `fork: true` now works on live agents — over the connection where the agent advertises `session/fork` (opencode), through the print-mode bridge everywhere else.
 
-**New** — cline and kilo-code join the live session tier: `agent.session()` holds a `cline --acp` or `kilo acp` connection with steering and a session `model`, and kilo adds `fork: true` over `session/fork` plus a `readOnly` plan mode. Cline had no session tier at all before this.
+**New** — cline and kilo-code join the live session tier: `agent.session()` holds a `cline --acp` or `kilo acp` connection with steering and a session `model`, and kilo adds `fork: true` over `session/fork`, a `readOnly` plan mode, and a session `effort` its endpoint validates against the levels its current model offers. Cline had no session tier at all before this.
 
 **New** — opencode and kilo-code gain `mcp`, joining claude-code: a run's or a thread's MCP servers ride the adapter-owned config env var (`OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_CONTENT`), each under the name you key it by, added to the machine's own configured servers rather than replacing them. cursor, gemini-cli, and goose still throw — none has a per-run channel that can name a server without editing the user's config.
 

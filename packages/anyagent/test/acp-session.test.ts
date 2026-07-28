@@ -1227,6 +1227,45 @@ test("effort on a live opencode session throws before anything opens", () => {
   ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
 });
 
+// Kilo is the family's exception: its live endpoint advertises an `effort`
+// select, so the option reaches the session rather than throwing.
+test("a live kilo session sets model then effort as config options", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "ses_1" }));
+
+    const model = await api.next();
+    expect(model.method).toBe("session/set_config_option");
+    expect(model.params).toEqual({
+      configId: "model",
+      sessionId: "ses_1",
+      value: "kilo/openai/gpt-5.4",
+    });
+    api.emit(response(model.id, { configOptions: [] }));
+
+    const effort = await api.next();
+    expect(effort.method).toBe("session/set_config_option");
+    expect(effort.params).toEqual({
+      configId: "effort",
+      sessionId: "ses_1",
+      value: "xhigh",
+    });
+    api.emit(response(effort.id, { configOptions: [] }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = liveSession(
+    kiloCode(),
+    { effort: "xhigh", model: "kilo/openai/gpt-5.4" },
+    () => transport
+  );
+  await Promise.all([session.run("hi"), transport.done]);
+});
+
 test("a live gemini session spawns with its model, --skip-trust, and extraArgs", async () => {
   let invocation: Invocation | undefined;
   const session = liveSession(

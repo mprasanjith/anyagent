@@ -23,9 +23,11 @@ const CAPS = {
   mcp: false,
   modelListing: false,
   modelSelection: "native",
-  // Headless cline auto-approves every tool and plan mode still executes
-  // shell commands (verified writing a file through run_commands), so
-  // nothing-changes cannot be guaranteed.
+  // A capability covers both tiers, and print mode has no read-only channel:
+  // it auto-approves every tool, plan mode still executes shell commands
+  // (verified writing a file through run_commands), and `--help` carries no
+  // deny or tool-restriction flag. The live tier alone could hold the line —
+  // see the `acp` spec — but it cannot carry the declaration by itself.
   readOnly: false,
   reasoningEfforts: ["none", "low", "medium", "high", "xhigh"],
   // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
@@ -308,8 +310,11 @@ export const cline = (): Adapter<typeof CAPS> => ({
   acp: {
     command: ["cline", "--acp"],
     // No `readOnly` option here: cline's live endpoint offers plan mode, but
-    // plan mode still runs shell commands — the same reason the capability is
-    // false. Permission denial holds the line instead.
+    // plan mode still runs shell commands. Permission denial is what holds the
+    // line, and live-verified that it does — a turn told to write a file asked
+    // before every attempt (`run_commands` as `execute`, `apply_patch` as
+    // `other`, all outside the read-only kinds), and rejecting each one left
+    // the file uncreated.
     settings: ({ effort, model }) => {
       if (effort !== undefined) {
         throw new AnyAgentError(
