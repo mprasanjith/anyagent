@@ -6,3 +6,4 @@ dist
 
 # copied from the repo root by prepack
 packages/anyagent/README.md
+packages/anyagent/LICENSE

@@ -218,7 +218,7 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
       const parsed = JSON.parse(settings) as Json;
       const selected = parsed?.security?.auth?.selectedType;
       if (typeof selected === "string" && selected.length > 0) {
-        return { method: selected, raw: parsed, state: "unknown" };
+        return { method: selected, state: "unknown" };
       }
     } catch {
       // A corrupt settings file proves nothing either way.
@@ -237,14 +237,21 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * emulated; usage reports cache reads via the stream's `cached` counter.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { geminiCli } from "anyagent/gemini-cli";
+ * import { create } from "anyagent-js";
+ * import { geminiCli } from "anyagent-js/gemini-cli";
  *
  * const result = await create(geminiCli()).run("summarize this repo");
  * ```
  */
 export const geminiCli = (): Adapter<typeof CAPS> => ({
-  acp: { command: ["gemini", "--acp"] },
+  acp: {
+    // Without --skip-trust the endpoint downgrades its approval mode with only
+    // a stderr notice, so a live turn would silently lose its autonomy.
+    command: ["gemini", "--acp", "--skip-trust"],
+    // No `readOnly` here: plan mode's exit_plan_mode self-approves headless, so
+    // the mode would be a false guarantee; permission denial holds the line.
+    settings: ({ model }) => ({ args: model ? ["-m", model] : [] }),
+  },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

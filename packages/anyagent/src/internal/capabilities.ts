@@ -44,6 +44,12 @@ export const validateOptions = (adapter: Adapter, opts: RunOptions): void => {
       "forkSession requires resume: only an existing conversation can branch"
     );
   }
+  if (opts.schemaRetries !== undefined && opts.schema === undefined) {
+    throw new AnyAgentError(
+      "InvalidOptions",
+      "schemaRetries requires schema: there is nothing to correct against without one"
+    );
+  }
 
   for (const [option, cap, label] of GUARDED_OPTIONS) {
     if (opts[option] !== undefined && !caps[cap]) {

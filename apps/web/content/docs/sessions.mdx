@@ -14,13 +14,17 @@ A session is one conversation spanning many runs: open it with `agent.session()`
 `session.run` works like the agent’s own, returning the same awaitable, iterable handle:
 
 ```ts
-const session = agent.session();
+const session = agent.session({ cwd: "./repo" });
 await session.run("Review this repo for unhandled rejections.");
 const fixes = await session.run("Fix the issues you found.");
 console.log(fixes.text);
 ```
 
+A session is a thread: the settings you open it with — `model`, `effort`, `cwd`, `env`, `mcp`, `extraArgs` — are fixed for its lifetime and ride every turn, so `session.run` takes only per-turn options (`attachments`, `schema`, `systemPrompt`, `readOnly`, `signal`). Passing a setting per-turn throws [`InvalidOptions`](/docs/errors); to run under different settings, open a new session, or fork this one to keep the history.
+
 Turns queue: a `run` called while another is in flight starts when it settles, threaded automatically. A failed turn rejects the turns queued behind it; calling `run` again retries from the last good point.
+
+`session.close()` ends the conversation and releases whatever it holds — on a live agent, the process behind it. Turns still queued reject, a closed session refuses new ones ([`InvalidOptions`](/docs/errors)), and calling it twice is safe. `session.id` stays valid, so you can resume later.
 
 ## Persist and continue later
 

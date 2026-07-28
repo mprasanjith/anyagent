@@ -128,7 +128,7 @@ test("fork and attachments compose with model, session, and variant", () => {
 
 test("declares the acp endpoint and reports fork/attachments as native", () => {
   const agent = opencode();
-  expect(agent.acp).toEqual({ command: ["opencode", "acp"] });
+  expect(agent.acp?.command).toEqual(["opencode", "acp"]);
   expect(agent.capabilities.sessionFork).toBe("native");
   expect(agent.capabilities.attachments).toBe("native");
 });
@@ -356,8 +356,11 @@ test("authStatus reads the opencode auth store and reports its providers", async
       ),
   });
   const status = await opencode().authStatus?.(probe);
-  expect(status?.state).toBe("authenticated");
-  expect(status?.providers?.toSorted()).toEqual(["anthropic", "openrouter"]);
+  // Exact shape: the store holds live keys, so nothing extra may come back.
+  expect(status).toEqual({
+    providers: ["anthropic", "openrouter"],
+    state: "authenticated",
+  });
 });
 
 test("authStatus counts a standard provider env key as a credential", async () => {

@@ -279,18 +279,18 @@ const makeAuthStatus =
   (dataDir: string) =>
   async (probe: SystemProbe): Promise<AuthStatus> => {
     const providers = new Set<string>();
-    let raw: unknown;
+    let store: unknown;
     const body = await probe.readFile(
       `${probe.homedir()}/.local/share/${dataDir}/auth.json`
     );
     if (body !== undefined) {
       try {
-        raw = JSON.parse(body);
+        store = JSON.parse(body);
       } catch {
         // A corrupt store proves nothing either way; env keys still count.
       }
-      if (raw !== null && typeof raw === "object") {
-        for (const provider of Object.keys(raw)) {
+      if (store !== null && typeof store === "object") {
+        for (const provider of Object.keys(store)) {
           providers.add(provider);
         }
       }
@@ -301,8 +301,8 @@ const makeAuthStatus =
       }
     }
     return providers.size > 0
-      ? { providers: [...providers], raw, state: "authenticated" }
-      : { raw, state: "unauthenticated" };
+      ? { providers: [...providers], state: "authenticated" }
+      : { state: "unauthenticated" };
   };
 
 // `<bin> models` prints one `provider/model` id per line and nothing else.
@@ -340,9 +340,23 @@ export const opencodeFamilyAdapter = (
   const command = spec.meta.bin[0] ?? spec.meta.id;
   return {
     // Both siblings ship an `acp` subcommand (`opencode acp` verified locally,
-    // kilo's documented at the kilo CLI reference); declaring it readies the
-    // shared ACP client without changing today's behavior.
-    acp: { command: [command, "acp"] },
+    // kilo's documented at the kilo CLI reference).
+    acp: {
+      command: [command, "acp"],
+      readOnly: { configId: "mode", value: "plan" },
+      settings: ({ effort, model }) => {
+        if (effort !== undefined) {
+          throw new AnyAgentError(
+            "UnsupportedCapability",
+            `${spec.meta.id}: a live session cannot set reasoning effort; run it outside the session`
+          );
+        }
+        return {
+          configOptions:
+            model === undefined ? [] : [{ configId: "model", value: model }],
+        };
+      },
+    },
     authStatus: makeAuthStatus(spec.dataDir),
     buildInvocation: makeBuildInvocation(command, spec.permissionEnv),
     capabilities: CAPS,

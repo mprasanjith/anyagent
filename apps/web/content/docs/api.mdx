@@ -10,17 +10,17 @@ This page documents what you use when building on AnyAgent: the two entry-point 
 
 ## Entry points
 
-Import `detect` and `create` from the package root, `AnyAgentError` from `anyagent/errors`, and every type from `anyagent/types`. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
+Import `detect` and `create` from the package root, `AnyAgentError` from `anyagent-js/errors`, and every type from `anyagent-js/types`. Each built-in adapter has its own subpath, so importing one adapter never pulls in another and your tool ships only the adapters it uses.
 
 ```ts
-import { create, detect } from "anyagent";
-import { AnyAgentError } from "anyagent/errors";
-import type { Agent, RunOptions, RunResult } from "anyagent/types";
-import { claudeCode } from "anyagent/claude-code";
-import { codex } from "anyagent/codex";
+import { create, detect } from "anyagent-js";
+import { AnyAgentError } from "anyagent-js/errors";
+import type { Agent, RunOptions, RunResult } from "anyagent-js/types";
+import { claudeCode } from "anyagent-js/claude-code";
+import { codex } from "anyagent-js/codex";
 ```
 
-The other adapter subpaths follow the same shape: `anyagent/opencode`, `anyagent/kilo-code`, `anyagent/pi`, `anyagent/goose`, `anyagent/cline`, `anyagent/gemini-cli`, `anyagent/antigravity`, and `anyagent/cursor`. Each exports one factory (`claudeCode()`, `codex()`, …) returning an adapter you can hand to `create`; each factory’s flag mappings and quirks live on its [adapter page](/docs/adapters).
+The other adapter subpaths follow the same shape: `anyagent-js/opencode`, `anyagent-js/kilo-code`, `anyagent-js/pi`, `anyagent-js/goose`, `anyagent-js/cline`, `anyagent-js/gemini-cli`, `anyagent-js/antigravity`, and `anyagent-js/cursor`. Each exports one factory (`claudeCode()`, `codex()`, …) returning an adapter you can hand to `create`; each factory’s flag mappings and quirks live on its [adapter page](/docs/adapters).
 
 ## detect
 
@@ -33,7 +33,7 @@ const detect: (opts?: DetectOptions) => Promise<DetectResult[]>;
 Call it with no arguments to scan the built-in adapters on the real machine, then pass the result you pick to `create`:
 
 ```ts
-import { create, detect } from "anyagent";
+import { create, detect } from "anyagent-js";
 
 const installed = await detect();
 const [first] = installed;
@@ -61,8 +61,8 @@ const create: (source: Adapter | DetectResult, opts?: CreateOptions) => Agent;
 The call is synchronous and spawns nothing; the process starts when you call `run`. It also never checks that the CLI is installed, so creating from an adapter on a machine without that CLI surfaces as an `Invocation` error on the first run. From an adapter factory the agent is typed to that adapter’s literal [`Capabilities`](#capabilities), so an unsupported option fails to compile; from a `DetectResult` only the shared options are typed until [`supports`](#runoptionsfor-and-supports) unlocks more.
 
 ```ts
-import { create } from "anyagent";
-import { claudeCode } from "anyagent/claude-code";
+import { create } from "anyagent-js";
+import { claudeCode } from "anyagent-js/claude-code";
 
 const agent = create(claudeCode());
 const result = await agent.run("Summarize this repo.");
@@ -86,7 +86,7 @@ An `Agent` is a ready-to-run handle on one installed CLI: `run` starts one turn 
 
 ## Run
 
-One run in flight: a `Promise` of the [`RunResult`](#runresult) that is also an `AsyncIterable` of [`AgentEvent`](#agentevent)s, so you await it, iterate it, or both. It runs to completion unless `abort()` or its `signal` fires; breaking out of an iteration loop stops watching, not the agent.
+One run in flight: a `Promise` of the [`RunResult`](#runresult) that is also an `AsyncIterable` of [`AgentEvent`](#agentevent)s, so you await it, iterate it, or both. It runs to completion unless `abort()` or its `signal` fires; breaking out of an iteration loop stops watching, not the agent. When a run fails, iterating yields the events received so far and then throws the error awaiting rejects with.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -102,14 +102,14 @@ One conversation spanning many turns, from `agent.session()`. The session owns c
   name="Session"
 />
 
-`SessionOptions` shapes the session at creation. `fork` requires `resume` (`InvalidOptions` without it) and is gated by [`Capabilities.sessionFork`](#capabilities):
+`SessionOptions` shapes the session at creation, and a session is a thread: its settings are fixed here and validated against the agent’s capabilities before any turn runs. `fork` requires `resume` (`InvalidOptions` without it) and is gated by [`Capabilities.sessionFork`](#capabilities):
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
   name="SessionOptions"
 />
 
-A session’s per-turn options are the agent’s minus `resume` and `forkSession`, which the session owns; passing either anyway throws `InvalidOptions`.
+A session’s per-turn options are the agent’s minus `resume` and `forkSession` and the thread’s settings (`model`, `effort`, `cwd`, `env`, `mcp`, `extraArgs`), all of which the session owns; passing one anyway throws `InvalidOptions`.
 
 ## Run options
 
@@ -125,7 +125,7 @@ Every option is validated against the agent’s capabilities before any process 
 
 The options every supported agent honors; code that types against `BaselineRunOptions` runs unchanged on any agent AnyAgent can drive.
 
-`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed, validated against it, and set on [`RunResult.json`](#runresult); [Run an agent](/docs/run-an-agent) covers the parsing, validation, and retry path.
+`schema` is a plain JSON Schema object. Pass it to [`run`](#agent) and the reply is parsed, validated against it, and set on [`RunResult.json`](#runresult); `schemaRetries` gives a failed reply one correction attempt (`1`, the default) or none (`0`). [Run an agent](/docs/run-an-agent) covers the parsing, validation, and retry path.
 
 <Callout type="warn">
   Validation covers `type` (including `"integer"`), `properties` and `required` recursively, `items` as a single schema over every element, and `enum`. Every other keyword, such as `minLength`, `pattern`, or `format`, passes without a check, so enforce those in your own code after reading `json`.
@@ -179,7 +179,7 @@ What a finished run gives you back. Holding a `RunResult` means the run succeede
 
 ## AgentEvent
 
-One normalized event from a running agent, as yielded by iterating a [`Run`](#run). `AgentEvent` is a discriminated union on `type` with nine variants. Every variant except `done` carries a `raw` field holding the CLI’s untouched native payload for that event.
+One normalized event from a running agent, as yielded by iterating a [`Run`](#run). `AgentEvent` is a discriminated union on `type` with ten variants. Every variant except `done` and `schema-retry` carries a `raw` field holding the CLI’s untouched native payload for that event.
 
 | `type`            | Payload                                                          | Meaning                                                              |
 | ----------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -191,9 +191,10 @@ One normalized event from a running agent, as yielded by iterating a [`Run`](#ru
 | `file-change`     | `kind: "create" \| "modify" \| "delete"`, `path: string`         | the agent changed a file, on CLIs that report it                      |
 | `usage`           | `usage: Usage`                                                   | token and cost accounting became available                            |
 | `permission-request` | `requestId`, `name`, `nativeName`, `input`, `options: PermissionOption[]` | a live-tier agent asked permission for a tool, offering its own options |
+| `schema-retry`    | `issues: string[]`                                               | the reply failed the run’s `schema`; a corrected one is being asked for |
 | `done`            | `result: RunResult`                                              | the run finished; carries the final result                            |
 
-How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `permission-request` is emitted only by live-tier sessions, which resolve it themselves by allowing the tool.
+How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `permission-request` is emitted only by live-tier sessions, which resolve it themselves by allowing the tool. Every event after a `schema-retry` belongs to the corrected attempt.
 
 Each `permission-request` carries the agent’s own choices as [`PermissionOption`](#agentevent)s — `id`, a normalized `kind` (`allow-once`, `allow-always`, `reject-once`, `reject-always`, or the agent’s own), and the agent’s `label`:
 
@@ -317,8 +318,8 @@ type McpConfig = Record<string, McpServer>;
 Pass it through [`RunOptions.mcp`](#extensionoptions) on an agent whose capabilities declare `mcp`:
 
 ```ts
-import { create } from "anyagent";
-import { claudeCode } from "anyagent/claude-code";
+import { create } from "anyagent-js";
+import { claudeCode } from "anyagent-js/claude-code";
 
 const agent = create(claudeCode());
 await agent.run("List the tables the app touches.", {
@@ -346,6 +347,7 @@ class AnyAgentError extends Error {
   readonly raw?: unknown;
   readonly argv?: string[];
   readonly stderr?: string;
+  readonly issues?: string[];
 }
 
 type AnyAgentErrorCode =

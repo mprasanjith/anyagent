@@ -18,7 +18,7 @@ Drop the option, or check first and degrade the feature when it is missing: `age
 The options contradict each other on any agent: a dependent option was passed without its prerequisite, or a session-owned option was passed by hand. Like `UnsupportedCapability` it fires before any process spawns, but this call could never be valid on any CLI, so correct the options at the call site rather than degrading per agent. The cases:
 
 - `forkSession` on a run with no `resume`, or `fork` at `agent.session({ fork: true })` without `resume`: only an existing conversation can branch.
-- `resume` or `forkSession` passed to `session.run()`: the session owns continuity, so thread it through `agent.session({ resume, fork })` instead.
+- `resume`, `forkSession`, or a session setting (`model`, `effort`, `cwd`, `env`, `mcp`, `extraArgs`) passed to `session.run()`: the session owns continuity and its settings, so set them at `agent.session()` instead.
 - Iterating one `Run` twice: a `Run` serves a single event consumer, so share the handle rather than opening a second `for await`.
 
 ## Invocation
@@ -27,10 +27,10 @@ The CLI itself went wrong: it failed to spawn, exited nonzero, or reported an ag
 
 ## Parse
 
-The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet: update `anyagent`, and report the failure upstream with the offending payload on `err.raw`.
+The CLI ran, but its output did not match the shape the adapter expects, or the stream ended without a terminal `done` event. This points to a change in the CLI’s output format that the adapter does not know yet: update `anyagent-js`, and report the failure upstream with the offending payload on `err.raw`.
 
 <Callout type="info">
-  `Parse` also fires when you pass a `schema` and the reply still fails to parse or validate after the one automatic retry. The message carries the validation errors and the agent’s final reply text is on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
+  `Parse` also fires when you pass a `schema` and the reply fails to parse or validate; the failed checks are on `err.issues` and the agent’s final reply text on `err.raw`. That case is your prompt or schema to adjust, not the adapter to update.
 </Callout>
 
 ## Aborted
@@ -39,15 +39,16 @@ Your `AbortSignal` fired and the underlying process was terminated, whether from
 
 ## Diagnostic fields
 
-Beyond `message` and `code`, three fields carry what ran and what the CLI said:
+Beyond `message` and `code`, four fields carry what ran and what the CLI said:
 
 | Name     | Type       | Description                                                              |
 | -------- | ---------- | ------------------------------------------------------------------------ |
 | `raw`    | `unknown`  | the underlying cause: a native error, the CLI’s own error payload, or the reply that failed to parse |
 | `argv`   | `string[]` | the exact command line that ran; attached on `Invocation` errors only    |
 | `stderr` | `string`   | what the CLI wrote to stderr; attached on `Invocation` errors only       |
+| `issues` | `string[]` | the schema checks the reply failed; attached on a `schema` run’s `Parse` errors only |
 
-Log all three inside the `catch` when a run fails unexpectedly, so a bug report is actionable:
+Log them inside the `catch` when a run fails unexpectedly, so a bug report is actionable:
 
 ```ts
 console.error(err.message);
@@ -60,9 +61,9 @@ console.error("stderr:", err.stderr);
 This wraps the `acme init` run and gives every code a response a stranger could act on:
 
 ```ts
-import { create } from "anyagent";
-import { AnyAgentError } from "anyagent/errors";
-import { claudeCode } from "anyagent/claude-code";
+import { create } from "anyagent-js";
+import { AnyAgentError } from "anyagent-js/errors";
+import { claudeCode } from "anyagent-js/claude-code";
 
 const controller = new AbortController();
 process.on("SIGINT", () => controller.abort());

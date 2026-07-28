@@ -356,9 +356,7 @@ test("authStatus reads `codex login status`: exit 0 is authenticated", async () 
       }),
   });
   const status = await codex().authStatus?.(probe);
-  expect(status?.state).toBe("authenticated");
-  expect(status?.method).toBe("chatgpt");
-  expect(String(status?.raw)).toContain("ChatGPT");
+  expect(status).toEqual({ method: "chatgpt", state: "authenticated" });
 });
 
 test("authStatus recognizes the API-key login method", async () => {

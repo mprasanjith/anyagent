@@ -386,13 +386,12 @@ test("authStatus is unauthenticated when no providers file exists", async () => 
   expect(status.state).toBe("unauthenticated");
 });
 
-test("authStatus is unknown on unparseable JSON, carrying the problem", async () => {
+test("authStatus is unknown on unparseable JSON", async () => {
   const status = await authWith({
     readFile: (p) =>
       Promise.resolve(p === HOME_PROVIDERS ? "{not json" : undefined),
   });
-  expect(status.state).toBe("unknown");
-  expect(status.raw).toBeDefined();
+  expect(status).toEqual({ state: "unknown" });
 });
 
 test("conformance holds over the recorded fixtures", async () => {

@@ -273,11 +273,10 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
       : { state: "unauthenticated" };
   }
   if (exec.code !== 0 || !parsed?.loggedIn) {
-    return { raw: parsed, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
   return {
     method: parsed.authMethod ?? parsed.subscriptionType,
-    raw: parsed,
     state: "authenticated",
   };
 };
@@ -290,8 +289,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * and system-prompt append.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { claudeCode } from "anyagent/claude-code";
+ * import { create } from "anyagent-js";
+ * import { claudeCode } from "anyagent-js/claude-code";
  *
  * const result = await create(claudeCode()).run("summarize this repo");
  * ```

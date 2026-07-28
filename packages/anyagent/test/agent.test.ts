@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { once } from "node:events";
 
+import { AnyAgentError } from "../src/errors.js";
 import { create } from "../src/index.js";
 import { AgentImpl } from "../src/internal/agent.js";
 import type {
@@ -304,4 +305,29 @@ test("aborting the signal terminates the run and rejects", async () => {
   const pending = agent.run("go", { signal: controller.signal });
   controller.abort();
   await expect(pending).rejects.toMatchObject({ code: "Aborted" });
+});
+
+test("aborting mid-iteration yields the events so far, then throws", async () => {
+  // One event, then the process hangs, so the abort lands mid-stream.
+  const stall: Adapter = {
+    ...fakeStreaming,
+    buildInvocation: () => ({
+      args: ["-c", `printf '%s\\n' '{"t":"text","v":"Hi"}'; sleep 5`],
+      command: "sh",
+    }),
+  };
+  const run = new AgentImpl(stall).run("go");
+  const types: string[] = [];
+  let failure: unknown;
+  try {
+    for await (const ev of run) {
+      types.push(ev.type);
+      run.abort();
+    }
+  } catch (error) {
+    failure = error;
+  }
+  expect(types).toEqual(["text-delta"]);
+  expect(failure).toBeInstanceOf(AnyAgentError);
+  expect(failure).toMatchObject({ code: "Aborted" });
 });

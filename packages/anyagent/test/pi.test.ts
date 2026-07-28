@@ -258,8 +258,11 @@ test("authStatus reads providers from auth.json", async () => {
       ),
   });
   const status = await pi().authStatus?.(probe);
-  expect(status?.state).toBe("authenticated");
-  expect(status?.providers?.toSorted()).toEqual(["anthropic", "zai"]);
+  // Exact shape: the store holds live keys, so nothing extra may come back.
+  expect(status).toEqual({
+    providers: ["anthropic", "zai"],
+    state: "authenticated",
+  });
 });
 
 test("authStatus counts provider env vars as credentials", async () => {

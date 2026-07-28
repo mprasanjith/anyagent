@@ -163,7 +163,8 @@ export interface Capabilities {
    * {@link BaselineRunOptions.schema}. Either way a validated value lands on
    * {@link RunResult.json}. `"native"` means the CLI enforces the shape
    * itself; `"emulated"` is a weaker guarantee — AnyAgent validates the reply
-   * and retries once before giving up.
+   * and, unless {@link BaselineRunOptions.schemaRetries} is `0`, re-asks once
+   * before giving up.
    */
   structuredOutput: CapabilitySupport;
   /**
@@ -190,8 +191,7 @@ export type AuthState = "authenticated" | "unauthenticated" | "unknown";
  * The answer to {@link Agent.authStatus}: whether this CLI looks ready to
  * run. `method` names how it authenticates when known (`"oauth"`,
  * `"api-key"`, a subscription tier); `providers` lists the model providers
- * with credentials on BYOK CLIs. `raw` is the CLI's own payload, untouched,
- * when one exists.
+ * with credentials on BYOK CLIs.
  *
  * This is "are credentials configured", never "were they verified live" — no
  * paid call is ever made on your behalf.
@@ -199,7 +199,6 @@ export type AuthState = "authenticated" | "unauthenticated" | "unknown";
 export interface AuthStatus {
   method?: string;
   providers?: string[];
-  raw?: unknown;
   state: AuthState;
 }
 
@@ -297,12 +296,20 @@ export interface BaselineRunOptions {
   /**
    * A plain JSON Schema object describing the shape you want the reply in.
    * Works on every adapter (see {@link Capabilities.structuredOutput}).
-   * With {@link Agent.run}, the reply is parsed and validated against the
-   * schema and the parsed value lands on {@link RunResult.json}. With
-   * {@link Agent.runStream}, the schema still shapes the run, but you get raw
-   * text events and no parsing.
+   * Awaiting the run gives you the reply parsed and validated against the
+   * schema, on {@link RunResult.json}; iterating yields raw text events, with
+   * no parsing.
    */
   schema?: Record<string, unknown>;
+  /**
+   * How many correction attempts a reply that fails
+   * {@link BaselineRunOptions.schema} gets. `1` (the default) re-asks once,
+   * announced by a `schema-retry` {@link AgentEvent}; `0` fails on the first
+   * bad reply, throwing `AnyAgentError` (`code: "Parse"`) with the failed
+   * checks on `issues` — what you want when your own code owns the correction
+   * loop. Requires `schema` (`InvalidOptions` without it).
+   */
+  schemaRetries?: 0 | 1;
   /** Aborting terminates the process; the run throws `code: "Aborted"`. */
   signal?: AbortSignal;
   /**
@@ -415,8 +422,8 @@ export type RunOptionsFor<C extends Capabilities> = BaselineRunOptions &
 export type RunOptions = BaselineRunOptions & Partial<ExtensionOptions>;
 
 /**
- * One normalized event from a running agent, as yielded by
- * {@link Agent.runStream}:
+ * One normalized event from a running agent, as yielded by iterating a
+ * {@link Run}:
  *
  * - `session` — the CLI assigned this run a session id (also on
  *   {@link RunResult.sessionId}); emitted once, early, so you can persist it
@@ -434,13 +441,17 @@ export type RunOptions = BaselineRunOptions & Partial<ExtensionOptions>;
  * - `permission-request` — the agent asked to run something that needs
  *   approval. AnyAgent currently answers automatically with the first allow
  *   option; the event lets you observe what was asked.
+ * - `schema-retry` — the reply failed the run's
+ *   {@link BaselineRunOptions.schema} and a corrected one is being asked for;
+ *   `issues` are the failed checks. Every event after it belongs to the
+ *   corrected attempt.
  * - `done` — the run finished; carries the final {@link RunResult}.
  *
  * How much text one `text-delta` carries depends on the CLI: a token, a
  * chunk, or a whole assistant message. What you can rely on is that
  * concatenating every delta's `text` reproduces `RunResult.text` exactly.
- * `raw` on each event except `done` is the CLI's untouched native payload for
- * it.
+ * `raw` on each event except `done` and `schema-retry` is the CLI's untouched
+ * native payload for it.
  */
 export type AgentEvent =
   | { type: "session"; sessionId: string; raw?: unknown }
@@ -478,6 +489,7 @@ export type AgentEvent =
       options: PermissionOption[];
       raw?: unknown;
     }
+  | { type: "schema-retry"; issues: string[] }
   | { type: "done"; result: RunResult };
 
 /**
@@ -494,15 +506,15 @@ export interface RunResult {
   /**
    * Every normalized event the run produced, in order (the terminal `done` is
    * excluded). The whole list is held in memory, so for very long agentic
-   * runs prefer consuming {@link Agent.runStream} as events arrive.
+   * runs prefer iterating the {@link Run} as events arrive.
    */
   events: AgentEvent[];
   /**
    * The reply parsed as JSON, present only when a
    * {@link BaselineRunOptions.schema} was passed to {@link Agent.run}. It has
    * been validated against that schema before landing here; a reply that
-   * could not be parsed or validated (even after one retry) throws
-   * `AnyAgentError` (`code: "Parse"`) instead.
+   * could not be parsed or validated throws `AnyAgentError` (`code: "Parse"`)
+   * instead.
    */
   json?: unknown;
   raw: unknown;
@@ -691,6 +703,39 @@ export interface Detection {
   version?: string;
 }
 
+/** One session configuration option and the value to set it to. */
+export interface AcpConfigOption {
+  configId: string;
+  value: string;
+}
+
+/** What a session's settings become on one CLI's live endpoint. */
+export interface AcpSettings {
+  /** Appended to the endpoint's argv. */
+  args?: string[];
+  /** Applied in order, once the session opens. */
+  configOptions?: AcpConfigOption[];
+}
+
+/**
+ * How to reach and configure one CLI's ACP endpoint. `command` is the argv
+ * that launches it.
+ *
+ * `settings` maps a session's {@link SessionOptions} onto the endpoint's own
+ * channels; throw `AnyAgentError` (`code: "UnsupportedCapability"`) from it
+ * for a setting this endpoint has no channel for, so the session fails before
+ * anything spawns rather than dropping it.
+ *
+ * `readOnly` is the option that confines a turn to reading. Omit it where the
+ * CLI's read-only mode is absent or cannot be trusted; permission denial holds
+ * the line either way.
+ */
+export interface AcpSpec {
+  command: string[];
+  readOnly?: AcpConfigOption;
+  settings?: (opts: SessionOptions) => AcpSettings;
+}
+
 /**
  * The contract for supporting one agent CLI. An adapter is data plus pure
  * functions: it describes how to invoke its CLI and how to read its output,
@@ -706,11 +751,11 @@ export interface Detection {
  */
 export interface Adapter<C extends Capabilities = Capabilities> {
   /**
-   * How to launch this CLI's ACP (Agent Client Protocol) endpoint, when it
-   * ships one; the shared client does the rest. Declaring it is what backs
-   * `session: "native"`.
+   * How to launch and configure this CLI's ACP (Agent Client Protocol)
+   * endpoint, when it ships one; the shared client does the rest. Declaring it
+   * is what backs `session: "native"`.
    */
-  acp?: { command: string[] };
+  acp?: AcpSpec;
   /**
    * Answer {@link Agent.authStatus} from the probe. Required when `authStatus` is declared
    * available; read files and env, or run a
@@ -840,8 +885,12 @@ export interface Agent<C extends Capabilities = Capabilities> {
    * pass back later as `{ resume }`. Gated by {@link Capabilities.session};
    * throws `UnsupportedCapability` where it is `false`.
    *
+   * A session is a thread: its {@link SessionOptions} settings are fixed here
+   * and apply to every turn. Fork it to continue the conversation under
+   * different settings.
+   *
    * ```ts
-   * const session = agent.session();
+   * const session = agent.session({ model: "opus" });
    * await session.run("Review this repo.");
    * await session.run("Fix what you found.");
    * ```
@@ -867,10 +916,12 @@ export interface Agent<C extends Capabilities = Capabilities> {
  *
  * The run starts when the call is made and runs to completion unless
  * `abort()` is called or the run's `signal` fires. Breaking out of an
- * iteration loop stops watching, never the agent. On a run with a
- * {@link BaselineRunOptions.schema}, awaiting resolves the parsed result;
- * iterating yields every attempt's events, and the terminal `done` carries
- * the same result awaiting resolves with.
+ * iteration loop stops watching, never the agent. When a run fails, iterating
+ * yields the events received so far and then throws the error awaiting rejects
+ * with. On a run with a {@link BaselineRunOptions.schema}, awaiting resolves
+ * the parsed result; iterating yields every attempt's events, separated by a
+ * `schema-retry` event, and the terminal `done` carries the same result
+ * awaiting resolves with.
  */
 export interface Run extends Promise<RunResult>, AsyncIterable<AgentEvent> {
   /** Stop the agent: the process is terminated and the run throws `code: "Aborted"`. */
@@ -894,25 +945,67 @@ export interface PermissionOption {
 }
 
 /**
- * Options for {@link Agent.session}. `resume` continues an earlier session
- * from a persisted {@link Session.id}. `fork` branches: the first turn
- * carries the CLI's copy-on-resume flag, and `session.id` becomes the new
- * conversation's id. `fork` requires `resume` (`InvalidOptions` without it)
- * and is gated by {@link Capabilities.sessionFork}.
+ * Options for {@link Agent.session}. A session is a thread: `model`, `effort`,
+ * `cwd`, `env`, `mcp`, and `extraArgs` are its settings, fixed here for its
+ * whole lifetime and applied to every turn — `session.run` takes only per-turn
+ * options, and passing a setting there throws `AnyAgentError`
+ * (`code: "InvalidOptions"`). To continue the conversation under different
+ * settings, fork it into a new session. Every setting is validated against the
+ * agent's {@link Capabilities} at `agent.session()`, before any turn runs.
+ *
+ * `resume` continues an earlier session from a persisted {@link Session.id}.
+ * `fork` branches: the first turn carries the CLI's copy-on-resume flag, and
+ * `session.id` becomes the new conversation's id. `fork` requires `resume`
+ * (`InvalidOptions` without it) and is gated by
+ * {@link Capabilities.sessionFork}.
  */
 export interface SessionOptions {
+  /** Directory every turn works in. Defaults to the current process's cwd. */
+  cwd?: string;
+  /**
+   * How hard the model should think on every turn. Gated by
+   * {@link Capabilities.effort}; where {@link Capabilities.reasoningEfforts}
+   * is present the value is checked against it, otherwise it passes through
+   * and the CLI judges it.
+   */
+  effort?: ReasoningEffort;
+  /** Extra environment variables for every turn, merged over the parent's. */
+  env?: Record<string, string>;
+  /**
+   * Extra native CLI flags appended verbatim to every turn's argv, with the
+   * caveats on {@link BaselineRunOptions.extraArgs}. For a flag on one turn
+   * only, run it outside the session:
+   * `agent.run(prompt, { resume: session.id, extraArgs })`.
+   */
+  extraArgs?: string[];
   fork?: boolean;
+  /** MCP servers attached to every turn. Gated by {@link Capabilities.mcp}. */
+  mcp?: McpConfig;
+  /**
+   * Model every turn runs on, in the CLI's own vocabulary (e.g. `"opus"` for
+   * claude-code). Gated by {@link Capabilities.modelSelection}.
+   */
+  model?: string;
   resume?: string;
 }
 
 /**
  * The per-turn options a session accepts: everything the agent accepts minus
- * `resume` and `forkSession`, which the session owns. Passing either anyway
- * throws `AnyAgentError` (`code: "InvalidOptions"`).
+ * what the session owns — `resume` and `forkSession`, plus the thread's
+ * settings (`model`, `effort`, `cwd`, `env`, `mcp`, `extraArgs`; see
+ * {@link SessionOptions}). Passing any of them anyway throws
+ * `AnyAgentError` (`code: "InvalidOptions"`).
  */
 export type SessionRunOptionsFor<C extends Capabilities> = Omit<
   RunOptionsFor<C>,
-  "forkSession" | "resume"
+  | "cwd"
+  | "effort"
+  | "env"
+  | "extraArgs"
+  | "forkSession"
+  | "mcp"
+  | "model"
+  | "resume"
 >;
 
 /** The members {@link Session.supports} gates: the native-tier verbs. */
@@ -926,6 +1019,11 @@ export type SessionKey = "respond" | "steer";
  * behind it; calling `run` again afterwards retries from the last good
  * point.
  *
+ * A session is a thread: the {@link SessionOptions} settings it was opened
+ * with are fixed for its lifetime and ride every turn, so `run` takes only
+ * per-turn options. Changing a setting means a new session, or a fork of this
+ * one to keep the history.
+ *
  * `id` is the resume handle: `undefined` until the first turn reveals it,
  * then stable. Persist it anywhere and pass it back as
  * `agent.session({ resume: id })` to continue the conversation later, from
@@ -937,6 +1035,12 @@ export type SessionKey = "respond" | "steer";
  */
 export interface Session<C extends Capabilities = Capabilities> {
   readonly agent: Agent<C>;
+  /**
+   * End the conversation and release whatever it holds. Turns still queued
+   * reject; a closed session refuses new ones (`InvalidOptions`). Safe to call
+   * twice. `id` stays valid, so the conversation can be resumed later.
+   */
+  close: () => Promise<void>;
   readonly id: string | undefined;
   /**
    * Answer a `permission-request` event: pass the id of one of the event's

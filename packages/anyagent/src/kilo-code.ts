@@ -17,8 +17,8 @@ import type { Adapter } from "./types.js";
  * hint, not a guarantee.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { kiloCode } from "anyagent/kilo-code";
+ * import { create } from "anyagent-js";
+ * import { kiloCode } from "anyagent-js/kilo-code";
  *
  * const result = await create(kiloCode()).run("summarize this repo");
  * ```

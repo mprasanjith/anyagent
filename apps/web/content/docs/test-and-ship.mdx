@@ -12,7 +12,7 @@ Your tests should not depend on which CLIs the CI machine has installed. Both en
 `detect({ probe })` takes two functions: `which` resolves a binary name to a path or `undefined`, and `exec` returns a command’s output:
 
 ```ts
-import { detect } from "anyagent";
+import { detect } from "anyagent-js";
 
 const probe = {
   which: async (bin: string) =>
@@ -31,8 +31,8 @@ Pass `adapters` alongside `probe` to scan a subset or include a custom adapter; 
 `create(source, { probe })` takes the richer [`SystemProbe`](/docs/api#systemprobe) — env, home dir, and file reads — so `authStatus()` and `models()` run against a machine you define:
 
 ```ts
-import { create } from "anyagent";
-import { claudeCode } from "anyagent/claude-code";
+import { create } from "anyagent-js";
+import { claudeCode } from "anyagent-js/claude-code";
 
 const agent = create(claudeCode(), {
   probe: {

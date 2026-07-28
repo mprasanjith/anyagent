@@ -27,6 +27,13 @@ const evaluate = (text: string, schema: Record<string, unknown>): Parsed => {
   return errors.length ? { errors } : { json: value };
 };
 
+const schemaFailure = (errors: string[], text: string): AnyAgentError =>
+  new AnyAgentError(
+    "Parse",
+    `reply did not match schema: ${errors.join("; ")}`,
+    { issues: errors, raw: text }
+  );
+
 const correctionPrompt = (
   prompt: string,
   previous: string,
@@ -35,6 +42,36 @@ const correctionPrompt = (
   `${prompt}\n\nYour previous reply could not be used:\n\n<previous-reply>\n${previous}\n</previous-reply>\n\nIt failed these checks:\n${errors
     .map((e) => `- ${e}`)
     .join("\n")}\n\nReply again with only a corrected JSON value.`;
+
+// `attempt` must withhold its terminal `done`: the caller emits exactly one,
+// carrying the parsed result.
+export const runWithSchema = async (
+  prompt: string,
+  opts: RunOptions,
+  attempt: (text: string) => Promise<RunResult>,
+  emit: (event: AgentEvent) => void
+): Promise<RunResult> => {
+  const first = await attempt(prompt);
+  if (opts.schema === undefined) {
+    return first;
+  }
+  const parsed = evaluate(first.text, opts.schema);
+  if ("json" in parsed) {
+    return { ...first, json: parsed.json };
+  }
+  if (opts.schemaRetries === 0) {
+    throw schemaFailure(parsed.errors, first.text);
+  }
+  emit({ issues: parsed.errors, type: "schema-retry" });
+  const retry = await attempt(
+    correctionPrompt(prompt, first.text, parsed.errors)
+  );
+  const second = evaluate(retry.text, opts.schema);
+  if ("errors" in second) {
+    throw schemaFailure(second.errors, retry.text);
+  }
+  return { ...retry, json: second.json };
+};
 
 // The push-fed core shared by every {@link Run}: a real Promise (so jest-style
 // `.rejects` matchers and `.catch`/`.finally` all work) that is also an event
@@ -114,6 +151,10 @@ export abstract class RunHandle extends Promise<RunResult> implements Run {
     }
   }
 
+  protected get settled(): boolean {
+    return this.#settled;
+  }
+
   protected emit(event: AgentEvent): void {
     this.#events.push(event);
     this.#onEvent?.(event);
@@ -121,7 +162,12 @@ export abstract class RunHandle extends Promise<RunResult> implements Run {
     this.#notify = undefined;
   }
 
+  // First settle wins: a late success must not overwrite the failure consumers
+  // were already handed.
   protected finish(failure?: unknown): void {
+    if (this.#settled) {
+      return;
+    }
     this.#failure = failure;
     this.#settled = true;
     this.#notify?.();
@@ -173,28 +219,14 @@ export class RunImpl extends RunHandle {
       }
       validateOptions(this.#adapter, opts);
 
-      const first = await this.#attempt(prompt, opts);
-      let final = first;
-      if (opts.schema !== undefined) {
-        const parsed = evaluate(first.text, opts.schema);
-        if ("json" in parsed) {
-          final = { ...first, json: parsed.json };
-        } else {
-          const retry = await this.#attempt(
-            correctionPrompt(prompt, first.text, parsed.errors),
-            opts
-          );
-          const second = evaluate(retry.text, opts.schema);
-          if ("errors" in second) {
-            throw new AnyAgentError(
-              "Parse",
-              `reply did not match schema: ${second.errors.join("; ")}`,
-              { raw: retry.text }
-            );
-          }
-          final = { ...retry, json: second.json };
+      const final = await runWithSchema(
+        prompt,
+        opts,
+        (text) => this.#attempt(text, opts),
+        (event) => {
+          this.emit(event);
         }
-      }
+      );
       this.emit({ result: final, type: "done" });
       this.finish();
       return final;

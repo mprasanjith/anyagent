@@ -277,10 +277,10 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   // using ChatGPT") prints to stderr, so both streams are read.
   const text = `${res.stdout}\n${res.stderr}`.trim();
   if (res.code !== 0) {
-    return { raw: text, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
   const method = AUTH_METHODS.find(([re]) => re.test(text))?.[1];
-  return { method, raw: text, state: "authenticated" };
+  return { method, state: "authenticated" };
 };
 
 const effortsOf = (model: Json): string[] | undefined => {
@@ -340,8 +340,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * `authStatus()` asks `codex login status`.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { codex } from "anyagent/codex";
+ * import { create } from "anyagent-js";
+ * import { codex } from "anyagent-js/codex";
  *
  * const result = await create(codex()).run("summarize this repo");
  * ```

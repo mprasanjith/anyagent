@@ -259,16 +259,13 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   let parsed: Json;
   try {
     parsed = JSON.parse(body);
-  } catch (error) {
-    return {
-      raw: { error: String(error), path: paths[index] },
-      state: "unknown",
-    };
+  } catch {
+    return { state: "unknown" };
   }
   const providers = Object.keys(parsed?.providers ?? {});
   return providers.length > 0
-    ? { providers, raw: parsed, state: "authenticated" }
-    : { raw: parsed, state: "unauthenticated" };
+    ? { providers, state: "authenticated" }
+    : { state: "unauthenticated" };
 };
 
 /**
@@ -278,8 +275,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * configured, read from cline's provider settings.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { cline } from "anyagent/cline";
+ * import { create } from "anyagent-js";
+ * import { cline } from "anyagent-js/cline";
  *
  * const result = await create(cline()).run("summarize this repo");
  * ```

@@ -69,7 +69,7 @@ test("forkSession and attachments map through the kilo binary", () => {
 
 test("kilo declares its own acp endpoint and native fork/attachments", () => {
   const agent = kiloCode();
-  expect(agent.acp).toEqual({ command: ["kilo", "acp"] });
+  expect(agent.acp?.command).toEqual(["kilo", "acp"]);
   expect(agent.capabilities.sessionFork).toBe("native");
   expect(agent.capabilities.attachments).toBe("native");
 });

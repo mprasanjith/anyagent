@@ -232,7 +232,7 @@ const modelWithEffort = (opts: RunOptions): string | undefined => {
 
 const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   // `--trust` always: a headless run otherwise stalls on the workspace-trust
-  // prompt, which nothing in run()/runStream() could answer.
+  // prompt, which nothing in run() could answer.
   const args = ["-p", "--output-format", "stream-json", "--trust"];
   if (opts.readOnly) {
     // Plan mode is enforced read-only (live-verified: writes are refused,
@@ -274,9 +274,9 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
     return res.code === 0 ? { state: "unknown" } : { state: "unauthenticated" };
   }
   if (res.code !== 0 || parsed?.isAuthenticated !== true) {
-    return { raw: parsed, state: "unauthenticated" };
+    return { state: "unauthenticated" };
   }
-  return { raw: parsed, state: "authenticated" };
+  return { state: "authenticated" };
 };
 
 // One model per `<id> - <label>` line; the header and the trailing tip line
@@ -324,8 +324,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * `agent status`; `models()` asks `agent --list-models`.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { cursor } from "anyagent/cursor";
+ * import { create } from "anyagent-js";
+ * import { cursor } from "anyagent-js/cursor";
  *
  * const result = await create(cursor()).run("summarize this repo");
  * ```
@@ -335,7 +335,16 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * Cursor manages them through `agent mcp` configuration.
  */
 export const cursor = (): Adapter<typeof CAPS> => ({
-  acp: { command: ["agent", "acp"] },
+  acp: {
+    command: ["agent", "acp"],
+    // Cursor also advertises `session/set_mode`; the config option is the one
+    // channel it shares with the rest of the live tier.
+    readOnly: { configId: "mode", value: "plan" },
+    settings: ({ effort, model }) => {
+      const value = modelWithEffort({ effort, model });
+      return { configOptions: value ? [{ configId: "model", value }] : [] };
+    },
+  },
   authStatus,
   buildInvocation,
   capabilities: CAPS,

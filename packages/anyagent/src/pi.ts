@@ -336,12 +336,10 @@ const ENV_PROVIDERS: readonly (readonly [string, string])[] = [
 
 const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   const providers = new Set<string>();
-  let raw: unknown;
   const body = await probe.readFile(`${probe.homedir()}/.pi/agent/auth.json`);
   if (body !== undefined) {
     try {
       const stored = JSON.parse(body) as Record<string, unknown>;
-      raw = stored;
       for (const provider of Object.keys(stored)) {
         providers.add(provider);
       }
@@ -356,7 +354,6 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   }
   return {
     providers: [...providers],
-    raw,
     state: providers.size > 0 ? "authenticated" : "unauthenticated",
   };
 };
@@ -392,8 +389,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * `"openrouter/openai/gpt-4o-mini"`).
  *
  * ```ts
- * import { create } from "anyagent";
- * import { pi } from "anyagent/pi";
+ * import { create } from "anyagent-js";
+ * import { pi } from "anyagent-js/pi";
  *
  * const result = await create(pi()).run("summarize this repo");
  * ```

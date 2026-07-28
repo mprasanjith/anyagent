@@ -10,6 +10,7 @@ import type {
   PromptResponse,
   RequestPermissionOutcome,
   RequestPermissionRequest,
+  SessionConfigOption,
   SessionNotification,
   SessionUpdate,
   Stream,
@@ -24,12 +25,15 @@ import { AnyAgentError } from "../errors.js";
  * The line-oriented duplex an {@link AcpClient} speaks over. ACP v1 frames
  * JSON-RPC 2.0 messages one-per-line, so the transport only has to move whole
  * lines: `send` writes one outgoing line, `onLine` delivers each incoming line,
- * `close` tears the channel down. A real transport wraps a spawned agent's
- * stdin/stdout; tests inject a scripted fake, so the client never touches a
- * process or socket directly.
+ * `close` tears the channel down, and `onDeath` reports the failure that ended
+ * it — carrying whatever diagnostics (`argv`, `stderr`) the transport can see —
+ * so a request that can never be answered rejects instead of hanging. A real
+ * transport wraps a spawned agent's stdin/stdout; tests inject a scripted fake,
+ * so the client never touches a process or socket directly.
  */
 export interface AcpTransport {
   close: () => void;
+  onDeath: (listener: (failure: AnyAgentError) => void) => void;
   onLine: (listener: (line: string) => void) => void;
   send: (line: string) => void;
 }
@@ -96,17 +100,26 @@ export interface PromptTurn {
   readonly result: Promise<PromptResponse>;
 }
 
+export interface ConfigOptionInput {
+  configId: string;
+  value: string;
+}
+
 /** A live ACP session: the unit that prompts, streams, and cancels. */
 export interface AcpSession {
   cancel: () => Promise<void>;
+  // Ends the session agent-side; the connection itself stays open.
+  close: () => Promise<void>;
+  // Each select-type config option's value as the session opened.
+  readonly config: ReadonlyMap<string, string>;
   prompt: (input: PromptInput, onUpdate?: UpdateListener) => PromptTurn;
   readonly sessionId: string;
+  setConfigOption: (option: ConfigOptionInput) => Promise<void>;
 }
 
-// Shared routing state between the client-app handlers and its sessions: a
-// per-session update listener for the in-flight turn, and the single
-// integrator-set permission handler.
+// Shared routing state between the client-app handlers and its sessions.
 interface Dispatch {
+  readonly dead: Promise<never>;
   permissionHandler: PermissionHandler | undefined;
   readonly updateListeners: Map<string, UpdateListener>;
 }
@@ -114,35 +127,122 @@ interface Dispatch {
 const toContentBlocks = (input: PromptInput): ContentBlock[] =>
   typeof input === "string" ? [{ text: input, type: "text" }] : input;
 
-const streamFor = (transport: AcpTransport): Stream => {
+const LINE_SNIPPET_LEN = 120;
+
+// A dead channel can never answer, so everything the client waits on races
+// `dead` rather than hanging on it.
+interface Channel {
+  readonly dead: Promise<never>;
+  readonly stream: Stream;
+}
+
+const channelFor = (transport: AcpTransport): Channel => {
+  let kill: (failure: AnyAgentError) => void = () => undefined;
+  const dead = new Promise<never>((_resolve, reject) => {
+    kill = reject;
+  });
+  // A channel can die with nothing racing it — between turns, or after close.
+  dead.catch(() => undefined);
+
+  let controller: ReadableStreamDefaultController<AnyMessage> | undefined;
+  let dying = false;
+  const die = (failure: AnyAgentError): void => {
+    if (dying) {
+      return;
+    }
+    dying = true;
+    kill(failure);
+    try {
+      controller?.close();
+    } catch {
+      // The connection may have closed the stream first, which is the same end.
+    }
+  };
+
   const readable = new ReadableStream<AnyMessage>({
-    start(controller) {
+    start(active) {
+      controller = active;
       transport.onLine((line) => {
         const trimmed = line.trim();
-        if (trimmed.length === 0) {
+        if (dying || trimmed.length === 0) {
           return;
         }
-        controller.enqueue(JSON.parse(trimmed) as AnyMessage);
+        let message: AnyMessage;
+        try {
+          message = JSON.parse(trimmed) as AnyMessage;
+        } catch (error) {
+          die(
+            new AnyAgentError(
+              "Parse",
+              `invalid JSON line: ${trimmed.slice(0, LINE_SNIPPET_LEN)}`,
+              { raw: error }
+            )
+          );
+          return;
+        }
+        active.enqueue(message);
       });
     },
   });
+  transport.onDeath(die);
+
   const writable = new WritableStream<AnyMessage>({
     write(message) {
+      if (dying) {
+        return;
+      }
       transport.send(JSON.stringify(message));
     },
   });
-  return { readable, writable };
+  return { dead, stream: { readable, writable } };
+};
+
+const currentValues = (
+  options: SessionConfigOption[] | null | undefined
+): Map<string, string> => {
+  const config = new Map<string, string>();
+  for (const option of options ?? []) {
+    if (option.type === "select") {
+      config.set(option.id, option.currentValue);
+    }
+  }
+  return config;
 };
 
 class AcpSessionImpl implements AcpSession {
   readonly sessionId: string;
+  readonly config: ReadonlyMap<string, string>;
   readonly #context: ClientContext;
   readonly #dispatch: Dispatch;
 
-  constructor(sessionId: string, context: ClientContext, dispatch: Dispatch) {
+  constructor(
+    sessionId: string,
+    context: ClientContext,
+    dispatch: Dispatch,
+    config: ReadonlyMap<string, string>
+  ) {
     this.sessionId = sessionId;
     this.#context = context;
     this.#dispatch = dispatch;
+    this.config = config;
+  }
+
+  async setConfigOption(option: ConfigOptionInput): Promise<void> {
+    await Promise.race([
+      this.#context.request("session/set_config_option", {
+        configId: option.configId,
+        sessionId: this.sessionId,
+        value: option.value,
+      }),
+      this.#dispatch.dead,
+    ]);
+  }
+
+  async close(): Promise<void> {
+    await Promise.race([
+      this.#context.request("session/close", { sessionId: this.sessionId }),
+      this.#dispatch.dead,
+    ]);
   }
 
   prompt(input: PromptInput, onUpdate?: UpdateListener): PromptTurn {
@@ -151,14 +251,15 @@ class AcpSessionImpl implements AcpSession {
     }
     // The listener is scoped to this turn: routed updates carry no turn id, so
     // it is cleared once the turn settles rather than leaking into the next.
-    const result = this.#context
-      .request("session/prompt", {
+    const result = Promise.race([
+      this.#context.request("session/prompt", {
         prompt: toContentBlocks(input),
         sessionId: this.sessionId,
-      })
-      .finally(() => {
-        this.#dispatch.updateListeners.delete(this.sessionId);
-      });
+      }),
+      this.#dispatch.dead,
+    ]).finally(() => {
+      this.#dispatch.updateListeners.delete(this.sessionId);
+    });
     return { result };
   }
 
@@ -203,11 +304,13 @@ export class AcpClient {
    * stored and returned.
    */
   async initialize(options?: InitializeOptions): Promise<InitializeResult> {
-    const response = await this.#connection.agent.request("initialize", {
-      clientCapabilities: options?.clientCapabilities ?? {},
-      clientInfo: options?.clientInfo ?? null,
-      protocolVersion: PROTOCOL_VERSION,
-    });
+    const response = await this.#alive(
+      this.#connection.agent.request("initialize", {
+        clientCapabilities: options?.clientCapabilities ?? {},
+        clientInfo: options?.clientInfo ?? null,
+        protocolVersion: PROTOCOL_VERSION,
+      })
+    );
     if (response.protocolVersion !== PROTOCOL_VERSION) {
       this.close();
       throw new AnyAgentError(
@@ -222,17 +325,24 @@ export class AcpClient {
     };
   }
 
+  #alive<T>(pending: Promise<T>): Promise<T> {
+    return Promise.race([pending, this.#dispatch.dead]);
+  }
+
   /** Opens a fresh session with `session/new`. */
   async newSession(request: NewSessionInput): Promise<AcpSession> {
-    const response = await this.#connection.agent.request("session/new", {
-      additionalDirectories: request.additionalDirectories,
-      cwd: request.cwd,
-      mcpServers: request.mcpServers ?? [],
-    });
+    const response = await this.#alive(
+      this.#connection.agent.request("session/new", {
+        additionalDirectories: request.additionalDirectories,
+        cwd: request.cwd,
+        mcpServers: request.mcpServers ?? [],
+      })
+    );
     return new AcpSessionImpl(
       response.sessionId,
       this.#connection.agent,
-      this.#dispatch
+      this.#dispatch,
+      currentValues(response.configOptions)
     );
   }
 
@@ -248,16 +358,19 @@ export class AcpClient {
         "the agent did not advertise session/load support"
       );
     }
-    await this.#connection.agent.request("session/load", {
-      additionalDirectories: request.additionalDirectories,
-      cwd: request.cwd,
-      mcpServers: request.mcpServers ?? [],
-      sessionId: request.sessionId,
-    });
+    const response = await this.#alive(
+      this.#connection.agent.request("session/load", {
+        additionalDirectories: request.additionalDirectories,
+        cwd: request.cwd,
+        mcpServers: request.mcpServers ?? [],
+        sessionId: request.sessionId,
+      })
+    );
     return new AcpSessionImpl(
       request.sessionId,
       this.#connection.agent,
-      this.#dispatch
+      this.#dispatch,
+      currentValues(response.configOptions)
     );
   }
 
@@ -284,7 +397,9 @@ export const connect = (
   transport: AcpTransport,
   options?: { name?: string }
 ): AcpClient => {
+  const channel = channelFor(transport);
   const dispatch: Dispatch = {
+    dead: channel.dead,
     permissionHandler: undefined,
     updateListeners: new Map(),
   };
@@ -299,6 +414,6 @@ export const connect = (
       : { outcome: "cancelled" };
     return { outcome };
   });
-  const connection = app.connect(streamFor(transport));
+  const connection = app.connect(channel.stream);
   return new AcpClient(connection, transport, dispatch);
 };

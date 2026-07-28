@@ -13,8 +13,8 @@ import type { Adapter } from "./types.js";
  * passes a provider-defined variant name to the CLI verbatim.
  *
  * ```ts
- * import { create } from "anyagent";
- * import { opencode } from "anyagent/opencode";
+ * import { create } from "anyagent-js";
+ * import { opencode } from "anyagent-js/opencode";
  *
  * const result = await create(opencode()).run("summarize this repo");
  * ```
