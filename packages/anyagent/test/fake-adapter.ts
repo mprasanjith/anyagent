@@ -1,9 +1,9 @@
 import { ndjsonParser } from "../src/ndjson.js";
 import type {
-  Adapter,
   Capabilities,
   Invocation,
   OutputSource,
+  StdoutAdapter,
   SystemProbe,
 } from "../src/types.js";
 
@@ -91,7 +91,7 @@ const streamParse = ndjsonParser<{ sessionId?: string; text: string[] }>({
   },
 });
 
-export const fakeStreaming: Adapter = {
+export const fakeStreaming: StdoutAdapter = {
   authStatus: () => Promise.resolve({ state: "authenticated" }),
   buildInvocation: (prompt) => ({
     args: ["-p", prompt],
@@ -101,10 +101,11 @@ export const fakeStreaming: Adapter = {
   detection: {},
   listModels: () => Promise.resolve([{ id: "fake-model" }]),
   meta: { bin: ["fake-stream"], id: "fake-stream", name: "Fake Stream" },
+  mode: "stdout",
   parse: streamParse,
 };
 
-export const fakeText: Adapter = {
+export const fakeText: StdoutAdapter = {
   buildInvocation: (prompt) => ({ args: [prompt], command: "fake-text" }),
   capabilities: {
     ...allCaps,
@@ -119,6 +120,7 @@ export const fakeText: Adapter = {
   },
   detection: {},
   meta: { bin: ["fake-text"], id: "fake-text", name: "Fake Text" },
+  mode: "stdout",
   // Models the plain-text harnesses (Copilot/Kiro-style) from the audit:
   // no native event stream, so parse synthesizes the whole run from stdout.
   async *parse(source) {
@@ -134,7 +136,7 @@ export const fakeText: Adapter = {
 };
 
 // An agent whose effort vocabulary is closed, for value-level gating tests.
-export const fakeClosedEffort: Adapter = {
+export const fakeClosedEffort: StdoutAdapter = {
   ...fakeStreaming,
   capabilities: {
     ...allCaps,
@@ -142,4 +144,5 @@ export const fakeClosedEffort: Adapter = {
     reasoningEfforts: ["low", "high"],
   },
   meta: { bin: ["fake-closed"], id: "fake-closed", name: "Fake Closed" },
+  mode: "stdout",
 };

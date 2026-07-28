@@ -1,13 +1,13 @@
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   ModelInfo,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   ToolName,
   Usage,
@@ -315,12 +315,13 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * const result = await create(antigravity()).run("summarize this repo");
  * ```
  */
-export const antigravity = (): Adapter<typeof CAPS> => ({
+export const antigravity = (): StdoutAdapter<typeof CAPS> => ({
   authStatus,
   buildInvocation,
   capabilities: CAPS,
   detection: {},
   listModels,
   meta: { bin: ["agy"], id: "antigravity", name: "Antigravity" },
+  mode: "stdout",
   parse,
 });

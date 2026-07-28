@@ -4,7 +4,11 @@
 
 **BREAKING** — `AuthStatus.raw` is gone. Every adapter's `authStatus()` now returns only `state`, `method`, and `providers`; the native payload it carried could hold live credentials. Read the normalized fields instead.
 
+**BREAKING** — an adapter now drives its CLI one way, declared on `adapter.mode`: `"stdout"` carries `buildInvocation` and `parse`, `"acp"` carries an `acp` endpoint. The mixed-mode bridge is gone, so a mode an agent cannot honor throws rather than falling back.
+
 **BREAKING** — `Capabilities.session` now answers `"acp" | "stdout" | false` — the mode sessions run in — replacing `"native" | "emulated"`.
+
+**Changed** — gemini-cli cannot continue a conversation: reattaching is broken upstream, so `resume` throws and every session starts fresh.
 
 **BREAKING** — a session is a thread: `model`, `effort`, `cwd`, `env`, `mcp`, and `extraArgs` moved from per-turn options to `agent.session()`, where they are validated up front and ride every turn. Passing one to `session.run()` throws `InvalidOptions`. Fork a session to continue the conversation under different settings. `agent.run()` is unchanged.
 

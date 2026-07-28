@@ -2,7 +2,7 @@ import {
   type OpencodeFamilyCapabilities,
   opencodeFamilyAdapter,
 } from "./internal/opencode-family.js";
-import type { Adapter } from "./types.js";
+import type { AcpAdapter, StdoutAdapter } from "./types.js";
 
 /**
  * The adapter for opencode (`opencode`). A run gets the CLI's full
@@ -40,7 +40,8 @@ export type OpencodeCapabilities = Omit<
   "mcp" | "session"
 > & { readonly mcp: "native"; readonly session: "acp" };
 
-export const opencode = (): Adapter<OpencodeCapabilities> => {
+export const opencode = (): AcpAdapter<OpencodeCapabilities> &
+  Pick<StdoutAdapter<OpencodeCapabilities>, "buildInvocation" | "parse"> => {
   const adapter = opencodeFamilyAdapter({
     // Verified on 1.18.4: the CLI merges this document over the user's own
     // config rather than replacing it, so a run's servers add to what the

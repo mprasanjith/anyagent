@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
+  AcpAdapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   ToolName,
 } from "./types.js";
@@ -301,7 +302,11 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * text, so a failed turn returns that text as the reply rather than
  * throwing.
  */
-export const goose = (): Adapter<typeof CAPS> => ({
+export const goose = (): AcpAdapter<typeof CAPS> &
+  Pick<
+    StdoutAdapter<typeof CAPS>,
+    "buildInvocation" | "parse" | "sessionSeed"
+  > => ({
   acp: {
     command: ["goose", "acp"],
     // `thinking_effort` exists only on the ACP endpoint, so the declared
@@ -320,6 +325,7 @@ export const goose = (): Adapter<typeof CAPS> => ({
   capabilities: CAPS,
   detection: {},
   meta: { bin: ["goose"], id: "goose", name: "goose" },
+  mode: "acp",
   parse,
   // Goose sessions are keyed by name and the headless stream never reveals
   // one, so the session provides the handle: the first turn registers the

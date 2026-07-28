@@ -9,8 +9,8 @@ import type {
   Session,
   SessionKey,
   SessionOptions,
+  StdoutAdapter,
 } from "../types.js";
-import { AcpSessionImpl } from "./acp-session.js";
 import { validateOptions } from "./capabilities.js";
 import { RunImpl } from "./run.js";
 
@@ -66,51 +66,36 @@ interface PendingTurn {
 // gate resolves with the threaded options once every earlier turn settled. A
 // failed turn rejects the turns queued behind it and the queue resets to the
 // last good handle, so a later `run` retries from there.
-//
-// This class is the mode seam: when the agent declares `session: "acp"` with
-// an ACP endpoint it delegates every verb to an {@link AcpSessionImpl};
-// otherwise the stdout-mode path below runs untouched. `steer`/`respond` are
-// ACP-mode verbs; stdout mode throws.
 export class SessionImpl<C extends Capabilities = Capabilities>
   implements Session<C>
 {
   readonly agent: Agent<C>;
+  readonly #adapter: StdoutAdapter;
   readonly #runner: Runner;
-  readonly #acp: AcpSessionImpl<C> | undefined;
   #id: string | undefined;
   #resumeNext: string | undefined;
   #forkNext: boolean;
   readonly #seedFirstRunOptions: RunOptions | undefined;
   readonly #settings: RunOptions;
-  readonly #delegated: boolean;
   readonly #pending: PendingTurn[] = [];
   #draining = false;
   #turns = 0;
   #closed = false;
 
-  constructor(
-    agent: Agent<C>,
-    runner: Runner,
-    opts: SessionOptions = {},
-    // The mixed-mode fallback constructs a stdout-mode cursor directly; this
-    // flag keeps it from re-selecting ACP mode and looping back on itself. Its
-    // turns arrive with the outer session's settings already merged in.
-    forceStdout = false
-  ) {
-    this.agent = agent;
-    this.#runner = runner;
-    this.#delegated = forceStdout;
-    this.#settings = settingsOf(opts);
-    validateOptions(agent.adapter, this.#settings);
-    this.#forkNext = opts.fork === true;
-    if (
-      !forceStdout &&
-      agent.adapter.capabilities.session === "acp" &&
-      agent.adapter.acp
-    ) {
-      this.#acp = new AcpSessionImpl(agent, runner, opts);
-      return;
+  constructor(agent: Agent<C>, runner: Runner, opts: SessionOptions = {}) {
+    const { adapter } = agent;
+    if (adapter.mode !== "stdout") {
+      throw new AnyAgentError(
+        "UnsupportedCapability",
+        `${adapter.meta.id} runs every turn over its ACP endpoint`
+      );
     }
+    this.agent = agent;
+    this.#adapter = adapter;
+    this.#runner = runner;
+    this.#settings = settingsOf(opts);
+    validateOptions(adapter, this.#settings);
+    this.#forkNext = opts.fork === true;
     if (this.#forkNext && opts.resume === undefined) {
       throw new AnyAgentError(
         "InvalidOptions",
@@ -122,7 +107,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
       this.#resumeNext = opts.resume;
       return;
     }
-    const seed = agent.adapter.sessionSeed?.();
+    const seed = adapter.sessionSeed?.();
     if (seed) {
       this.#id = seed.id;
       this.#seedFirstRunOptions = seed.firstRunOptions;
@@ -130,34 +115,21 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   }
 
   get id(): string | undefined {
-    return this.#acp ? this.#acp.id : this.#id;
+    return this.#id;
   }
 
   supports(...keys: SessionKey[]): boolean {
-    if (this.#acp) {
-      return this.#acp.supports(...keys);
-    }
-    // Stdout mode has no live channel; ACP-backed sessions provide these verbs
-    // by construction.
     return keys.length === 0;
   }
 
-  steer(text: string): void {
-    if (this.#acp) {
-      this.#acp.steer(text);
-      return;
-    }
+  steer(_text: string): void {
     throw new AnyAgentError(
       "UnsupportedCapability",
       `${this.agent.adapter.meta.id} runs sessions in stdout mode; steer needs an ACP-mode session`
     );
   }
 
-  respond(requestId: string, choice: string): void {
-    if (this.#acp) {
-      this.#acp.respond(requestId, choice);
-      return;
-    }
+  respond(_requestId: string, _choice: string): void {
     throw new AnyAgentError(
       "UnsupportedCapability",
       `${this.agent.adapter.meta.id} runs sessions in stdout mode; respond needs an ACP-mode session`
@@ -165,9 +137,6 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   }
 
   close(): Promise<void> {
-    if (this.#acp) {
-      return this.#acp.close();
-    }
     this.#closed = true;
     for (const queued of this.#pending.splice(0)) {
       queued.rejectGate(new AnyAgentError("Aborted", "the run was aborted"));
@@ -181,13 +150,8 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     if (this.#closed) {
       throw new AnyAgentError("InvalidOptions", "this session is closed");
     }
-    if (!this.#delegated) {
-      rejectOwned(callOpts);
-    }
+    rejectOwned(callOpts);
     const opts: RunOptions = { ...callOpts, ...this.#settings };
-    if (this.#acp) {
-      return this.#acp.run(prompt, opts);
-    }
 
     let resolveGate: PendingTurn["resolveGate"] = () => {
       throw new Error("unreachable: promise executors run synchronously");
@@ -201,7 +165,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     });
 
     const run = new RunImpl(
-      this.agent.adapter,
+      this.#adapter,
       this.#runner,
       prompt,
       opts,

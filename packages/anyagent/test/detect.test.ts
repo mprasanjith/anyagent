@@ -42,6 +42,7 @@ const adapter: Adapter = {
     versionRegex: /(?<version>\d+\.\d+\.\d+)/u,
   },
   meta: { bin: ["demo", "demo-cli"], id: "demo", name: "Demo" },
+  mode: "stdout",
   parse: noopParse,
 };
 

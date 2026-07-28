@@ -26,18 +26,15 @@ import {
   scriptedTransport,
   update,
 } from "./acp-transport.js";
-import {
-  fakeStreaming,
-  runnerFromFixture,
-  sourceFromBody,
-} from "./fake-adapter.js";
+import { fakeStreaming, runnerFromFixture } from "./fake-adapter.js";
 
-// An ACP-mode adapter: an ACP endpoint plus `session: "acp"`. Everything
-// else mirrors the streaming fake so the stdout-mode fallback has a real parser.
+// An ACP-mode adapter: an ACP endpoint and nothing the core spawns.
 const acpAdapter: Adapter = {
-  ...fakeStreaming,
   acp: { command: ["fake-acp"] },
   capabilities: { ...fakeStreaming.capabilities, session: "acp" },
+  detection: {},
+  meta: { bin: ["fake-acp"], id: "fake-acp", name: "Fake ACP" },
+  mode: "acp",
 };
 
 const acpAgent = (runner = runnerFromFixture("")): AgentImpl =>
@@ -110,7 +107,6 @@ test("a native turn translates updates into events, text, and a sessionId", asyn
 
   const session = new AcpSessionImpl(
     acpAgent(),
-    runnerFromFixture(""),
     { cwd: "/repo" },
     () => transport
   );
@@ -175,12 +171,7 @@ test("turns queue on one connection, threaded in order", async () => {
     api.emit(response(second.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const [a, b] = await Promise.all([
     session.run("first"),
     session.run("second"),
@@ -215,12 +206,7 @@ test("steer sends an additional prompt on the open connection mid-turn", async (
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("go");
   for await (const event of run) {
     if (event.type === "text-delta" && event.text === "working") {
@@ -264,12 +250,7 @@ test("a permission request is surfaced as an event then auto-allowed", async () 
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("edit");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -308,12 +289,7 @@ test("a cancelled turn aborts via session/cancel and throws Aborted", async () =
     api.emit(response(prompt.id, { stopReason: "cancelled" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("long task");
   // Abort once the turn is live; the iterator surfaces the same failure.
   try {
@@ -338,12 +314,7 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
     api.emit(response(prompt.id, { stopReason: "refusal" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   await expect(session.run("bad")).rejects.toMatchObject({
     code: "Invocation",
     raw: { stopReason: "refusal" },
@@ -354,10 +325,7 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
 // No transport factory: these drive the default one, spawning `command`.
 const spawningSession = (command: string[]): AcpSessionImpl => {
   const adapter: Adapter = { ...acpAdapter, acp: { command } };
-  return new AcpSessionImpl(
-    new AgentImpl(adapter, runnerFromFixture("")),
-    runnerFromFixture("")
-  );
+  return new AcpSessionImpl(new AgentImpl(adapter, runnerFromFixture("")));
 };
 
 test("a missing ACP binary fails the turn with Invocation and its argv", async () => {
@@ -395,12 +363,7 @@ test("a non-JSON stdout line rejects the turn with Parse", async () => {
     api.line("Welcome to fake-acp 1.0");
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   await expect(session.run("hi")).rejects.toMatchObject({ code: "Parse" });
   await transport.done;
 });
@@ -430,12 +393,7 @@ test("an agent dying mid-turn rejects the turn with the transport's diagnostics"
     );
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   const events: AgentEvent[] = [];
   let thrown: unknown;
@@ -479,12 +437,7 @@ test("aborting a queued turn leaves the in-flight turn untouched", async () => {
     api.emit(response(first.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const first = session.run("first");
   const second = session.run("second");
   second.abort();
@@ -500,12 +453,7 @@ test("aborting before the connection opens still settles the run Aborted", async
     await api.next();
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   run.abort();
   await expect(run).rejects.toMatchObject({ code: "Aborted" });
@@ -514,20 +462,15 @@ test("aborting before the connection opens still settles the run Aborted", async
 
 test("an already-aborted signal settles the run without opening a transport", async () => {
   let opened = 0;
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => {
-      opened += 1;
-      return {
-        close: () => undefined,
-        onDeath: () => undefined,
-        onLine: () => undefined,
-        send: () => undefined,
-      };
-    }
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => {
+    opened += 1;
+    return {
+      close: () => undefined,
+      onDeath: () => undefined,
+      onLine: () => undefined,
+      send: () => undefined,
+    };
+  });
   const controller = new AbortController();
   controller.abort();
 
@@ -554,12 +497,7 @@ test("opts.signal firing mid-turn cancels the live turn", async () => {
     api.emit(response(prompt.id, { stopReason: "cancelled" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const controller = new AbortController();
   const run = session.run("long task", { signal: controller.signal });
   try {
@@ -584,12 +522,7 @@ test("a failed turn rejects the turns queued behind it", async () => {
     api.emit(response(first.id, { stopReason: "refusal" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const first = session.run("first");
   const second = session.run("second");
 
@@ -622,12 +555,7 @@ test("a failed steer leaves the turn in exactly one terminal state", async () =>
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("go");
   const events: AgentEvent[] = [];
   let thrown: unknown;
@@ -667,12 +595,7 @@ test("session lands once, first, and session_info_update does not repeat it", as
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -717,12 +640,7 @@ test("usage reaches the events and the result", async () => {
     );
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -775,12 +693,7 @@ test("a failed tool call reports a tool-result named from its call", async () =>
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("read it");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -816,7 +729,6 @@ test("resume reattaches with session/load when loadSession is advertised", async
 
   const session = new AcpSessionImpl(
     acpAgent(),
-    runnerFromFixture(""),
     { cwd: "/repo", resume: "s-old" },
     () => transport
   );
@@ -827,21 +739,18 @@ test("resume reattaches with session/load when loadSession is advertised", async
   await transport.done;
 });
 
-test("resume without loadSession falls back to the stdout-mode cursor", async () => {
-  const fixture =
-    '{"t":"session","v":"s2"}\n{"t":"text","v":"emulated ok"}\n{"t":"end"}';
+test("resume without loadSession fails the turn rather than reattaching", async () => {
   // The agent only completes the handshake; no session/load is ever sent.
   const transport = scriptedTransport((api) => handshake(api, {}));
 
   const session = new AcpSessionImpl(
     acpAgent(),
-    runnerFromFixture(fixture),
     { resume: "s-old" },
     () => transport
   );
-  const result = await session.run("continue");
-  expect(result.text).toBe("emulated ok");
-  expect(result.sessionId).toBe("s2");
+  await expect(session.run("continue")).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
   await transport.done;
 });
 
@@ -874,22 +783,17 @@ const countingPrompts = (
 test("an unsupported option rejects before the transport is ever opened", async () => {
   let opened = 0;
   const sent: string[] = [];
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => {
-      opened += 1;
-      return {
-        close: () => undefined,
-        onDeath: () => undefined,
-        onLine: () => undefined,
-        send: (line) => {
-          sent.push(line);
-        },
-      };
-    }
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => {
+    opened += 1;
+    return {
+      close: () => undefined,
+      onDeath: () => undefined,
+      onLine: () => undefined,
+      send: (line) => {
+        sent.push(line);
+      },
+    };
+  });
 
   // `attachments` is false on the fake adapter.
   await expect(
@@ -927,12 +831,7 @@ test("a schema turn re-asks once, emits schema-retry, and resolves with json", a
   });
   const { counted, prompts } = countingPrompts(scripted);
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => counted
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => counted);
   const run = session.run("give me json", { schema: okSchema });
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -969,12 +868,7 @@ test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", a
   });
   const { counted, prompts } = countingPrompts(scripted);
 
-  const session = new AcpSessionImpl(
-    acpAgent(),
-    runnerFromFixture(""),
-    {},
-    () => counted
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => counted);
   const failure = await session
     .run("give me json", { schema: okSchema, schemaRetries: 0 })
     .catch((error: unknown) => error as AnyAgentError);
@@ -985,7 +879,7 @@ test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", a
   await scripted.done;
 });
 
-test("an acp adapter with an acp endpoint routes session() to ACP mode", () => {
+test('mode: "acp" routes session() to the live connection', () => {
   const session = acpAgent().session();
   expect(session.supports("steer")).toBe(true);
   expect(session.supports("respond")).toBe(false);
@@ -995,7 +889,7 @@ test("an acp adapter with an acp endpoint routes session() to ACP mode", () => {
   );
 });
 
-test('a session capability short of "acp" keeps the stdout-mode behavior', async () => {
+test('mode: "stdout" routes session() to one process per turn', async () => {
   const withId = '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
   const agent = new AgentImpl(fakeStreaming, runnerFromFixture(withId));
   const session = agent.session();
@@ -1006,17 +900,6 @@ test('a session capability short of "acp" keeps the stdout-mode behavior', async
   const result = await session.run("hi");
   expect(result.text).toBe("ok");
   expect(session.id).toBe("s1");
-
-  // An "acp" declaration without an acp endpoint also stays in stdout mode.
-  const noEndpoint: Adapter = {
-    ...fakeStreaming,
-    capabilities: { ...fakeStreaming.capabilities, session: "acp" },
-  };
-  const stillStdout = new AgentImpl(
-    noEndpoint,
-    runnerFromFixture(withId)
-  ).session();
-  expect(stillStdout.supports("steer")).toBe(false);
 });
 
 // An ACP-mode session on one shipped adapter, its ACP endpoint replaced by a
@@ -1028,7 +911,6 @@ const acpSession = (
 ): AcpSessionImpl =>
   new AcpSessionImpl(
     new AgentImpl(adapter, runnerFromFixture("")),
-    runnerFromFixture(""),
     opts,
     factory
   );
@@ -1196,7 +1078,6 @@ test("effort on a live cline session throws before anything opens", () => {
     () =>
       new AcpSessionImpl(
         new AgentImpl(cline(), runnerFromFixture("")),
-        runnerFromFixture(""),
         { effort: "high" },
         () => {
           opened += 1;
@@ -1213,7 +1094,6 @@ test("effort on a live opencode session throws before anything opens", () => {
     () =>
       new AcpSessionImpl(
         new AgentImpl(opencode(), runnerFromFixture("")),
-        runnerFromFixture(""),
         { effort: "high" },
         () => {
           opened += 1;
@@ -1468,48 +1348,23 @@ test("closing an emulated session rejects the turns still queued", async () => {
   );
 });
 
-// An ACP-mode adapter whose stdout mode can fork, and whose invocation reports
-// the options the delegate threaded through.
+// An ACP-mode adapter that declares it can branch a conversation.
 const forkAdapter: Adapter = {
   ...acpAdapter,
-  buildInvocation: (prompt, opts) => ({
-    args: [
-      "-p",
-      prompt,
-      ...(opts.model ? ["--model", opts.model] : []),
-      ...(opts.forkSession ? ["--fork"] : []),
-      ...(opts.resume ? ["--resume", opts.resume] : []),
-    ],
-    command: "fake-acp",
-    cwd: opts.cwd,
-  }),
   capabilities: { ...acpAdapter.capabilities, sessionFork: "native" },
 };
 
-test("fork without an advertised session/fork runs through the stdout-mode delegate, settings intact", async () => {
-  const fixture =
-    '{"t":"session","v":"s2"}\n{"t":"text","v":"forked"}\n{"t":"end"}';
-  const seen: Invocation[] = [];
+test("fork without an advertised session/fork fails the turn rather than branching", async () => {
   // The agent only completes the handshake; no session/fork is ever sent.
   const transport = scriptedTransport((api) => handshake(api, {}));
   const session = new AcpSessionImpl(
-    new AgentImpl(forkAdapter, runnerFromFixture(fixture)),
-    (invocation: Invocation) => {
-      seen.push(invocation);
-      return sourceFromBody(fixture);
-    },
+    new AgentImpl(forkAdapter, runnerFromFixture("")),
     { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
     () => transport
   );
 
-  const result = await session.run("branch");
-
-  expect(result.text).toBe("forked");
-  expect(session.id).toBe("s2");
-  expect(session.supports("steer")).toBe(false);
-  expect(seen[0]).toMatchObject({
-    args: ["-p", "branch", "--model", "opus", "--fork", "--resume", "s-old"],
-    cwd: "/repo",
+  await expect(session.run("branch")).rejects.toMatchObject({
+    code: "UnsupportedCapability",
   });
   await transport.done;
 });
@@ -1567,7 +1422,6 @@ test("fork branches over the wire when the agent advertises it, settings applied
   };
   const session = new AcpSessionImpl(
     new AgentImpl(configuringAdapter, runnerFromFixture("")),
-    runnerFromFixture(""),
     { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
     () => transport
   );
@@ -1676,7 +1530,6 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode", "cline"]) {
 
     const session = new AcpSessionImpl(
       acpAgent(),
-      runnerFromFixture(""),
       { cwd: "/repo" },
       () => transport
     );
@@ -1775,7 +1628,6 @@ test("replays the recorded opencode session/fork handshake", async () => {
 
   const session = new AcpSessionImpl(
     acpAgent(),
-    runnerFromFixture(""),
     { cwd: fx.cwd, fork: true, resume: fx.parentId },
     () => transport
   );

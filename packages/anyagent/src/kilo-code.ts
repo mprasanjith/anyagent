@@ -2,7 +2,7 @@ import {
   type OpencodeFamilyCapabilities,
   opencodeFamilyAdapter,
 } from "./internal/opencode-family.js";
-import type { Adapter } from "./types.js";
+import type { AcpAdapter, StdoutAdapter } from "./types.js";
 
 /**
  * Kilo's capabilities: the family's, with ACP-mode sessions. The recorded
@@ -43,7 +43,8 @@ export type KiloCodeCapabilities = Omit<
  * const result = await create(kiloCode()).run("summarize this repo");
  * ```
  */
-export const kiloCode = (): Adapter<KiloCodeCapabilities> => {
+export const kiloCode = (): AcpAdapter<KiloCodeCapabilities> &
+  Pick<StdoutAdapter<KiloCodeCapabilities>, "buildInvocation" | "parse"> => {
   const adapter = opencodeFamilyAdapter({
     acpEffort: "effort",
     configEnv: "KILO_CONFIG_CONTENT",

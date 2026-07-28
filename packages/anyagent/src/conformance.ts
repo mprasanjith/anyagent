@@ -11,6 +11,7 @@ import type {
   RunOptions,
   RunResult,
   SessionSupport,
+  StdoutAdapter,
 } from "./types.js";
 
 /**
@@ -101,7 +102,7 @@ const checkStream = (name: string, events: AgentEvent[]): void => {
 };
 
 const checkStdoutStream = async (
-  adapter: Adapter,
+  adapter: StdoutAdapter,
   name: string,
   body: string
 ): Promise<void> => {
@@ -286,7 +287,6 @@ const driveTurn = async (
   });
   const session = new AcpSessionImpl(
     new AgentImpl(adapter, fixedRunner("")),
-    fixedRunner(""),
     {},
     () => transport
   );
@@ -417,17 +417,19 @@ export const runConformance = async (
   const agentOf = () => new AgentImpl(adapter, fixedRunner(""));
   const runWith = (runOpts: RunOptions) => () => agentOf().run("x", runOpts);
 
-  await Promise.all(
-    Object.entries(opts.fixtures).map(([name, body]) =>
-      checkStdoutStream(adapter, name, body)
-    )
-  );
+  if (adapter.mode === "stdout") {
+    await Promise.all(
+      Object.entries(opts.fixtures).map(([name, body]) =>
+        checkStdoutStream(adapter, name, body)
+      )
+    );
+  }
 
   const transcripts = Object.entries(opts.transcripts ?? {});
   if (transcripts.length > 0) {
     assert(
-      adapter.acp !== undefined && caps.session === "acp",
-      'a recorded ACP transcript belongs to an adapter that declares an acp endpoint and `session: "acp"`'
+      adapter.mode === "acp",
+      "a recorded ACP transcript belongs to an adapter that drives its CLI over ACP"
     );
     await Promise.all(
       transcripts.map(([name, text]) => checkTranscript(adapter, name, text))
@@ -435,11 +437,13 @@ export const runConformance = async (
   }
 
   if (caps.readOnly) {
-    const inv = adapter.buildInvocation("x", { readOnly: true });
-    assert(
-      inv.command.length > 0 && Array.isArray(inv.args),
-      "readOnly must build a valid invocation"
-    );
+    if (adapter.mode === "stdout") {
+      const inv = adapter.buildInvocation("x", { readOnly: true });
+      assert(
+        inv.command.length > 0 && Array.isArray(inv.args),
+        "readOnly must build a valid invocation"
+      );
+    }
   } else {
     assert(
       await throwsUnsupported(runWith({ readOnly: true })),

@@ -1,12 +1,13 @@
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
+  AcpAdapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   ToolName,
   Usage,
@@ -32,13 +33,10 @@ const CAPS = {
   // NOT used: headless, `exit_plan_mode` self-approves and the agent then
   // writes freely (verified live on 0.46).
   readOnly: "native",
-  // ACP mode, gated on a recorded real transcript (sessions.md §6 M-2):
-  // test/fixtures/acp/gemini-cli.jsonl — initialize on protocolVersion 1, a
-  // session id, an agent_message_chunk streaming "pong", stopReason end_turn.
-  // Surprise vs the ledger: this build of gemini advertises `loadSession: true`,
-  // so the mixed-mode fallback (which triggers when it is absent) never fires —
-  // resume attempts real ACP session/load, still broken upstream (#15502).
-  session: "acp",
+  // Reattachment is broken upstream (#15502): the endpoint advertises
+  // `loadSession` and `session/load` then fails, so a session here only ever
+  // starts fresh.
+  session: false,
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
@@ -235,9 +233,10 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * yolo approval mode by default; `readOnly: true` switches to a mode whose
  * toolset carries no write or shell tools at all. `model` passes through in
  * Gemini's own vocabulary (pin one — the CLI's automatic routing can spend
- * minutes on trivial prompts), and `resume` continues the session whose id
- * arrived on `RunResult.sessionId`. System prompt and structured output are
+ * minutes on trivial prompts). System prompt and structured output are
  * emulated; usage reports cache reads via the stream's `cached` counter.
+ * A session always starts fresh: reattachment is broken upstream (#15502), so
+ * `resume` throws.
  *
  * ```ts
  * import { create } from "anyagent-js";
@@ -246,7 +245,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * const result = await create(geminiCli()).run("summarize this repo");
  * ```
  */
-export const geminiCli = (): Adapter<typeof CAPS> => ({
+export const geminiCli = (): AcpAdapter<typeof CAPS> &
+  Pick<StdoutAdapter<typeof CAPS>, "buildInvocation" | "parse"> => ({
   acp: {
     // Without --skip-trust the endpoint downgrades its approval mode with only
     // a stderr notice, so a live turn would silently lose its autonomy.
@@ -260,5 +260,6 @@ export const geminiCli = (): Adapter<typeof CAPS> => ({
   capabilities: CAPS,
   detection: {},
   meta: { bin: ["gemini"], id: "gemini-cli", name: "Gemini CLI" },
+  mode: "acp",
   parse,
 });

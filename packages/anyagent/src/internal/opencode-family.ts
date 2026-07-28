@@ -1,8 +1,8 @@
 import { AnyAgentError } from "../errors.js";
 import { ndjsonParser } from "../ndjson.js";
 import type {
+  AcpAdapter,
   AcpConfigOption,
-  Adapter,
   AdapterMeta,
   AgentEvent,
   AuthStatus,
@@ -11,6 +11,7 @@ import type {
   McpConfig,
   ModelInfo,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   Usage,
 } from "../types.js";
@@ -409,7 +410,11 @@ export interface OpencodeFamilySpec {
 
 export const opencodeFamilyAdapter = (
   spec: OpencodeFamilySpec
-): Adapter<OpencodeFamilyCapabilities> => {
+): AcpAdapter<OpencodeFamilyCapabilities> &
+  Pick<
+    StdoutAdapter<OpencodeFamilyCapabilities>,
+    "buildInvocation" | "parse"
+  > => {
   const command = spec.meta.bin[0] ?? spec.meta.id;
   return {
     // Both siblings ship an `acp` subcommand (`opencode acp` verified locally,
@@ -446,6 +451,7 @@ export const opencodeFamilyAdapter = (
     detection: {},
     listModels: makeListModels(command),
     meta: spec.meta,
+    mode: "acp",
     parse: makeParse(spec.meta.id),
   };
 };

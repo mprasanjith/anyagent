@@ -1,13 +1,13 @@
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   ModelInfo,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   Usage,
 } from "./types.js";
@@ -401,12 +401,13 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * `RunResult.sessionId`. A failed turn throws `AnyAgentError` even though
  * Pi's process exits 0.
  */
-export const pi = (): Adapter<typeof CAPS> => ({
+export const pi = (): StdoutAdapter<typeof CAPS> => ({
   authStatus,
   buildInvocation,
   capabilities: CAPS,
   detection: {},
   listModels,
   meta: { bin: ["pi"], id: "pi", name: "Pi" },
+  mode: "stdout",
   parse,
 });

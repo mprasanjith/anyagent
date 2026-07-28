@@ -154,13 +154,8 @@ test("conformance rejects a result.sessionId that contradicts the session event"
 });
 
 test("conformance rejects a transcript on an adapter with no ACP mode", async () => {
-  const adapter = opencode();
-  const stdoutOnly: Adapter = {
-    ...adapter,
-    capabilities: { ...adapter.capabilities, session: "stdout" },
-  };
   await expect(
-    runConformance(stdoutOnly, {
+    runConformance(fakeStreaming, {
       fixtures: {},
       transcripts: transcript("opencode"),
     })

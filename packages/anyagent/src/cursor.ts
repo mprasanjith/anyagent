@@ -1,13 +1,14 @@
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
+  AcpAdapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   ModelInfo,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   ToolName,
   Usage,
@@ -336,7 +337,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * append-system-prompt or schema flag. MCP servers are not supported per-run;
  * Cursor manages them through `agent mcp` configuration.
  */
-export const cursor = (): Adapter<typeof CAPS> => ({
+export const cursor = (): AcpAdapter<typeof CAPS> &
+  Pick<StdoutAdapter<typeof CAPS>, "buildInvocation" | "parse"> => ({
   acp: {
     command: ["agent", "acp"],
     // Cursor also advertises `session/set_mode`; the config option is the one
@@ -353,5 +355,6 @@ export const cursor = (): Adapter<typeof CAPS> => ({
   detection: {},
   listModels,
   meta: { bin: ["agent", "cursor-agent"], id: "cursor", name: "Cursor" },
+  mode: "acp",
   parse,
 });

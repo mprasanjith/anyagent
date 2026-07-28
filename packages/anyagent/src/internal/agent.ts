@@ -18,7 +18,8 @@ import type {
   SystemProbe,
 } from "../types.js";
 import { EXTENSION_CAPABILITY } from "../types.js";
-import { RunImpl } from "./run.js";
+import { AcpSessionImpl } from "./acp-session.js";
+import { RunImpl, rejectedRun } from "./run.js";
 import {
   realSystemProbe,
   spawnAndStream,
@@ -68,14 +69,26 @@ export class AgentImpl<C extends Capabilities = Capabilities>
   }
 
   run(prompt: string, opts: RunOptions = {}): Run {
-    return new RunImpl(this.adapter, this.runner, prompt, opts);
+    const { adapter } = this;
+    return adapter.mode === "stdout"
+      ? new RunImpl(adapter, this.runner, prompt, opts)
+      : rejectedRun(
+          new AnyAgentError(
+            "UnsupportedCapability",
+            `${adapter.meta.id} runs every turn over its ACP endpoint`
+          )
+        );
   }
 
   session(opts: SessionOptions = {}): Session<C> {
-    if (!this.adapter.capabilities.session) {
+    const { adapter } = this;
+    if (adapter.mode === "acp") {
+      return new AcpSessionImpl(this, opts);
+    }
+    if (!adapter.capabilities.session) {
       throw new AnyAgentError(
         "UnsupportedCapability",
-        `${this.adapter.meta.id} cannot continue a conversation`
+        `${adapter.meta.id} cannot continue a conversation`
       );
     }
     return new SessionImpl(this, this.runner, opts);
@@ -104,7 +117,14 @@ export class AgentImpl<C extends Capabilities = Capabilities>
   }
 
   private build(prompt: string, opts: RunOptions): Invocation {
-    const invocation = this.adapter.buildInvocation(prompt, opts);
+    const { adapter } = this;
+    if (adapter.mode !== "stdout") {
+      throw new AnyAgentError(
+        "UnsupportedCapability",
+        `${adapter.meta.id} runs every turn over its ACP endpoint`
+      );
+    }
+    const invocation = adapter.buildInvocation(prompt, opts);
     return opts.extraArgs?.length
       ? { ...invocation, args: [...invocation.args, ...opts.extraArgs] }
       : invocation;

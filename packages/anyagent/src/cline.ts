@@ -1,13 +1,14 @@
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
+  AcpAdapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   OutputSource,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   ToolName,
   Usage,
@@ -205,7 +206,7 @@ const jsonLinesOnly = (source: OutputSource): OutputSource => ({
   },
 });
 
-const parse: Adapter["parse"] = (source, opts) =>
+const parse: StdoutAdapter["parse"] = (source, opts) =>
   innerParse(jsonLinesOnly(source), opts);
 
 const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
@@ -306,7 +307,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * no append flag (`-s` replaces) and are emulated. A failed run throws
  * `AnyAgentError` with cline's own message.
  */
-export const cline = (): Adapter<typeof CAPS> => ({
+export const cline = (): AcpAdapter<typeof CAPS> &
+  Pick<StdoutAdapter<typeof CAPS>, "buildInvocation" | "parse"> => ({
   acp: {
     command: ["cline", "--acp"],
     // No `readOnly` option here: cline's ACP endpoint offers plan mode, but
@@ -333,5 +335,6 @@ export const cline = (): Adapter<typeof CAPS> => ({
   capabilities: CAPS,
   detection: {},
   meta: { bin: ["cline"], id: "cline", name: "Cline" },
+  mode: "acp",
   parse,
 });

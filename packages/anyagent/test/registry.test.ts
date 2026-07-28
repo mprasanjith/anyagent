@@ -47,6 +47,29 @@ test("the registry ships all ten builtin adapters", () => {
   expect([...byId.keys()].sort()).toEqual([...ALL].sort());
 });
 
+// The ACP adapters still carry the stdout half the core no longer drives;
+// phase 2 deletes it adapter by adapter and this list empties.
+const STDOUT_HALF_REMAINS: readonly string[] = [
+  "cline",
+  "cursor",
+  "gemini-cli",
+  "goose",
+  "kilo-code",
+  "opencode",
+];
+
+test("every builtin declares one mode, with an ACP endpoint exactly where it says", () => {
+  for (const adapter of BUILTINS) {
+    expect(["acp", "stdout"]).toContain(adapter.mode);
+    expect("acp" in adapter).toBe(adapter.mode === "acp");
+    if (adapter.mode === "acp") {
+      expect(STDOUT_HALF_REMAINS.includes(adapter.meta.id)).toBe(
+        "parse" in adapter
+      );
+    }
+  }
+});
+
 const DISCOVERY: readonly unknown[] = ["native", "probed", false];
 const SUPPORT: readonly unknown[] = ["native", "emulated", false];
 

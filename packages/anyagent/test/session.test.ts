@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 
 import { AnyAgentError } from "../src/errors.js";
 import { AgentImpl } from "../src/internal/agent.js";
-import type { Adapter, Invocation, RunOptions } from "../src/types.js";
+import type {
+  Adapter,
+  Invocation,
+  RunOptions,
+  StdoutAdapter,
+} from "../src/types.js";
 import {
   fakeClosedEffort,
   fakeStreaming,
@@ -16,10 +21,10 @@ const NO_ID = '{"t":"text","v":"ok"}\n{"t":"end"}';
 
 // Wraps a fake so each turn's options are observable.
 const recording = (
-  base: Adapter,
+  base: StdoutAdapter,
   calls: RunOptions[],
-  overrides: Partial<Adapter> = {}
-): Adapter => ({
+  overrides: Partial<StdoutAdapter> = {}
+): StdoutAdapter => ({
   ...base,
   buildInvocation: (prompt, opts) => {
     calls.push(opts);
@@ -28,12 +33,12 @@ const recording = (
   ...overrides,
 });
 
-const forkable: Adapter = {
+const forkable: StdoutAdapter = {
   ...fakeStreaming,
   capabilities: { ...fakeStreaming.capabilities, sessionFork: "native" },
 };
 
-const threading: Adapter = {
+const threading: StdoutAdapter = {
   ...fakeStreaming,
   buildInvocation: (prompt, opts) => ({
     args: opts.model ? ["-p", prompt, "--model", opts.model] : ["-p", prompt],

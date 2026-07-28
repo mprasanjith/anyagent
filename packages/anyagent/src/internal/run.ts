@@ -1,12 +1,12 @@
 import { AnyAgentError } from "../errors.js";
 import type {
-  Adapter,
   AgentEvent,
   Invocation,
   OutputSource,
   Run,
   RunOptions,
   RunResult,
+  StdoutAdapter,
 } from "../types.js";
 import { validateOptions } from "./capabilities.js";
 import { applyEmulations } from "./emulate.js";
@@ -175,18 +175,34 @@ export abstract class RunHandle extends Promise<RunResult> implements Run {
   }
 }
 
+// A run that never started: `agent.run` has always reported a bad request by
+// rejecting, so a failure decided before the turn begins arrives the same way.
+class RejectedRun extends RunHandle {
+  constructor(failure: unknown) {
+    super();
+    this.finish(failure);
+    this.reject(failure);
+  }
+
+  override abort(): void {
+    // Nothing to stop.
+  }
+}
+
+export const rejectedRun = (failure: unknown): Run => new RejectedRun(failure);
+
 // The concrete {@link Run} for stdout mode: the turn starts as soon as
 // `ready` resolves (immediately for agent.run; after the predecessor for a
 // queued session turn). The terminal `done` is withheld from intermediate
 // schema attempts and emitted once, carrying the same result awaiting resolves
 // with.
 export class RunImpl extends RunHandle {
-  readonly #adapter: Adapter;
+  readonly #adapter: StdoutAdapter;
   readonly #runner: Runner;
   readonly #controller = new AbortController();
 
   constructor(
-    adapter: Adapter,
+    adapter: StdoutAdapter,
     runner: Runner,
     prompt: string,
     opts: RunOptions,

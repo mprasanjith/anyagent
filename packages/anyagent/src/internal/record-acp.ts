@@ -48,7 +48,7 @@ const main = async (): Promise<void> => {
     process.exit(2);
   }
   const adapter = BUILTINS.find((a) => a.meta.id === id);
-  if (!adapter?.acp) {
+  if (adapter?.mode !== "acp") {
     process.stderr.write(`adapter ${id} declares no acp endpoint\n`);
     process.exit(2);
   }

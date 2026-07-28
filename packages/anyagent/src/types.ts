@@ -742,36 +742,19 @@ export interface AcpSpec {
 }
 
 /**
- * The contract for supporting one agent CLI. An adapter is data plus pure
- * functions: it describes how to invoke its CLI and how to read its output,
- * while the core does all actual I/O (spawning, stream handling, validation,
- * lifecycle). That split keeps adapters testable offline.
+ * What every adapter declares, whichever channel it drives its CLI over.
  *
  * Declare `capabilities` with `as const satisfies Capabilities` so the
  * table's literal types reach {@link Agent} and unsupported options become
  * compile errors for your consumers.
- *
- * To add one, implement this interface (use `ndjsonParser` when the CLI
- * emits NDJSON), record real fixtures, and run `runConformance` over them.
  */
-export interface Adapter<C extends Capabilities = Capabilities> {
-  /**
-   * How to launch and configure this CLI's ACP (Agent Client Protocol)
-   * endpoint, when it ships one; the shared client does the rest. Declaring it
-   * is what backs `session: "acp"`.
-   */
-  acp?: AcpSpec;
+export interface AdapterCore<C extends Capabilities = Capabilities> {
   /**
    * Answer {@link Agent.authStatus} from the probe. Required when `authStatus` is declared
    * available; read files and env, or run a
    * credential-status subcommand — never anything that costs a model call.
    */
   authStatus?: (probe: SystemProbe) => Promise<AuthStatus>;
-  /**
-   * Map a prompt plus validated options to the exact process to spawn. Pure:
-   * build the {@link Invocation}, never launch it.
-   */
-  buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
   capabilities: C;
   /** Replace default detection entirely; most adapters omit this. */
   detect?: (probe: VersionProbe) => Promise<Detection>;
@@ -783,6 +766,23 @@ export interface Adapter<C extends Capabilities = Capabilities> {
    */
   listModels?: (probe: SystemProbe) => Promise<ModelInfo[]>;
   meta: AdapterMeta;
+}
+
+/**
+ * An adapter that drives its CLI one process per turn: it describes how to
+ * invoke the CLI and how to read its output, and the core does the I/O.
+ *
+ * To add one, implement this interface (use `ndjsonParser` when the CLI emits
+ * NDJSON), record real fixtures, and run `runConformance` over them.
+ */
+export interface StdoutAdapter<C extends Capabilities = Capabilities>
+  extends AdapterCore<C> {
+  /**
+   * Map a prompt plus validated options to the exact process to spawn. Pure:
+   * build the {@link Invocation}, never launch it.
+   */
+  buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
+  mode: "stdout";
   /**
    * Map the process output to normalized events, ending with exactly one
    * `done`. Under `strict`, throw `AnyAgentError` (`code: "Parse"`) on any
@@ -802,6 +802,28 @@ export interface Adapter<C extends Capabilities = Capabilities> {
    */
   sessionSeed?: () => SessionSeed;
 }
+
+/**
+ * An adapter that drives its CLI over ACP (Agent Client Protocol): it
+ * describes how to launch and configure the endpoint, and the shared client
+ * speaks the protocol. Every turn runs on a live connection, which is what
+ * unlocks {@link Session.steer} and `permission-request` events.
+ */
+export interface AcpAdapter<C extends Capabilities = Capabilities>
+  extends AdapterCore<C> {
+  acp: AcpSpec;
+  mode: "acp";
+}
+
+/**
+ * The contract for supporting one agent CLI: a {@link StdoutAdapter} or an
+ * {@link AcpAdapter}, told apart by `mode`. An adapter is data plus pure
+ * functions; the core does all actual I/O (spawning, connecting, stream
+ * handling, validation, lifecycle), which keeps adapters testable offline.
+ */
+export type Adapter<C extends Capabilities = Capabilities> =
+  | AcpAdapter<C>
+  | StdoutAdapter<C>;
 
 /**
  * What {@link Adapter.sessionSeed} returns: the handle a session's later
@@ -1035,8 +1057,8 @@ export type SessionKey = "respond" | "steer";
  * any process.
  *
  * `steer` and `respond` exist on ACP-mode sessions only
- * (`Capabilities.session: "acp"`); check with `session.supports("steer")`,
- * the same gesture as {@link Agent.supports}.
+ * (`adapter.mode: "acp"`); check with `session.supports("steer")`, the same
+ * gesture as {@link Agent.supports}.
  */
 export interface Session<C extends Capabilities = Capabilities> {
   readonly agent: Agent<C>;

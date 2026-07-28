@@ -7,7 +7,7 @@ The `gemini-cli` adapter drives the Gemini CLI in headless mode, detected as the
 
 ## What you can ask for
 
-`model`, `readOnly`, and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `effort`, `mcp`, and model listing are undeclared and throw. `authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain. The full grid is on the [support matrix](/docs/adapters).
+`model` and `readOnly` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `effort`, `mcp`, `resume`, and model listing are undeclared and throw. `authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
@@ -15,8 +15,7 @@ The `gemini-cli` adapter drives the Gemini CLI in headless mode, detected as the
 Pin a model. Automatic routing can spend minutes self-investigating a trivial prompt, so never leave `model` unset expecting a sane default.
 </Callout>
 
-- The init event’s session id lands on `result.sessionId`; `resume` takes that UUID.
-- Resuming an ACP-mode session from a different process can fail; start a fresh session instead.
+- A session always starts fresh: reattaching is broken upstream, so `agent.session({ resume })` throws.
 - Usage maps the terminal stats block: `cached` becomes `cacheReadTokens`.
 
 ## Under the hood
@@ -27,4 +26,3 @@ Every run executes `gemini -p "" --output-format stream-json --skip-trust --appr
 | ---------------- | ----------------------------------------------------------------------------- |
 | `readOnly: true` | `--approval-mode default`, whose headless toolset has no write or shell tools |
 | `model`          | `-m <name>`, in the Gemini CLI’s own vocabulary; never defaulted              |
-| `resume`         | `--resume <sessionId>`                                                        |

@@ -1,12 +1,12 @@
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   ToolName,
   Usage,
@@ -295,7 +295,7 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * const result = await create(claudeCode()).run("summarize this repo");
  * ```
  */
-export const claudeCode = (): Adapter<typeof CAPS> => ({
+export const claudeCode = (): StdoutAdapter<typeof CAPS> => ({
   authStatus,
   buildInvocation,
   capabilities: CAPS,
@@ -304,5 +304,6 @@ export const claudeCode = (): Adapter<typeof CAPS> => ({
     versionRegex: VERSION_REGEX,
   },
   meta: { bin: ["claude"], id: "claude-code", name: "Claude Code" },
+  mode: "stdout",
   parse,
 });
