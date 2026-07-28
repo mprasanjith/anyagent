@@ -6,7 +6,7 @@ import path from "node:path";
 import { BUILTINS } from "./builtins.js";
 
 // A raw ACP transcript recorder. Unlike src/internal/record.ts (which captures
-// a print-mode CLI's stdout), this speaks newline-framed JSON-RPC 2.0 directly
+// a stdout-mode CLI's output), this speaks newline-framed JSON-RPC 2.0 directly
 // over the agent's stdio and captures EVERY line both directions. It never
 // reuses the AcpClient: the transcript has to be the raw wire, so the session
 // gate (docs/specs/sessions.md §6 M-2) can judge a real handshake, not our

@@ -74,9 +74,9 @@ test("kilo declares its own acp endpoint and native fork/attachments", () => {
   expect(agent.capabilities.attachments).toBe("native");
 });
 
-test("kilo takes the live session tier while keeping the family's acp spec", () => {
+test("kilo takes ACP-mode sessions while keeping the family's acp spec", () => {
   const agent = kiloCode();
-  expect(agent.capabilities.session).toBe("native");
+  expect(agent.capabilities.session).toBe("acp");
   expect(agent.acp?.readOnly).toEqual({ configId: "mode", value: "plan" });
   expect(agent.acp?.settings?.({ model: "kilo/openai/gpt-5.4" })).toEqual({
     configOptions: [{ configId: "model", value: "kilo/openai/gpt-5.4" }],

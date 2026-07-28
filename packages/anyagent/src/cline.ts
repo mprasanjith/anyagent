@@ -23,21 +23,21 @@ const CAPS = {
   mcp: false,
   modelListing: false,
   modelSelection: "native",
-  // A capability covers both tiers, and print mode has no read-only channel:
+  // A capability covers both modes, and stdout mode has no read-only channel:
   // it auto-approves every tool, plan mode still executes shell commands
   // (verified writing a file through run_commands), and `--help` carries no
-  // deny or tool-restriction flag. The live tier alone could hold the line —
-  // see the `acp` spec — but it cannot carry the declaration by itself.
+  // deny or tool-restriction flag. ACP mode alone could hold the line — see
+  // the `acp` spec — but it cannot carry the declaration by itself.
   readOnly: false,
   reasoningEfforts: ["none", "low", "medium", "high", "xhigh"],
-  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // ACP mode, gated on a recorded real transcript (sessions.md §6 M-2):
   // test/fixtures/acp/cline.jsonl — initialize on protocolVersion 1, a session
-  // id, an agent_message_chunk streaming "pong", stopReason end_turn. The live
-  // endpoint is the only tier that continues a conversation: headless print
-  // mode reveals no session id, and its `--id` never accepts a prompt
-  // alongside it (upstream). This build advertises `loadSession: true`, so
-  // resume reattaches over ACP rather than falling back to that print path.
-  session: "native",
+  // id, an agent_message_chunk streaming "pong", stopReason end_turn. The ACP
+  // endpoint is the only mode that continues a conversation: stdout mode
+  // reveals no session id, and its `--id` never accepts a prompt alongside it
+  // (upstream). This build advertises `loadSession: true`, so resume
+  // reattaches over ACP rather than falling back to that stdout path.
+  session: "acp",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
@@ -212,7 +212,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
   if (opts.resume !== undefined) {
     throw new AnyAgentError(
       "UnsupportedCapability",
-      "cline: print mode cannot continue a conversation; resume through agent.session({ resume })"
+      "cline: a one-shot run cannot continue a conversation; resume through agent.session({ resume })"
     );
   }
   // Auto-approval is cline's headless default; passing it explicitly keeps
@@ -297,8 +297,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
  * Headless cline auto-approves every tool and cannot guarantee a read-only
  * run, so `readOnly: true` throws. Reasoning effort is native with a closed
  * vocabulary (`none` through `xhigh`) on a one-shot run; the live endpoint has
- * no channel for it, so `agent.session({ effort })` throws. Sessions are live —
- * `agent.session()` holds a `cline --acp` connection — and `model` selects the
+ * no channel for it, so `agent.session({ effort })` throws. Sessions run in ACP
+ * mode — `agent.session()` holds a `cline --acp` connection — and `model` selects the
  * session's model: pin one, because a session that leaves it unset inherits
  * cline's stored choice, which need not be a model the signed-in provider
  * serves, and the turn then ends with no output. A one-shot `run` reveals no
@@ -309,7 +309,7 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
 export const cline = (): Adapter<typeof CAPS> => ({
   acp: {
     command: ["cline", "--acp"],
-    // No `readOnly` option here: cline's live endpoint offers plan mode, but
+    // No `readOnly` option here: cline's ACP endpoint offers plan mode, but
     // plan mode still runs shell commands. Permission denial is what holds the
     // line, and live-verified that it does — a turn told to write a file asked
     // before every attempt (`run_commands` as `execute`, `apply_patch` as
@@ -319,7 +319,7 @@ export const cline = (): Adapter<typeof CAPS> => ({
       if (effort !== undefined) {
         throw new AnyAgentError(
           "UnsupportedCapability",
-          "cline: a live session cannot set reasoning effort; run it outside the session"
+          "cline: a session cannot set reasoning effort; run it outside the session"
         );
       }
       return {

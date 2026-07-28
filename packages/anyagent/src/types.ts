@@ -31,6 +31,19 @@ export type CapabilitySupport = "native" | "emulated" | false;
 export type DiscoverySupport = "native" | "probed" | false;
 
 /**
+ * The mode {@link Agent.session} runs in:
+ *
+ * - `"acp"` — the session holds one connection to the agent for its lifetime,
+ *   which unlocks the live verbs ({@link Session.steer},
+ *   {@link Session.respond}) and `permission-request` events.
+ * - `"stdout"` — the session threads the CLI's own resume flag, one process
+ *   per turn. Turns behave identically; only the live verbs are unavailable.
+ * - `false` — the CLI has no way to continue a conversation; both the
+ *   `resume` option and `session()` throw.
+ */
+export type SessionSupport = "acp" | "stdout" | false;
+
+/**
  * How hard the model should think, in the shared cross-agent vocabulary. The
  * named levels autocomplete, but any string is accepted and passed through,
  * because several CLIs take provider-defined names AnyAgent cannot enumerate.
@@ -132,18 +145,10 @@ export interface Capabilities {
    */
   reasoningEfforts?: readonly string[];
   /**
-   * How sessions are provided, gating {@link ExtensionOptions.resume} and
-   * {@link Agent.session}:
-   *
-   * - `"native"` — the session holds a live bidirectional channel to the
-   *   agent, unlocking {@link Session.steer}.
-   * - `"emulated"` — continuity works through `resume`, one turn at a time.
-   *   Turns behave identically; only the live-channel members
-   *   ({@link Session.steer}) are unavailable.
-   * - `false` — the CLI has no way to continue a conversation; both the
-   *   `resume` option and `session()` throw.
+   * The mode sessions run in, gating {@link ExtensionOptions.resume} and
+   * {@link Agent.session}. See {@link SessionSupport}.
    */
-  session: CapabilitySupport;
+  session: SessionSupport;
   /**
    * Whether resuming can branch into a new conversation instead of
    * continuing the old one. See {@link SessionOptions.fork} and
@@ -384,20 +389,20 @@ export const EXTENSION_CAPABILITY = {
 /** The name of one gated run option — the keys of {@link ExtensionOptions}. */
 export type ExtensionKey = keyof ExtensionOptions;
 
-type Available = Exclude<CapabilitySupport, false>;
+type Gate<K extends ExtensionKey> = (typeof EXTENSION_CAPABILITY)[K];
+
+type Available<P extends keyof Capabilities> = Exclude<Capabilities[P], false>;
 
 /**
  * The capability-table shape {@link Agent.supports} narrows to: the named
  * extensions' gates, known truthy.
  */
 export type SupportedCapabilities<K extends ExtensionKey> = {
-  [P in (typeof EXTENSION_CAPABILITY)[K]]: Available;
+  [P in Gate<K>]: Available<P>;
 };
 
 type EnabledExtensionKeys<C extends Capabilities> = {
-  [K in ExtensionKey]: C[(typeof EXTENSION_CAPABILITY)[K]] extends Available
-    ? K
-    : never;
+  [K in ExtensionKey]: C[Gate<K>] extends Available<Gate<K>> ? K : never;
 }[ExtensionKey];
 
 /**
@@ -709,7 +714,7 @@ export interface AcpConfigOption {
   value: string;
 }
 
-/** What a session's settings become on one CLI's live endpoint. */
+/** What a session's settings become on one CLI's ACP endpoint. */
 export interface AcpSettings {
   /** Appended to the endpoint's argv. */
   args?: string[];
@@ -753,7 +758,7 @@ export interface Adapter<C extends Capabilities = Capabilities> {
   /**
    * How to launch and configure this CLI's ACP (Agent Client Protocol)
    * endpoint, when it ships one; the shared client does the rest. Declaring it
-   * is what backs `session: "native"`.
+   * is what backs `session: "acp"`.
    */
   acp?: AcpSpec;
   /**
@@ -1008,7 +1013,7 @@ export type SessionRunOptionsFor<C extends Capabilities> = Omit<
   | "resume"
 >;
 
-/** The members {@link Session.supports} gates: the native-tier verbs. */
+/** The members {@link Session.supports} gates: the ACP-mode verbs. */
 export type SessionKey = "respond" | "steer";
 
 /**
@@ -1029,8 +1034,8 @@ export type SessionKey = "respond" | "steer";
  * `agent.session({ resume: id })` to continue the conversation later, from
  * any process.
  *
- * `steer` and `respond` exist on the live tier only
- * (`Capabilities.session: "native"`); check with `session.supports("steer")`,
+ * `steer` and `respond` exist on ACP-mode sessions only
+ * (`Capabilities.session: "acp"`); check with `session.supports("steer")`,
  * the same gesture as {@link Agent.supports}.
  */
 export interface Session<C extends Capabilities = Capabilities> {

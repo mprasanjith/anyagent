@@ -28,7 +28,7 @@ live(
   180_000
 );
 
-// The drift canary: production parsing is lenient, but the live tier runs the
+// The drift canary: production parsing is lenient, but the live tests run the
 // real CLI's fresh output through strict mode so an upstream format change
 // throws instead of silently emitting empty text.
 live(

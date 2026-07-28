@@ -30,15 +30,15 @@ import type { Adapter } from "./types.js";
  * reach them via config or `extraArgs`.
  */
 /**
- * opencode's capabilities: the family's, with sessions live — the ACP
- * transcript at `test/fixtures/acp/opencode.jsonl` backs the native tier — and
- * MCP on, which `OPENCODE_CONFIG_CONTENT` carries per run. Kilo keeps the
- * family's emulated tier and no MCP until each is verified against its binary.
+ * opencode's capabilities: the family's, with ACP-mode sessions — the ACP
+ * transcript at `test/fixtures/acp/opencode.jsonl` backs the mode — and MCP on,
+ * which `OPENCODE_CONFIG_CONTENT` carries per run. Kilo keeps the family's
+ * stdout mode and no MCP until each is verified against its binary.
  */
 export type OpencodeCapabilities = Omit<
   OpencodeFamilyCapabilities,
   "mcp" | "session"
-> & { readonly mcp: "native"; readonly session: "native" };
+> & { readonly mcp: "native"; readonly session: "acp" };
 
 export const opencode = (): Adapter<OpencodeCapabilities> => {
   const adapter = opencodeFamilyAdapter({
@@ -55,7 +55,7 @@ export const opencode = (): Adapter<OpencodeCapabilities> => {
     capabilities: {
       ...adapter.capabilities,
       mcp: "native" as const,
-      session: "native" as const,
+      session: "acp" as const,
     },
   };
 };

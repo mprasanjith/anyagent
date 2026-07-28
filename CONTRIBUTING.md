@@ -31,7 +31,7 @@ Two constraints that are not in the types:
 - Declare `capabilities` `as const satisfies Capabilities` so the literal types reach consumers and an unsupported option fails to compile. `authStatus` and `listModels` are required exactly when the matching capability is declared, and must never cost a model call.
 - Keep `buildInvocation` pure: it maps the prompt and validated options to command, args, env, and stdin `input`, and never launches anything. The core spawns, which keeps adapters testable offline. Pipe the prompt through `Invocation.input`, never a positional argument, so a large prompt cannot exceed the OS argv limit.
 
-`acp` declares an ACP endpoint that backs a native-tier session; `sessionSeed` supplies a resume handle up front for a CLI that reveals none headless (goose).
+`acp` declares an ACP endpoint that backs `session: "acp"`; `sessionSeed` supplies a resume handle up front for a CLI that reveals none headless (goose).
 
 ### 3. Map output to events in parse
 
@@ -107,7 +107,7 @@ test("hopper passes conformance", async () => {
 });
 ```
 
-An adapter with an ACP endpoint passes `transcripts: { recorded: read("fixtures/acp/hopper.jsonl") }` too, which replays the recorded transcript through a live session.
+An adapter with an ACP endpoint passes `transcripts: { recorded: read("fixtures/acp/hopper.jsonl") }` too, which replays the recorded transcript through an ACP-mode session.
 
 Run it and confirm green before moving on:
 
@@ -147,7 +147,7 @@ Versioning is driven by [changesets](https://github.com/changesets/changesets). 
 
 ## Contract invariants
 
-`runConformance` in `packages/anyagent/src/conformance.ts` is the executable half of the contract; it asserts what every adapter must uphold: exactly one terminal `done` per stream, `result.text` equal to the concatenated text deltas, a `sessionId` consistent with the `session` event, a valid invocation for whatever the capabilities declare, and an `UnsupportedCapability` throw for everything they do not, `authStatus()` and `models()` included. Recorded ACP transcripts hold the live tier to those same invariants plus the ones only it can break: a turn opens with its `session` event, an aborted or failed turn reaches exactly one terminal state, and a prompt response carrying usage reaches `RunResult.usage`. Read that file rather than reimplement the checks. Conformance helpers (`sourceFromBody`, `fixedRunner`) live in the same file.
+`runConformance` in `packages/anyagent/src/conformance.ts` is the executable half of the contract; it asserts what every adapter must uphold: exactly one terminal `done` per stream, `result.text` equal to the concatenated text deltas, a `sessionId` consistent with the `session` event, a valid invocation for whatever the capabilities declare, and an `UnsupportedCapability` throw for everything they do not, `authStatus()` and `models()` included. Recorded ACP transcripts hold ACP mode to those same invariants plus the ones only it can break: a turn opens with its `session` event, an aborted or failed turn reaches exactly one terminal state, and a prompt response carrying usage reaches `RunResult.usage`. Read that file rather than reimplement the checks. Conformance helpers (`sourceFromBody`, `fixedRunner`) live in the same file.
 
 ## KnownAgents for custom adapter authors
 

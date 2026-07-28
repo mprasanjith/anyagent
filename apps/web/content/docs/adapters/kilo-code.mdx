@@ -7,13 +7,13 @@ The `kilo-code` adapter drives the Kilo CLI through `kilo run --format json`; im
 
 ## What you can ask for
 
-`readOnly`, `model` (as `"provider/model"`), `effort` (a provider-defined variant name, passed verbatim), `resume`, `forkSession`, `attachments`, and `mcp` all work on the CLI’s own switches and config, and [sessions](/docs/sessions) run live over `kilo acp`; `systemPrompt` and `schema` are provided by AnyAgent. `models()` runs `kilo models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/kilo/auth.json` plus the provider key env vars, a hint rather than a guarantee. The full grid is on the [support matrix](/docs/adapters).
+`readOnly`, `model` (as `"provider/model"`), `effort` (a provider-defined variant name, passed verbatim), `resume`, `forkSession`, `attachments`, and `mcp` all work on the CLI’s own switches and config, and [sessions](/docs/sessions) run in ACP mode over `kilo acp`; `systemPrompt` and `schema` are provided by AnyAgent. `models()` runs `kilo models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/kilo/auth.json` plus the provider key env vars, a hint rather than a guarantee. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - Detection looks for `kilo`, then `kilocode`, on `PATH`; the first found wins.
 - The session id is surfaced once, on first sight, and lands on `result.sessionId`.
-- `agent.session()` holds a live `kilo acp` connection, so it steers too; `fork: true` branches over `session/fork`, and `readOnly` switches the session into plan mode. `agent.session({ effort })` throws — the connection carries no effort channel today, so pass `effort` to a one-shot `run`.
+- `agent.session()` holds one `kilo acp` connection, so it steers too; `fork: true` branches over `session/fork`, and `readOnly` switches the session into plan mode. `agent.session({ effort })` sets the session's effort level, judged by kilo against the levels its current model offers — a name a one-shot `run` accepts can still be refused here.
 - Usage arrives per step: each `step_finish` yields a `usage` event with that step’s share, including cache, reasoning, and cost, and `result.usage` carries the summed totals.
 
 ## Under the hood

@@ -36,7 +36,7 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  session: "emulated",
+  session: "stdout",
   // `--fork  fork the session before continuing (requires --continue or
   // --session)` — the core only sends `forkSession` alongside `resume`, which
   // maps to `--session`, so the prerequisite always holds.
@@ -389,9 +389,9 @@ const makeListModels =
 
 export interface OpencodeFamilySpec {
   /**
-   * The live endpoint's config option id for reasoning effort. Omit it where
+   * The ACP endpoint's config option id for reasoning effort. Omit it where
    * the endpoint advertises no such option — a sibling without one throws for
-   * `effort` on a live session instead.
+   * `effort` on a session instead.
    */
   acpEffort?: string;
   /**
@@ -426,7 +426,7 @@ export const opencodeFamilyAdapter = (
           if (spec.acpEffort === undefined) {
             throw new AnyAgentError(
               "UnsupportedCapability",
-              `${spec.meta.id}: a live session cannot set reasoning effort; run it outside the session`
+              `${spec.meta.id}: a session cannot set reasoning effort; run it outside the session`
             );
           }
           // Ordered after `model`: the endpoint scopes the effort levels it

@@ -12,7 +12,7 @@ const full: Capabilities = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  session: "emulated",
+  session: "stdout",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "native",

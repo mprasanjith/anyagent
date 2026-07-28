@@ -153,14 +153,14 @@ test("conformance rejects a result.sessionId that contradicts the session event"
   ).rejects.toThrow();
 });
 
-test("conformance rejects a transcript on an adapter with no live tier", async () => {
+test("conformance rejects a transcript on an adapter with no ACP mode", async () => {
   const adapter = opencode();
-  const emulated: Adapter = {
+  const stdoutOnly: Adapter = {
     ...adapter,
-    capabilities: { ...adapter.capabilities, session: "emulated" },
+    capabilities: { ...adapter.capabilities, session: "stdout" },
   };
   await expect(
-    runConformance(emulated, {
+    runConformance(stdoutOnly, {
       fixtures: {},
       transcripts: transcript("opencode"),
     })

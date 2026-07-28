@@ -34,7 +34,7 @@ const CAPS = {
   // mode stays reachable via `extraArgs: ["--mode", "plan"]`.
   readOnly: false,
   reasoningEfforts: ["low", "medium", "high"],
-  session: "emulated",
+  session: "stdout",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
@@ -225,7 +225,7 @@ const parse = ndjsonParser<Ctx>({
 });
 
 const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
-  // The prompt must be `-p`'s value: agy ignores piped stdin in print mode
+  // The prompt must be `-p`'s value: agy ignores piped stdin in stdout mode
   // (verified live — the prompt on stdin was dropped and the next flag was
   // read as the prompt), so a prompt larger than the OS argv limit cannot be
   // passed.

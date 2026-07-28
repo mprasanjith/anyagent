@@ -24,7 +24,7 @@ const CAPS = {
   modelSelection: "native",
   readOnly: "native",
   reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
-  session: "emulated",
+  session: "stdout",
   sessionFork: "native",
   streaming: "native",
   structuredOutput: "native",

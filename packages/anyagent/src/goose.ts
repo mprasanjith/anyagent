@@ -22,8 +22,9 @@ const CAPS = {
   // `--with-extension` attaches a server but has no slot for its name: goose
   // derives one from the command's first token, so two servers launched the
   // same way (`npx …`, the common case) collide and one is dropped in silence
-  // — verified on 1.43. The live tier names them properly, but capabilities
-  // are per-adapter, so honoring `mcp` here would be a lie in print mode.
+  // — verified on 1.43. The ACP endpoint names them properly, but
+  // capabilities are per-adapter, so honoring `mcp` here would be a lie in
+  // stdout mode.
   mcp: false,
   modelListing: false,
   modelSelection: "native",
@@ -31,10 +32,10 @@ const CAPS = {
   // files) and the approve modes hang headless — no honest read-only run
   // exists.
   readOnly: false,
-  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // ACP mode, gated on a recorded real transcript (sessions.md §6 M-2):
   // test/fixtures/acp/goose.jsonl — initialize on protocolVersion 1, a session
   // id, an agent_message_chunk streaming "pong", and stopReason end_turn.
-  session: "native",
+  session: "acp",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
@@ -303,8 +304,8 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
 export const goose = (): Adapter<typeof CAPS> => ({
   acp: {
     command: ["goose", "acp"],
-    // `thinking_effort` exists only on the live endpoint, so the declared
-    // `effort: false` (a print-tier fact) still gates it everywhere today.
+    // `thinking_effort` exists only on the ACP endpoint, so the declared
+    // `effort: false` (a stdout-mode fact) still gates it everywhere today.
     settings: ({ effort, model }) => ({
       configOptions: [
         ...(model === undefined ? [] : [{ configId: "model", value: model }]),

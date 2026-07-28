@@ -395,7 +395,7 @@ test("authStatus is unknown on unparseable JSON", async () => {
   expect(status).toEqual({ state: "unknown" });
 });
 
-test("a print-mode resume throws instead of running without the conversation", () => {
+test("a stdout-mode resume throws instead of running without the conversation", () => {
   let thrown: unknown;
   try {
     cline().buildInvocation("hi", { resume: "sess-123" });
@@ -406,9 +406,9 @@ test("a print-mode resume throws instead of running without the conversation", (
   expect((thrown as AnyAgentError).code).toBe("UnsupportedCapability");
 });
 
-test("cline declares the live session tier over its acp endpoint", () => {
+test("cline declares ACP-mode sessions over its acp endpoint", () => {
   const adapter = cline();
-  expect(adapter.capabilities.session).toBe("native");
+  expect(adapter.capabilities.session).toBe("acp");
   expect(adapter.acp?.command).toEqual(["cline", "--acp"]);
   // Plan mode is not a read-only guarantee here, so no mode option is declared.
   expect(adapter.acp?.readOnly).toBeUndefined();

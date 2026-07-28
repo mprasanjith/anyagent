@@ -28,10 +28,10 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // ACP mode, gated on a recorded real transcript (sessions.md §6 M-2):
   // test/fixtures/acp/cursor.jsonl — initialize on protocolVersion 1, a session
   // id, an agent_message_chunk streaming "pong", and stopReason end_turn.
-  session: "native",
+  session: "acp",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
@@ -241,7 +241,7 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
     // exit 0, no file), so the force flag must not ride along.
     args.push("--mode", "plan");
   } else {
-    // Without --force, print mode only *proposes* edits — it would silently
+    // Without --force, stdout mode only *proposes* edits — it would silently
     // break the full-autonomy contract.
     args.push("--force");
   }
@@ -340,7 +340,7 @@ export const cursor = (): Adapter<typeof CAPS> => ({
   acp: {
     command: ["agent", "acp"],
     // Cursor also advertises `session/set_mode`; the config option is the one
-    // channel it shares with the rest of the live tier.
+    // channel it shares with the rest of the ACP-mode adapters.
     readOnly: { configId: "mode", value: "plan" },
     settings: ({ effort, model }) => {
       const value = modelWithEffort({ effort, model });

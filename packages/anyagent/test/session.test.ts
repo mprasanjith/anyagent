@@ -282,7 +282,7 @@ test("iterating a session turn reveals the id as the session event arrives", asy
   await run;
 });
 
-test("steer and respond throw on the emulated tier, and supports says so", () => {
+test("steer and respond throw in stdout mode, and supports says so", () => {
   const agent = new AgentImpl(fakeStreaming, runnerFromFixture(WITH_ID));
   const session = agent.session();
   expect(session.supports("steer")).toBe(false);

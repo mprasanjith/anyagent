@@ -21,7 +21,7 @@ const CAPS = {
   effort: false,
   // `--allowed-mcp-server-names` only allowlists servers settings.json already
   // defines, and `gemini mcp add` writes that file — a run may not edit the
-  // user's config, so print mode has no way to define a server for one run.
+  // user's config, so stdout mode has no way to define a server for one run.
   mcp: false,
   // No listing surface: `--list-sessions` exists, models do not.
   modelListing: false,
@@ -32,13 +32,13 @@ const CAPS = {
   // NOT used: headless, `exit_plan_mode` self-approves and the agent then
   // writes freely (verified live on 0.46).
   readOnly: "native",
-  // Native ACP tier, gated on a recorded real transcript (sessions.md §6 M-2):
+  // ACP mode, gated on a recorded real transcript (sessions.md §6 M-2):
   // test/fixtures/acp/gemini-cli.jsonl — initialize on protocolVersion 1, a
   // session id, an agent_message_chunk streaming "pong", stopReason end_turn.
   // Surprise vs the ledger: this build of gemini advertises `loadSession: true`,
-  // so the mixed-tier fallback (which triggers when it is absent) never fires —
+  // so the mixed-mode fallback (which triggers when it is absent) never fires —
   // resume attempts real ACP session/load, still broken upstream (#15502).
-  session: "native",
+  session: "acp",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",

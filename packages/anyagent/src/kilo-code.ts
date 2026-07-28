@@ -5,15 +5,15 @@ import {
 import type { Adapter } from "./types.js";
 
 /**
- * Kilo's capabilities: the family's, with sessions live. The recorded
- * handshake at `test/fixtures/acp/kilo-handshake.jsonl` backs the native tier —
+ * Kilo's capabilities: the family's, with ACP-mode sessions. The recorded
+ * handshake at `test/fixtures/acp/kilo-handshake.jsonl` backs the mode —
  * protocol v1, `loadSession`, `sessionCapabilities.fork`, and a `session/new`
  * carrying the `model`, `effort`, and `mode` options the family's spec drives.
  */
 export type KiloCodeCapabilities = Omit<
   OpencodeFamilyCapabilities,
   "mcp" | "session"
-> & { readonly mcp: "native"; readonly session: "native" };
+> & { readonly mcp: "native"; readonly session: "acp" };
 
 /**
  * The adapter for Kilo Code's CLI (`kilo`). Kilo is an opencode fork with the
@@ -25,14 +25,14 @@ export type KiloCodeCapabilities = Omit<
  * `RunResult.sessionId`, `effort` passes a provider-defined variant name
  * verbatim, models use `provider/model` form, and `mcp` servers ride the
  * adapter-owned `KILO_CONFIG_CONTENT` env var, merged into the machine's own
- * configured servers rather than replacing them. Sessions are live, over
+ * configured servers rather than replacing them. Sessions run in ACP mode, over
  * `kilo acp`: `agent.session()` holds one connection, `fork: true` branches
  * through `session/fork`, `readOnly` switches the session into plan mode, and
- * `effort` sets the session's effort level. Both tiers pass `effort` through
+ * `effort` sets the session's effort level. Both modes pass `effort` through
  * verbatim and let kilo judge it, but they judge differently: a one-shot run's
- * `--variant` takes any provider-defined name, while a live session's effort is
- * a closed list scoped to that session's model, so a name a run accepts can
- * still be refused in a session.
+ * `--variant` takes any provider-defined name, while a session's effort is a
+ * closed list scoped to that session's model, so a name a run accepts can still
+ * be refused in a session.
  * `authStatus()` answers from kilo's credential store and the standard
  * provider key env vars — a hint, not a guarantee.
  *
@@ -56,7 +56,7 @@ export const kiloCode = (): Adapter<KiloCodeCapabilities> => {
     capabilities: {
       ...adapter.capabilities,
       mcp: "native" as const,
-      session: "native" as const,
+      session: "acp" as const,
     },
   };
 };

@@ -16,7 +16,7 @@ const adapterWith = (
     modelListing: false,
     modelSelection: "native",
     readOnly: false,
-    session: "emulated",
+    session: "stdout",
     sessionFork: false,
     streaming: "native",
     structuredOutput,

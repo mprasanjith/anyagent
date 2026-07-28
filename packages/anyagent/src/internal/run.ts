@@ -78,7 +78,7 @@ export const runWithSchema = async (
 // iterable. Producers feed it through `emit`/`finish` and settle it through
 // `resolve`/`reject`; every consumer reads the same event log — iterators
 // replay the buffer then follow live. Subclasses supply what actually drives
-// a turn ({@link RunImpl} a spawned CLI process, the ACP tier a live session)
+// a turn ({@link RunImpl} a spawned CLI process, ACP mode a live connection)
 // and how `abort` reaches it.
 export abstract class RunHandle extends Promise<RunResult> implements Run {
   // `.then()` must chain plain promises, not construct new run handles.
@@ -175,7 +175,7 @@ export abstract class RunHandle extends Promise<RunResult> implements Run {
   }
 }
 
-// The concrete {@link Run} for the print-mode tier: the turn starts as soon as
+// The concrete {@link Run} for stdout mode: the turn starts as soon as
 // `ready` resolves (immediately for agent.run; after the predecessor for a
 // queued session turn). The terminal `done` is withheld from intermediate
 // schema attempts and emitted once, carrying the same result awaiting resolves

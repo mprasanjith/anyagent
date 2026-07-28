@@ -43,7 +43,7 @@ import { SessionImpl } from "./session.js";
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
 /**
- * Builds the {@link AcpTransport} for a native session. The default spawns the
+ * Builds the {@link AcpTransport} for an ACP-mode session. The default spawns the
  * ACP endpoint and bridges its stdio; tests inject a scripted transport so no
  * process is launched.
  */
@@ -334,12 +334,12 @@ interface QueuedTurn {
   task: () => Promise<void>;
 }
 
-// A native session may find its ACP reattachment or branching unsupported and
-// fall back to the emulated cursor; the mode decided on the first turn covers
-// every turn.
+// An ACP-mode session may find its reattachment or branching unsupported and
+// fall back to the stdout-mode cursor; the mode decided on the first turn
+// covers every turn.
 type Mode =
-  | { kind: "native"; live: AcpSession }
-  | { kind: "emulated"; delegate: SessionImpl };
+  | { kind: "acp"; live: AcpSession }
+  | { kind: "stdout"; delegate: SessionImpl };
 
 // A {@link Run} fed by translated ACP notifications rather than a spawned CLI.
 // `abort` reaches this turn only; the session decides what that means. Settling
@@ -377,10 +377,10 @@ class AcpTurnRun extends RunHandle {
   }
 }
 
-// The native {@link Session}: one live ACP connection for its lifetime. It is
-// lazy — the connection opens on the first `run` — and turns queue through the
-// same FIFO discipline as the emulated tier, one live `session/prompt` at a
-// time. `steer` injects an extra prompt; permission requests are surfaced as
+// The ACP-mode {@link Session}: one connection for its lifetime. It is lazy —
+// the connection opens on the first `run` — and turns queue through the same
+// FIFO discipline as stdout mode, one live `session/prompt` at a time.
+// `steer` injects an extra prompt; permission requests are surfaced as
 // events and auto-answered so a run never blocks waiting on an answer.
 export class AcpSessionImpl<C extends Capabilities = Capabilities>
   implements Session<C>
@@ -419,7 +419,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     this.#id = opts.resume;
     this.#fork = opts.fork === true;
     this.#settings = opts;
-    // The emulated tier raises this from its own constructor; a native session
+    // Stdout mode raises this from its own constructor; an ACP-mode session
     // reaches that constructor only after connecting, too late to fail fast.
     if (this.#fork && opts.resume === undefined) {
       throw new AnyAgentError(
@@ -438,7 +438,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
   }
 
   supports(...keys: SessionKey[]): boolean {
-    // The live tier provides `steer`; `respond` waits for the onPermission
+    // ACP mode provides `steer`; `respond` waits for the onPermission
     // design, so it stays gated off this build.
     return this.#delegate === undefined && keys.every((key) => key === "steer");
   }
@@ -568,7 +568,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
         // biome-ignore lint/performance/noAwaitInLoops: one live turn at a time by contract.
         await turn.task();
       } catch (failure) {
-        // The conversation is broken where it stands, as on the emulated tier.
+        // The conversation is broken where it stands, as in stdout mode.
         for (const queued of this.#queue.splice(0)) {
           queued.run.settleErr(failure);
         }
@@ -585,16 +585,16 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     acpRun: AcpTurnRun
   ): Promise<void> {
     try {
-      // Before the connection opens, so a live session fails fast on an
+      // Before the connection opens, so a session fails fast on an
       // option this agent cannot honor exactly as every other path does.
       validateOptions(this.agent.adapter, opts);
       const mode = await this.#ensureMode();
-      if (mode.kind === "emulated") {
-        await this.#bridgeEmulated(mode.delegate, prompt, opts, acpRun);
+      if (mode.kind === "stdout") {
+        await this.#bridgeStdout(mode.delegate, prompt, opts, acpRun);
         return;
       }
       await this.#applyReadOnly(mode.live, opts.readOnly === true);
-      await this.#driveNative(mode.live, prompt, opts, acpRun);
+      await this.#driveAcp(mode.live, prompt, opts, acpRun);
     } catch (error) {
       const failure = AnyAgentError.wrap(error);
       acpRun.settleErr(failure);
@@ -665,10 +665,10 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     );
   }
 
-  // Mixed tier: the CLI still reattaches or branches cross-process through its
+  // Mixed mode: the CLI still reattaches or branches cross-process through its
   // own flags even though the ACP endpoint advertised no `session/load`
-  // (gemini) or `session/fork`. The whole session falls back to the emulated
-  // print-mode cursor, which carries those flags on its first turn.
+  // (gemini) or `session/fork`. The whole session falls back to the stdout-mode
+  // cursor, which carries those flags on its first turn.
   #bridge(): Mode {
     this.#client?.close();
     this.#client = undefined;
@@ -678,7 +678,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
       this.#settings,
       true
     );
-    return { delegate: this.#delegate, kind: "emulated" };
+    return { delegate: this.#delegate, kind: "stdout" };
   }
 
   async #open(opening: Promise<AcpSession>): Promise<Mode> {
@@ -689,7 +689,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
       // biome-ignore lint/performance/noAwaitInLoops: each option is acknowledged before the next.
       await live.setConfigOption(option);
     }
-    return { kind: "native", live };
+    return { kind: "acp", live };
   }
 
   // Mode is only used where the agent advertised the option's current value,
@@ -773,7 +773,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     }
   }
 
-  async #driveNative(
+  async #driveAcp(
     live: AcpSession,
     prompt: string,
     opts: RunOptions,
@@ -853,7 +853,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     };
   }
 
-  async #bridgeEmulated(
+  async #bridgeStdout(
     delegate: SessionImpl,
     prompt: string,
     opts: RunOptions,

@@ -25,7 +25,7 @@ live(
   120_000
 );
 
-// The drift canary: production parsing is lenient, but the live tier runs the
+// The drift canary: production parsing is lenient, but the live tests run the
 // real CLI's fresh output through strict mode so an upstream format change
 // (new content block, renamed event) throws instead of silently emitting
 // empty text. Asserts shape, never content — LLM output is non-deterministic.

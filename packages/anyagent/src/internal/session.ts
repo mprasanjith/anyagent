@@ -67,16 +67,16 @@ interface PendingTurn {
 // failed turn rejects the turns queued behind it and the queue resets to the
 // last good handle, so a later `run` retries from there.
 //
-// This class is the tier seam: when the agent declares `session: "native"`
-// with an ACP endpoint it delegates every verb to an {@link AcpSessionImpl}
-// live session; otherwise the emulated path below runs untouched. `steer`/
-// `respond` are native-tier verbs; the emulated tier throws.
+// This class is the mode seam: when the agent declares `session: "acp"` with
+// an ACP endpoint it delegates every verb to an {@link AcpSessionImpl};
+// otherwise the stdout-mode path below runs untouched. `steer`/`respond` are
+// ACP-mode verbs; stdout mode throws.
 export class SessionImpl<C extends Capabilities = Capabilities>
   implements Session<C>
 {
   readonly agent: Agent<C>;
   readonly #runner: Runner;
-  readonly #native: AcpSessionImpl<C> | undefined;
+  readonly #acp: AcpSessionImpl<C> | undefined;
   #id: string | undefined;
   #resumeNext: string | undefined;
   #forkNext: boolean;
@@ -92,23 +92,23 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     agent: Agent<C>,
     runner: Runner,
     opts: SessionOptions = {},
-    // The mixed-tier fallback constructs an emulated cursor directly; this flag
-    // keeps it from re-selecting the native tier and looping back on itself.
-    // Its turns arrive with the outer session's settings already merged in.
-    forceEmulated = false
+    // The mixed-mode fallback constructs a stdout-mode cursor directly; this
+    // flag keeps it from re-selecting ACP mode and looping back on itself. Its
+    // turns arrive with the outer session's settings already merged in.
+    forceStdout = false
   ) {
     this.agent = agent;
     this.#runner = runner;
-    this.#delegated = forceEmulated;
+    this.#delegated = forceStdout;
     this.#settings = settingsOf(opts);
     validateOptions(agent.adapter, this.#settings);
     this.#forkNext = opts.fork === true;
     if (
-      !forceEmulated &&
-      agent.adapter.capabilities.session === "native" &&
+      !forceStdout &&
+      agent.adapter.capabilities.session === "acp" &&
       agent.adapter.acp
     ) {
-      this.#native = new AcpSessionImpl(agent, runner, opts);
+      this.#acp = new AcpSessionImpl(agent, runner, opts);
       return;
     }
     if (this.#forkNext && opts.resume === undefined) {
@@ -130,50 +130,50 @@ export class SessionImpl<C extends Capabilities = Capabilities>
   }
 
   get id(): string | undefined {
-    return this.#native ? this.#native.id : this.#id;
+    return this.#acp ? this.#acp.id : this.#id;
   }
 
   supports(...keys: SessionKey[]): boolean {
-    if (this.#native) {
-      return this.#native.supports(...keys);
+    if (this.#acp) {
+      return this.#acp.supports(...keys);
     }
-    // The emulated tier has no live channel; ACP-backed sessions provide
-    // these verbs by construction.
+    // Stdout mode has no live channel; ACP-backed sessions provide these verbs
+    // by construction.
     return keys.length === 0;
   }
 
   steer(text: string): void {
-    if (this.#native) {
-      this.#native.steer(text);
+    if (this.#acp) {
+      this.#acp.steer(text);
       return;
     }
     throw new AnyAgentError(
       "UnsupportedCapability",
-      `${this.agent.adapter.meta.id} has no live session channel to steer`
+      `${this.agent.adapter.meta.id} runs sessions in stdout mode; steer needs an ACP-mode session`
     );
   }
 
   respond(requestId: string, choice: string): void {
-    if (this.#native) {
-      this.#native.respond(requestId, choice);
+    if (this.#acp) {
+      this.#acp.respond(requestId, choice);
       return;
     }
     throw new AnyAgentError(
       "UnsupportedCapability",
-      `${this.agent.adapter.meta.id} has no live session channel to respond on`
+      `${this.agent.adapter.meta.id} runs sessions in stdout mode; respond needs an ACP-mode session`
     );
   }
 
   close(): Promise<void> {
-    if (this.#native) {
-      return this.#native.close();
+    if (this.#acp) {
+      return this.#acp.close();
     }
     this.#closed = true;
     for (const queued of this.#pending.splice(0)) {
       queued.rejectGate(new AnyAgentError("Aborted", "the run was aborted"));
     }
-    // The emulated tier holds no process between turns, so an emptied queue is
-    // the whole teardown.
+    // Stdout mode holds no process between turns, so an emptied queue is the
+    // whole teardown.
     return Promise.resolve();
   }
 
@@ -185,8 +185,8 @@ export class SessionImpl<C extends Capabilities = Capabilities>
       rejectOwned(callOpts);
     }
     const opts: RunOptions = { ...callOpts, ...this.#settings };
-    if (this.#native) {
-      return this.#native.run(prompt, opts);
+    if (this.#acp) {
+      return this.#acp.run(prompt, opts);
     }
 
     let resolveGate: PendingTurn["resolveGate"] = () => {

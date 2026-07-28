@@ -32,16 +32,16 @@ import {
   sourceFromBody,
 } from "./fake-adapter.js";
 
-// A native-tier adapter: an ACP endpoint plus `session: "native"`. Everything
-// else mirrors the streaming fake so the emulated fallback has a real parser.
-const nativeAdapter: Adapter = {
+// An ACP-mode adapter: an ACP endpoint plus `session: "acp"`. Everything
+// else mirrors the streaming fake so the stdout-mode fallback has a real parser.
+const acpAdapter: Adapter = {
   ...fakeStreaming,
   acp: { command: ["fake-acp"] },
-  capabilities: { ...fakeStreaming.capabilities, session: "native" },
+  capabilities: { ...fakeStreaming.capabilities, session: "acp" },
 };
 
-const nativeAgent = (runner = runnerFromFixture("")): AgentImpl =>
-  new AgentImpl(nativeAdapter, runner);
+const acpAgent = (runner = runnerFromFixture("")): AgentImpl =>
+  new AgentImpl(acpAdapter, runner);
 
 // Answers the `initialize` handshake from the agent side with the given
 // capabilities; the client stores them.
@@ -109,7 +109,7 @@ test("a native turn translates updates into events, text, and a sessionId", asyn
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     { cwd: "/repo" },
     () => transport
@@ -176,7 +176,7 @@ test("turns queue on one connection, threaded in order", async () => {
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -190,7 +190,7 @@ test("turns queue on one connection, threaded in order", async () => {
   await transport.done;
 });
 
-test("steer sends an additional prompt on the live session mid-turn", async () => {
+test("steer sends an additional prompt on the open connection mid-turn", async () => {
   const transport = scriptedTransport(async (api) => {
     await handshake(api, {});
     const created = await api.next();
@@ -216,7 +216,7 @@ test("steer sends an additional prompt on the live session mid-turn", async () =
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -265,7 +265,7 @@ test("a permission request is surfaced as an event then auto-allowed", async () 
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -309,7 +309,7 @@ test("a cancelled turn aborts via session/cancel and throws Aborted", async () =
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -339,7 +339,7 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -353,7 +353,7 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
 
 // No transport factory: these drive the default one, spawning `command`.
 const spawningSession = (command: string[]): AcpSessionImpl => {
-  const adapter: Adapter = { ...nativeAdapter, acp: { command } };
+  const adapter: Adapter = { ...acpAdapter, acp: { command } };
   return new AcpSessionImpl(
     new AgentImpl(adapter, runnerFromFixture("")),
     runnerFromFixture("")
@@ -396,7 +396,7 @@ test("a non-JSON stdout line rejects the turn with Parse", async () => {
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -431,7 +431,7 @@ test("an agent dying mid-turn rejects the turn with the transport's diagnostics"
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -480,7 +480,7 @@ test("aborting a queued turn leaves the in-flight turn untouched", async () => {
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -501,7 +501,7 @@ test("aborting before the connection opens still settles the run Aborted", async
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -515,7 +515,7 @@ test("aborting before the connection opens still settles the run Aborted", async
 test("an already-aborted signal settles the run without opening a transport", async () => {
   let opened = 0;
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => {
@@ -555,7 +555,7 @@ test("opts.signal firing mid-turn cancels the live turn", async () => {
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -585,7 +585,7 @@ test("a failed turn rejects the turns queued behind it", async () => {
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -623,7 +623,7 @@ test("a failed steer leaves the turn in exactly one terminal state", async () =>
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -668,7 +668,7 @@ test("session lands once, first, and session_info_update does not repeat it", as
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -718,7 +718,7 @@ test("usage reaches the events and the result", async () => {
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -776,7 +776,7 @@ test("a failed tool call reports a tool-result named from its call", async () =>
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => transport
@@ -815,7 +815,7 @@ test("resume reattaches with session/load when loadSession is advertised", async
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     { cwd: "/repo", resume: "s-old" },
     () => transport
@@ -827,14 +827,14 @@ test("resume reattaches with session/load when loadSession is advertised", async
   await transport.done;
 });
 
-test("resume without loadSession falls back to the emulated print-mode cursor", async () => {
+test("resume without loadSession falls back to the stdout-mode cursor", async () => {
   const fixture =
     '{"t":"session","v":"s2"}\n{"t":"text","v":"emulated ok"}\n{"t":"end"}';
   // The agent only completes the handshake; no session/load is ever sent.
   const transport = scriptedTransport((api) => handshake(api, {}));
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(fixture),
     { resume: "s-old" },
     () => transport
@@ -875,7 +875,7 @@ test("an unsupported option rejects before the transport is ever opened", async 
   let opened = 0;
   const sent: string[] = [];
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => {
@@ -928,7 +928,7 @@ test("a schema turn re-asks once, emits schema-retry, and resolves with json", a
   const { counted, prompts } = countingPrompts(scripted);
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => counted
@@ -970,7 +970,7 @@ test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", a
   const { counted, prompts } = countingPrompts(scripted);
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     {},
     () => counted
@@ -985,8 +985,8 @@ test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", a
   await scripted.done;
 });
 
-test("a native adapter with an acp endpoint routes session() to the live tier", () => {
-  const session = nativeAgent().session();
+test("an acp adapter with an acp endpoint routes session() to ACP mode", () => {
+  const session = acpAgent().session();
   expect(session.supports("steer")).toBe(true);
   expect(session.supports("respond")).toBe(false);
   expect(session.supports()).toBe(true);
@@ -995,7 +995,7 @@ test("a native adapter with an acp endpoint routes session() to the live tier", 
   );
 });
 
-test("session capability short of native tier keeps the emulated behavior", async () => {
+test('a session capability short of "acp" keeps the stdout-mode behavior', async () => {
   const withId = '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
   const agent = new AgentImpl(fakeStreaming, runnerFromFixture(withId));
   const session = agent.session();
@@ -1007,21 +1007,21 @@ test("session capability short of native tier keeps the emulated behavior", asyn
   expect(result.text).toBe("ok");
   expect(session.id).toBe("s1");
 
-  // A native declaration without an acp endpoint also stays emulated.
+  // An "acp" declaration without an acp endpoint also stays in stdout mode.
   const noEndpoint: Adapter = {
     ...fakeStreaming,
-    capabilities: { ...fakeStreaming.capabilities, session: "native" },
+    capabilities: { ...fakeStreaming.capabilities, session: "acp" },
   };
-  const stillEmulated = new AgentImpl(
+  const stillStdout = new AgentImpl(
     noEndpoint,
     runnerFromFixture(withId)
   ).session();
-  expect(stillEmulated.supports("steer")).toBe(false);
+  expect(stillStdout.supports("steer")).toBe(false);
 });
 
-// A live session on one shipped adapter, its ACP endpoint replaced by a
+// An ACP-mode session on one shipped adapter, its ACP endpoint replaced by a
 // scripted transport so no process is launched.
-const liveSession = (
+const acpSession = (
   adapter: Adapter,
   opts: SessionOptions,
   factory: AcpTransportFactory
@@ -1080,7 +1080,7 @@ test("a live cursor session sets model and effort as one config option", async (
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     cursor(),
     { effort: "high", model: "claude-opus-4-8" },
     () => transport
@@ -1127,7 +1127,7 @@ test("a live goose session sets model and thinking_effort in order", async () =>
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     gooseWithEffort(),
     { effort: "high", model: "anthropic/claude-sonnet-4.5" },
     () => transport
@@ -1154,7 +1154,7 @@ test("a live opencode session sets its model config option", async () => {
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     opencode(),
     { model: "openai/gpt-5.4" },
     () => transport
@@ -1182,7 +1182,7 @@ test("a live cline session sets its model config option", async () => {
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     cline(),
     { model: "gpt-5.4-mini" },
     () => transport
@@ -1258,7 +1258,7 @@ test("a live kilo session sets model then effort as config options", async () =>
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     kiloCode(),
     { effort: "xhigh", model: "kilo/openai/gpt-5.4" },
     () => transport
@@ -1268,7 +1268,7 @@ test("a live kilo session sets model then effort as config options", async () =>
 
 test("a live gemini session spawns with its model, --skip-trust, and extraArgs", async () => {
   let invocation: Invocation | undefined;
-  const session = liveSession(
+  const session = acpSession(
     geminiCli(),
     {
       cwd: "/work",
@@ -1343,7 +1343,7 @@ test("a readOnly turn switches the mode and a later turn restores it", async () 
     api.emit(response(second.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(cursor(), {}, () => transport);
+  const session = acpSession(cursor(), {}, () => transport);
   await session.run("look", { readOnly: true });
   await session.run("look again");
   await transport.done;
@@ -1386,7 +1386,7 @@ test("a readOnly turn denies every tool kind that could change the machine", asy
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(cursor(), {}, () => transport);
+  const session = acpSession(cursor(), {}, () => transport);
   await session.run("inspect", { readOnly: true });
   await transport.done;
 
@@ -1401,7 +1401,7 @@ test("a readOnly turn denies every tool kind that could change the machine", asy
   });
 });
 
-test("close ends the live session, settles its turns, and kills the transport", async () => {
+test("close ends the session, settles its turns, and kills the transport", async () => {
   const transport = scriptedTransport(async (api) => {
     await handshake(api, { sessionCapabilities: { close: {} } });
     const created = await api.next();
@@ -1416,7 +1416,7 @@ test("close ends the live session, settles its turns, and kills the transport", 
     api.emit(response(closed.id, {}));
   });
 
-  const session = liveSession(nativeAdapter, {}, () => transport);
+  const session = acpSession(acpAdapter, {}, () => transport);
   await session.run("first");
   const queued = session.run("second");
   await session.close();
@@ -1440,7 +1440,7 @@ test("close skips session/close where the agent never advertised it", async () =
   });
   const { seen, tapped } = sentMethods(scripted);
 
-  const session = liveSession(nativeAdapter, {}, () => tapped);
+  const session = acpSession(acpAdapter, {}, () => tapped);
   await session.run("hi");
   await session.close();
 
@@ -1468,10 +1468,10 @@ test("closing an emulated session rejects the turns still queued", async () => {
   );
 });
 
-// A live-tier adapter whose print mode can fork, and whose invocation reports
+// An ACP-mode adapter whose stdout mode can fork, and whose invocation reports
 // the options the delegate threaded through.
 const forkAdapter: Adapter = {
-  ...nativeAdapter,
+  ...acpAdapter,
   buildInvocation: (prompt, opts) => ({
     args: [
       "-p",
@@ -1483,10 +1483,10 @@ const forkAdapter: Adapter = {
     command: "fake-acp",
     cwd: opts.cwd,
   }),
-  capabilities: { ...nativeAdapter.capabilities, sessionFork: "native" },
+  capabilities: { ...acpAdapter.capabilities, sessionFork: "native" },
 };
 
-test("fork without an advertised session/fork runs through the print-mode delegate, settings intact", async () => {
+test("fork without an advertised session/fork runs through the stdout-mode delegate, settings intact", async () => {
   const fixture =
     '{"t":"session","v":"s2"}\n{"t":"text","v":"forked"}\n{"t":"end"}';
   const seen: Invocation[] = [];
@@ -1675,7 +1675,7 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode", "cline"]) {
     });
 
     const session = new AcpSessionImpl(
-      nativeAgent(),
+      acpAgent(),
       runnerFromFixture(""),
       { cwd: "/repo" },
       () => transport
@@ -1774,7 +1774,7 @@ test("replays the recorded opencode session/fork handshake", async () => {
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
+    acpAgent(),
     runnerFromFixture(""),
     { cwd: fx.cwd, fork: true, resume: fx.parentId },
     () => transport
@@ -1842,7 +1842,7 @@ test("kilo forks over the wire on its own recorded capabilities", async () => {
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     kiloCode(),
     {
       cwd: "/repo",

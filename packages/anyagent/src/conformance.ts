@@ -10,6 +10,7 @@ import type {
   Run,
   RunOptions,
   RunResult,
+  SessionSupport,
 } from "./types.js";
 
 /**
@@ -49,9 +50,9 @@ export interface ConformanceOptions {
   fixtures: Record<string, string>;
   /**
    * Map of scenario name to a recorded ACP transcript (the JSONL
-   * `anyagent-record` writes). Each is replayed through a live session, so an
-   * adapter's `session: "native"` tier answers for the same invariants as its
-   * print tier. Requires a declared `acp` endpoint.
+   * `anyagent-record` writes). Each is replayed through an ACP-mode session,
+   * so an adapter's `session: "acp"` mode answers for the same invariants as
+   * its stdout mode. Requires a declared `acp` endpoint.
    */
   transcripts?: Record<string, string>;
 }
@@ -99,7 +100,7 @@ const checkStream = (name: string, events: AgentEvent[]): void => {
   );
 };
 
-const checkPrintStream = async (
+const checkStdoutStream = async (
   adapter: Adapter,
   name: string,
   body: string
@@ -401,8 +402,8 @@ const throwsUnsupported = async (
  * to the concatenated text-deltas, a `sessionId` consistent with the
  * `session` event, a valid invocation for whatever the capabilities
  * declare, and an `UnsupportedCapability` throw for everything it does not.
- * Pass `transcripts` as well and the same invariants are checked on the live
- * ACP tier, plus the ones only it can break: a turn opens with its `session`
+ * Pass `transcripts` as well and the same invariants are checked in ACP mode,
+ * plus the ones only it can break: a turn opens with its `session`
  * event, an aborted or failed turn reaches exactly one terminal state, and a
  * prompt response carrying usage reaches `RunResult.usage`.
  * Add a `runConformance` test before shipping a new adapter; it is what
@@ -418,15 +419,15 @@ export const runConformance = async (
 
   await Promise.all(
     Object.entries(opts.fixtures).map(([name, body]) =>
-      checkPrintStream(adapter, name, body)
+      checkStdoutStream(adapter, name, body)
     )
   );
 
   const transcripts = Object.entries(opts.transcripts ?? {});
   if (transcripts.length > 0) {
     assert(
-      adapter.acp !== undefined && caps.session === "native",
-      "a recorded ACP transcript belongs to an adapter that declares an acp endpoint and a native session"
+      adapter.acp !== undefined && caps.session === "acp",
+      'a recorded ACP transcript belongs to an adapter that declares an acp endpoint and `session: "acp"`'
     );
     await Promise.all(
       transcripts.map(([name, text]) => checkTranscript(adapter, name, text))
@@ -446,7 +447,11 @@ export const runConformance = async (
     );
   }
 
-  const gated: [CapabilitySupport, () => PromiseLike<unknown>, string][] = [
+  const gated: [
+    CapabilitySupport | SessionSupport,
+    () => PromiseLike<unknown>,
+    string,
+  ][] = [
     [caps.modelSelection, runWith({ model: "m" }), "model"],
     [caps.session, runWith({ resume: "s" }), "resume"],
     [caps.systemPrompt, runWith({ systemPrompt: "s" }), "systemPrompt"],

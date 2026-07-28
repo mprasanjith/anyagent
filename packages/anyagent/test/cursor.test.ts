@@ -39,12 +39,12 @@ const collect = async (
 const argAfter = (args: string[], flag: string): string | undefined =>
   args[args.indexOf(flag) + 1];
 
-test("buildInvocation defaults to forced print mode with prompt on stdin", () => {
+test("buildInvocation defaults to forced stdout mode with prompt on stdin", () => {
   const inv = cursor().buildInvocation("hi", {});
   expect(inv.command).toBe("agent");
   expect(inv.args).toContain("-p");
   expect(argAfter(inv.args, "--output-format")).toBe("stream-json");
-  // Without --force, print mode only proposes edits — the unattended default
+  // Without --force, stdout mode only proposes edits — the unattended default
   // must apply them.
   expect(inv.args).toContain("--force");
   expect(inv.args).not.toContain("--mode");

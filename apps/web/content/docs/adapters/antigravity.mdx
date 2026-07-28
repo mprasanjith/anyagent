@@ -3,7 +3,7 @@ title: Antigravity
 description: "Use Antigravity through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `antigravity` adapter drives the Antigravity CLI in its headless print mode, detected as the `agy` binary on `PATH`; import `antigravity` from `anyagent-js/antigravity`.
+The `antigravity` adapter drives the Antigravity CLI in its headless stdout mode, detected as the `agy` binary on `PATH`; import `antigravity` from `anyagent-js/antigravity`.
 
 ## What you can ask for
 
@@ -15,13 +15,13 @@ The `antigravity` adapter drives the Antigravity CLI in its headless print mode,
 The default model (`auto`) can spiral on trivial prompts; pin `model` for predictable cost.
 </Callout>
 
-- Print mode times out after 5 minutes by default; give a longer run `extraArgs: ["--print-timeout", "30m"]`.
+- Stdout mode times out after 5 minutes by default; give a longer run `extraArgs: ["--print-timeout", "30m"]`.
 - The init event’s conversation id lands on `result.sessionId` and resumes via `resume`.
 - `usage` maps the CLI’s `thinking_tokens` to `reasoningTokens`; no cache line items are reported.
 
 ## Under the hood
 
-Every run executes `agy -p <prompt> --output-format stream-json --dangerously-skip-permissions`, with the prompt as `-p`’s value; piped stdin is ignored in print mode. [Run options](/docs/api#run-options) append flags:
+Every run executes `agy -p <prompt> --output-format stream-json --dangerously-skip-permissions`, with the prompt as `-p`’s value; piped stdin is ignored in stdout mode. [Run options](/docs/api#run-options) append flags:
 
 | Option   | Flag                                                           |
 | -------- | ---------------------------------------------------------------- |

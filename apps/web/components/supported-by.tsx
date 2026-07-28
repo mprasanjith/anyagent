@@ -38,25 +38,25 @@ const GUARDS: Record<string, string> = {
 /**
  * A "works with" strip for one capability, rendered from the adapters' own
  * declarations so it can never drift from the code. Shows each supporting
- * harness's logo and name, the tier where it is not native, the derived
- * guard expression, and a link to the full matrix.
+ * harness's logo and name, the declared value where it is not plain `native`,
+ * the derived guard expression, and a link to the full matrix.
  */
 export const SupportedBy = ({
   capability,
   guard,
-  tier,
+  value,
 }: {
   capability: keyof Capabilities;
   /** Override the derived guard expression (e.g. session.supports("steer")). */
   guard?: string;
-  /** Only show agents at this tier (e.g. "native" for live sessions). */
-  tier?: "native";
+  /** Only show agents declaring this value (e.g. "acp" for ACP-mode sessions). */
+  value?: "acp" | "native";
 }) => {
   const rows = ADAPTERS.map((adapter) => ({
     id: adapter.meta.id,
     name: adapter.meta.name,
     value: adapter.capabilities[capability],
-  })).filter((row) => (tier ? row.value === tier : Boolean(row.value)));
+  })).filter((row) => (value ? row.value === value : Boolean(row.value)));
   const mixed = new Set(rows.map((row) => row.value)).size > 1;
   const guardCode = guard ?? GUARDS[capability];
 
