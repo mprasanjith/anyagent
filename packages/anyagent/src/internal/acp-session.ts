@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { basename, resolve } from "node:path";
 import type {
   McpServer as AcpMcpServer,
   PermissionOption as AcpPermissionOption,
@@ -33,7 +34,12 @@ import type {
   ToolName,
   Usage,
 } from "../types.js";
-import type { AcpClient, AcpSession, AcpTransport } from "./acp.js";
+import type {
+  AcpClient,
+  AcpSession,
+  AcpTransport,
+  PromptInput,
+} from "./acp.js";
 import { connect } from "./acp.js";
 import { validateOptions } from "./capabilities.js";
 import { promptWithSchema } from "./emulate.js";
@@ -128,6 +134,23 @@ const toAcpMcpServers = (mcp: McpConfig | undefined): AcpMcpServer[] => {
   }
   return servers;
 };
+
+// The protocol carries attachments itself, so no adapter declares a channel
+// for them: paths ride the prompt as resource links beside its text.
+const promptInput = (
+  text: string,
+  attachments: string[] | undefined
+): PromptInput =>
+  attachments?.length
+    ? [
+        { text, type: "text" },
+        ...attachments.map((path) => ({
+          name: basename(path),
+          type: "resource_link" as const,
+          uri: `file://${resolve(path)}`,
+        })),
+      ]
+    : text;
 
 const textOf = (content: ContentBlock): string | undefined =>
   content.type === "text" ? content.text : undefined;
@@ -654,9 +677,12 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
       opts.schema === undefined
         ? composed.prompt
         : promptWithSchema(composed.prompt, opts.schema);
-    const turn = live.prompt(text, (update, notification) => {
-      this.#onUpdate(active, update, notification);
-    });
+    const turn = live.prompt(
+      promptInput(text, opts.attachments),
+      (update, notification) => {
+        this.#onUpdate(active, update, notification);
+      }
+    );
     let response: PromptResponse;
     try {
       response = await turn.result;

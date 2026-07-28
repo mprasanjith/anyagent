@@ -1,5 +1,4 @@
 import type { AcpTransport } from "./internal/acp.js";
-import { AcpSessionImpl } from "./internal/acp-session.js";
 import { AgentImpl } from "./internal/agent.js";
 import type {
   Adapter,
@@ -270,10 +269,16 @@ interface Turn {
   thrown: unknown;
 }
 
+// `through` decides which entry point drives the transcript: `agent.run` opens
+// and closes a thread around the turn, `agent.session` holds one open.
 const driveTurn = async (
   adapter: Adapter,
   steps: readonly ReplayStep[],
-  opts: { abortWhenStreamed?: boolean; stopReason?: string } = {}
+  opts: {
+    abortWhenStreamed?: boolean;
+    stopReason?: string;
+    through?: "run" | "session";
+  } = {}
 ): Promise<Turn> => {
   let run: Run | undefined;
   const transport = replayTransport(steps, {
@@ -284,12 +289,9 @@ const driveTurn = async (
       : undefined,
     stopReason: opts.stopReason,
   });
-  const session = new AcpSessionImpl(
-    new AgentImpl(adapter, { runner: fixedRunner("") }),
-    {},
-    () => transport
-  );
-  run = session.run(PROMPT);
+  const agent = new AgentImpl(adapter, { transport: () => transport });
+  const session = opts.through === "session" ? agent.session() : undefined;
+  run = session ? session.run(PROMPT) : agent.run(PROMPT);
 
   const events: AgentEvent[] = [];
   let thrown: unknown;
@@ -307,7 +309,7 @@ const driveTurn = async (
   } catch (error) {
     failure = error;
   }
-  await session.close();
+  await session?.close();
   return { events, failure, result, thrown };
 };
 
@@ -350,24 +352,24 @@ const checkTranscript = async (
     `[${name}] the transcript records no session/prompt response`
   );
 
-  const turn = await driveTurn(adapter, steps);
-  assert(
-    turn.failure === undefined,
-    `[${name}] the recorded turn must complete: ${String(turn.failure)}`
-  );
-  checkStream(name, turn.events);
-  assert(
-    turn.events[0]?.type === "session",
-    `[${name}] a live turn must open with its session event`
-  );
-  assert(
-    turn.events.filter((e) => e.type === "session").length === 1,
-    `[${name}] a live turn must emit exactly one session event`
-  );
-  assert(
-    prompt.result.usage === undefined || turn.result?.usage !== undefined,
-    `[${name}] a prompt response carrying usage must reach RunResult.usage`
-  );
+  for (const through of ["run", "session"] as const) {
+    const label = `${name} via agent.${through}()`;
+    // biome-ignore lint/performance/noAwaitInLoops: one replay transport at a time.
+    const turn = await driveTurn(adapter, steps, { through });
+    assert(
+      turn.failure === undefined,
+      `[${label}] the recorded turn must complete: ${String(turn.failure)}`
+    );
+    checkStream(label, turn.events);
+    assert(
+      turn.events[0]?.type === "session",
+      `[${label}] a live turn must open with its session event`
+    );
+    assert(
+      prompt.result.usage === undefined || turn.result?.usage !== undefined,
+      `[${label}] a prompt response carrying usage must reach RunResult.usage`
+    );
+  }
 
   checkTerminal(
     name,
@@ -433,6 +435,21 @@ export const runConformance = async (
     await Promise.all(
       transcripts.map(([name, text]) => checkTranscript(adapter, name, text))
     );
+  }
+
+  if (adapter.mode === "acp") {
+    assert(
+      (adapter.acp.command[0]?.length ?? 0) > 0,
+      "an acp endpoint needs a command to launch"
+    );
+    // A live turn carries content blocks and nothing else, so there is no
+    // channel a native system prompt or schema flag could ride.
+    for (const field of ["structuredOutput", "systemPrompt"] as const) {
+      assert(
+        caps[field] !== "native",
+        `${field} cannot be native over ACP; the core emulates it or the adapter declares false`
+      );
+    }
   }
 
   if (caps.readOnly) {

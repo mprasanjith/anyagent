@@ -906,6 +906,31 @@ test('mode: "stdout" routes session() to one process per turn', async () => {
   expect(session.id).toBe("s1");
 });
 
+test("attachments ride the prompt as resource links beside its text", async () => {
+  let sent: unknown;
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    sent = (prompt.params as { prompt: unknown }).prompt;
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+  const attaching: Adapter = {
+    ...acpAdapter,
+    capabilities: { ...acpAdapter.capabilities, attachments: "native" },
+  };
+  const session = acpSession(attaching, {}, () => transport);
+
+  await session.run("look at this", { attachments: ["/tmp/a.png"] });
+
+  expect(sent).toEqual([
+    { text: "look at this", type: "text" },
+    { name: "a.png", type: "resource_link", uri: "file:///tmp/a.png" },
+  ]);
+  await transport.done;
+});
+
 const oneTurn = (): ScriptedTransport =>
   scriptedTransport(async (api) => {
     await handshake(api, {});

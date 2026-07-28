@@ -172,6 +172,17 @@ test("conformance rejects a transcript whose recorded turn never completed", asy
   ).rejects.toThrow();
 });
 
+test("conformance rejects a native systemPrompt on an ACP-mode adapter", async () => {
+  const adapter = cursor();
+  const liar: Adapter = {
+    ...adapter,
+    capabilities: { ...adapter.capabilities, systemPrompt: "native" },
+  };
+  await expect(
+    runConformance(liar, { fixtures: {}, transcripts: transcript("cursor") })
+  ).rejects.toThrow();
+});
+
 test("conformance rejects a declared authStatus capability without an implementation", async () => {
   const { authStatus: _drop, ...rest } = fakeStreaming;
   await expect(

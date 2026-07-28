@@ -7,7 +7,7 @@ The `goose` adapter drives `goose run --output-format stream-json --quiet` with 
 
 ## What you can ask for
 
-`model`, `systemPrompt`, and session resume work on the CLI’s own flags; `schema` is provided by AnyAgent. `readOnly`, `effort`, `mcp`, and model listing are undeclared and throw. `authStatus()` runs `goose info -v` and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`. The full grid is on the [support matrix](/docs/adapters).
+`model` and session resume work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly`, `effort`, `mcp`, and model listing are undeclared and throw. `authStatus()` runs `goose info -v` and checks the provider’s key env var; when the key may live in goose’s keyring the answer is `"unknown"`. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
@@ -23,5 +23,4 @@ Every run executes `goose run --output-format stream-json --quiet -i -`, with `G
 | Option         | Flag                                                                                                         |
 | -------------- | -------------------------------------------------------------------------------------------------------------- |
 | `model`        | `--provider <provider> --model <model>` from `"provider/model"`; a bare name maps to `--model <name>` alone |
-| `systemPrompt` | `--system <text>`                                                                                            |
 | `resume`       | `--name <name> --resume`                                                                                     |

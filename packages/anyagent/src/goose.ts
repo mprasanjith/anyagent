@@ -40,7 +40,9 @@ const CAPS = {
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
-  systemPrompt: "native",
+  // `--system` reaches only the one-shot CLI; a live turn carries content
+  // blocks and nothing else, so the core folds the text into the prompt.
+  systemPrompt: "emulated",
 } as const satisfies Capabilities;
 
 // Goose's text-editor tool multiplexes on a `command` argument; each command
