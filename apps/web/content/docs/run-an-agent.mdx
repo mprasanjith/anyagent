@@ -154,13 +154,12 @@ Iterating a schema run yields raw events from both attempts, separated by a [`sc
 
 ## Reach native flags
 
-The unified interface covers what the CLIs share, so each can do things it leaves out. Three hatches reach a CLI’s native capabilities, in increasing order of control:
+The unified interface covers what the CLIs share, so each can do things it leaves out. Two hatches reach a CLI’s native capabilities:
 
-| You need                                             | Reach for                   |
-| ---------------------------------------------------- | --------------------------- |
-| One native flag the interface leaves out             | `extraArgs`                 |
-| The exact argv, for logging or running it elsewhere  | `agent.raw.buildInvocation` |
-| To own the process: custom parsing, bidirectional IO | `agent.raw.spawn`           |
+| You need                                            | Reach for                                    |
+| --------------------------------------------------- | -------------------------------------------- |
+| One native flag the interface leaves out            | `extraArgs`                                  |
+| The exact argv, for logging or running it elsewhere | the adapter’s own `buildInvocation`          |
 
 `extraArgs` appends native flags to the argv while the normalized event stream and lifecycle management stay the same:
 
@@ -172,7 +171,11 @@ const result = await agent.run("Generate API docs from the source.", {
 
 Flags are appended after AnyAgent’s own, unvalidated, so one can override a typed option; pinning Claude Code’s `acceptEdits` mode above relies on exactly that. Prefer a typed option whenever one exists.
 
-`agent.raw.buildInvocation` returns the exact command AnyAgent would spawn without running it, and `agent.raw.spawn` launches it and hands back the Node `ChildProcess`. Both skip capability validation, so check `agent.capabilities` yourself; the [`RawHandle` type](/docs/api) covers what each returns.
+On an agent whose adapter runs one process per turn, `adapter.buildInvocation(prompt, opts)` returns that command without running it. It is pure and ungated: options are neither validated nor emulated, and `extraArgs` is not appended, so what you get is the adapter’s own mapping and nothing else.
+
+```ts
+const invocation = claudeCode().buildInvocation("Generate API docs.", {});
+```
 
 ## Next steps
 

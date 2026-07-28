@@ -2,6 +2,10 @@
 "anyagent-js": minor
 ---
 
+**BREAKING** — `agent.raw` is gone. For the exact argv, call the adapter's own `buildInvocation` — pure, ungated, and available on any adapter that runs one process per turn. There is no replacement for `raw.spawn`.
+
+**BREAKING** — `agent.run()` is one turn of a thread that opens and closes around it, on both modes: it takes the same options as before, and a setting or `resume` among them shapes the thread rather than the turn.
+
 **BREAKING** — `AuthStatus.raw` is gone. Every adapter's `authStatus()` now returns only `state`, `method`, and `providers`; the native payload it carried could hold live credentials. Read the normalized fields instead.
 
 **BREAKING** — an adapter now drives its CLI one way, declared on `adapter.mode`: `"stdout"` carries `buildInvocation` and `parse`, `"acp"` carries an `acp` endpoint. The mixed-mode bridge is gone, so a mode an agent cannot honor throws rather than falling back.

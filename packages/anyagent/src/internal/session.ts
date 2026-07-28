@@ -14,48 +14,15 @@ import type {
   StdoutAdapter,
 } from "../types.js";
 import { validateOptions } from "./capabilities.js";
+import {
+  rejectTurnOptions,
+  sessionRunOptions,
+  settingsOf,
+} from "./settings.js";
 import type { TurnRun } from "./turn.js";
 import { runTurn, spawnOnce, TurnQueue } from "./turn.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
-
-const SESSION_SETTINGS = [
-  "cwd",
-  "effort",
-  "env",
-  "extraArgs",
-  "mcp",
-  "model",
-] as const;
-
-const settingsOf = (opts: SessionOptions): RunOptions => {
-  const settings: RunOptions = {};
-  for (const key of SESSION_SETTINGS) {
-    const value = opts[key];
-    if (value !== undefined) {
-      Object.assign(settings, { [key]: value });
-    }
-  }
-  return settings;
-};
-
-// JS callers bypass the compile-time omission on `SessionRunOptionsFor`.
-const rejectOwned = (opts: RunOptions): void => {
-  if (opts.resume !== undefined || opts.forkSession !== undefined) {
-    throw new AnyAgentError(
-      "InvalidOptions",
-      "resume and forkSession are owned by the session; use agent.session({ resume, fork })"
-    );
-  }
-  const owned = SESSION_SETTINGS.filter((key) => opts[key] !== undefined);
-  if (owned.length > 0) {
-    const many = owned.length > 1;
-    throw new AnyAgentError(
-      "InvalidOptions",
-      `${owned.join(", ")} ${many ? "are" : "is"} owned by the session; set ${many ? "them" : "it"} on agent.session()`
-    );
-  }
-};
 
 // The concrete {@link Session}: client-side bookkeeping over the agent's
 // one-process-per-turn model. The resume handle is threaded at dequeue, so a
@@ -88,7 +55,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     this.#adapter = adapter;
     this.#runner = runner;
     this.#settings = settingsOf(opts);
-    validateOptions(adapter, this.#settings);
+    validateOptions(adapter, sessionRunOptions(opts));
     this.#forkNext = opts.fork === true;
     if (this.#forkNext && opts.resume === undefined) {
       throw new AnyAgentError(
@@ -142,7 +109,7 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     if (this.#closed) {
       throw new AnyAgentError("InvalidOptions", "this session is closed");
     }
-    rejectOwned(callOpts);
+    rejectTurnOptions(callOpts);
     const opts: RunOptions = { ...callOpts, ...this.#settings };
     return this.#queue.add(
       (turn) => this.#turn(prompt, opts, turn),

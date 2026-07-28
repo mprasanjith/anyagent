@@ -38,7 +38,7 @@ const acpAdapter: Adapter = {
 };
 
 const acpAgent = (runner = runnerFromFixture("")): AgentImpl =>
-  new AgentImpl(acpAdapter, runner);
+  new AgentImpl(acpAdapter, { runner });
 
 // Answers the `initialize` handshake from the agent side with the given
 // capabilities; the client stores them.
@@ -325,7 +325,9 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
 // No transport factory: these drive the default one, spawning `command`.
 const spawningSession = (command: string[]): AcpSessionImpl => {
   const adapter: Adapter = { ...acpAdapter, acp: { command } };
-  return new AcpSessionImpl(new AgentImpl(adapter, runnerFromFixture("")));
+  return new AcpSessionImpl(
+    new AgentImpl(adapter, { runner: runnerFromFixture("") })
+  );
 };
 
 test("a missing ACP binary fails the turn with Invocation and its argv", async () => {
@@ -891,7 +893,9 @@ test('mode: "acp" routes session() to the live connection', () => {
 
 test('mode: "stdout" routes session() to one process per turn', async () => {
   const withId = '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
-  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(withId));
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(withId),
+  });
   const session = agent.session();
   expect(session.supports("steer")).toBe(false);
   expect(() => session.steer("go")).toThrow(
@@ -902,6 +906,72 @@ test('mode: "stdout" routes session() to one process per turn', async () => {
   expect(session.id).toBe("s1");
 });
 
+const oneTurn = (): ScriptedTransport =>
+  scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(
+      update("s1", {
+        content: { text: "pong", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+test("agent.run over ACP hands over the whole turn, then closes the connection", async () => {
+  const scripted = oneTurn();
+  const agent = new AgentImpl(acpAdapter, { transport: () => scripted });
+
+  const run = agent.run("hi");
+  const events: AgentEvent[] = [];
+  await collect(events, run);
+
+  expect((await run).text).toBe("pong");
+  expect(events.map((e) => e.type)).toEqual(["session", "text-delta", "done"]);
+  // The teardown races the consumer, so this resolving is what proves the
+  // events above survived it.
+  await scripted.closed;
+  await scripted.done;
+});
+
+test("each agent.run over ACP opens its own connection", async () => {
+  let opened = 0;
+  const agent = new AgentImpl(acpAdapter, {
+    transport: () => {
+      opened += 1;
+      return oneTurn();
+    },
+  });
+
+  await agent.run("first");
+  await agent.run("second");
+
+  expect(opened).toBe(2);
+});
+
+test("agent.run({ resume }) over ACP loads the session, then prompts once", async () => {
+  const scripted = scriptedTransport(async (api) => {
+    await handshake(api, { loadSession: true });
+    const load = await api.next();
+    expect(load.params).toMatchObject({ sessionId: "s-old" });
+    api.emit(response(load.id, {}));
+    const prompt = await api.next();
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+  const { seen, tapped } = sentMethods(scripted);
+  const agent = new AgentImpl(acpAdapter, { transport: () => tapped });
+
+  await agent.run("continue", { resume: "s-old" });
+
+  expect(seen.filter((method) => method === "session/load")).toHaveLength(1);
+  expect(seen.filter((method) => method === "session/prompt")).toHaveLength(1);
+  expect(seen).not.toContain("session/new");
+  await scripted.done;
+});
+
 // An ACP-mode session on one shipped adapter, its ACP endpoint replaced by a
 // scripted transport so no process is launched.
 const acpSession = (
@@ -910,7 +980,7 @@ const acpSession = (
   factory: AcpTransportFactory
 ): AcpSessionImpl =>
   new AcpSessionImpl(
-    new AgentImpl(adapter, runnerFromFixture("")),
+    new AgentImpl(adapter, { runner: runnerFromFixture("") }),
     opts,
     factory
   );
@@ -1077,7 +1147,7 @@ test("effort on a live cline session throws before anything opens", () => {
   expect(
     () =>
       new AcpSessionImpl(
-        new AgentImpl(cline(), runnerFromFixture("")),
+        new AgentImpl(cline(), { runner: runnerFromFixture("") }),
         { effort: "high" },
         () => {
           opened += 1;
@@ -1093,7 +1163,7 @@ test("effort on a live opencode session throws before anything opens", () => {
   expect(
     () =>
       new AcpSessionImpl(
-        new AgentImpl(opencode(), runnerFromFixture("")),
+        new AgentImpl(opencode(), { runner: runnerFromFixture("") }),
         { effort: "high" },
         () => {
           opened += 1;
@@ -1103,7 +1173,9 @@ test("effort on a live opencode session throws before anything opens", () => {
   ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
   expect(opened).toBe(0);
   expect(() =>
-    new AgentImpl(opencode(), runnerFromFixture("")).session({ effort: "high" })
+    new AgentImpl(opencode(), { runner: runnerFromFixture("") }).session({
+      effort: "high",
+    })
   ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
 });
 
@@ -1161,8 +1233,7 @@ test("a live gemini session spawns with its model, --skip-trust, and extraArgs",
       return inertTransport();
     }
   );
-  // A cwd on the turn changes nothing: the thread's settings own it.
-  const run = session.run("hi", { cwd: "/turn" });
+  const run = session.run("hi");
   run.abort();
 
   await expect(run).rejects.toMatchObject({ code: "Aborted" });
@@ -1332,10 +1403,9 @@ test("close skips session/close where the agent never advertised it", async () =
 test("closing an emulated session rejects the turns still queued", async () => {
   const fixture =
     '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
-  const session = new AgentImpl(
-    fakeStreaming,
-    runnerFromFixture(fixture)
-  ).session();
+  const session = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(fixture),
+  }).session();
   const first = session.run("first");
   const queued = session.run("second");
   await session.close();
@@ -1358,7 +1428,7 @@ test("fork without an advertised session/fork fails the turn rather than branchi
   // The agent only completes the handshake; no session/fork is ever sent.
   const transport = scriptedTransport((api) => handshake(api, {}));
   const session = new AcpSessionImpl(
-    new AgentImpl(forkAdapter, runnerFromFixture("")),
+    new AgentImpl(forkAdapter, { runner: runnerFromFixture("") }),
     { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
     () => transport
   );
@@ -1421,7 +1491,7 @@ test("fork branches over the wire when the agent advertises it, settings applied
     },
   };
   const session = new AcpSessionImpl(
-    new AgentImpl(configuringAdapter, runnerFromFixture("")),
+    new AgentImpl(configuringAdapter, { runner: runnerFromFixture("") }),
     { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
     () => transport
   );
@@ -1436,7 +1506,7 @@ test("fork branches over the wire when the agent advertises it, settings applied
 });
 
 test("fork without resume throws InvalidOptions at session creation", () => {
-  const agent = new AgentImpl(forkAdapter, runnerFromFixture(""));
+  const agent = new AgentImpl(forkAdapter, { runner: runnerFromFixture("") });
   expect(() => agent.session({ fork: true })).toThrow(
     expect.objectContaining({ code: "InvalidOptions" })
   );
@@ -1627,7 +1697,7 @@ test("replays the recorded opencode session/fork handshake", async () => {
   });
 
   const session = new AcpSessionImpl(
-    acpAgent(),
+    new AgentImpl(forkAdapter, { runner: runnerFromFixture("") }),
     { cwd: fx.cwd, fork: true, resume: fx.parentId },
     () => transport
   );

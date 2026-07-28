@@ -1,5 +1,3 @@
-import type { ChildProcess } from "node:child_process";
-
 /**
  * How a capability is provided, for each gated field of
  * {@link Capabilities}:
@@ -535,8 +533,8 @@ export interface RunResult {
 
 /**
  * A fully-resolved command line: what an adapter's `buildInvocation` returns
- * and what the core (or you, via {@link RawHandle}) spawns. `env` is merged
- * over the parent process's environment rather than replacing it. `input`,
+ * and what the core spawns. `env` is merged over the parent process's
+ * environment rather than replacing it. `input`,
  * when present, is written to the child's stdin, which is then closed — this
  * is how prompts reach CLIs that read them from a pipe.
  */
@@ -835,25 +833,6 @@ export interface SessionSeed {
 }
 
 /**
- * Direct access to the native CLI, for capabilities the unified surface does
- * not model (bidirectional sessions, CLI-specific output modes, …).
- *
- * `buildInvocation` returns the exact command AnyAgent would run — useful for
- * logging, or for running it yourself somewhere else. `spawn` launches it and
- * hands you the Node `ChildProcess` to drive: you read stdout, you handle
- * exit, and you get no normalized events and no lifecycle management. The
- * prompt is already wired to stdin.
- *
- * Neither call validates options against the declared capabilities — an option
- * the CLI does not support is silently left out of the argv rather than
- * throwing `UnsupportedCapability`.
- */
-export interface RawHandle {
-  buildInvocation: (prompt: string, opts?: RunOptions) => Invocation;
-  spawn: (prompt: string, opts?: RunOptions) => ChildProcess;
-}
-
-/**
  * A ready-to-run handle on one installed coding agent; get one from
  * `create()`.
  *
@@ -891,7 +870,6 @@ export interface Agent<C extends Capabilities = Capabilities> {
    * `modelListing: false` — some CLIs simply have no list.
    */
   models: () => Promise<ModelInfo[]>;
-  readonly raw: RawHandle;
   run: (prompt: string, opts?: RunOptionsFor<C>) => Run;
   /**
    * Check extension support and unlock the matching options in one gesture:

@@ -58,17 +58,16 @@ const SETTINGS = {
 };
 
 test("session() throws where the capability is false", () => {
-  const agent = new AgentImpl(fakeText, runnerFromFixture("ok"));
+  const agent = new AgentImpl(fakeText, { runner: runnerFromFixture("ok") });
   expect(() => agent.session()).toThrow(AnyAgentError);
   expect(() => agent.session()).toThrow("cannot continue a conversation");
 });
 
 test("a session threads the revealed id into later turns", async () => {
   const calls: RunOptions[] = [];
-  const agent = new AgentImpl(
-    recording(fakeStreaming, calls),
-    runnerFromFixture(WITH_ID)
-  );
+  const agent = new AgentImpl(recording(fakeStreaming, calls), {
+    runner: runnerFromFixture(WITH_ID),
+  });
   const session = agent.session();
   expect(session.id).toBeUndefined();
 
@@ -82,10 +81,9 @@ test("a session threads the revealed id into later turns", async () => {
 
 test("turns queue: two runs fired together execute in order, threaded", async () => {
   const calls: RunOptions[] = [];
-  const agent = new AgentImpl(
-    recording(fakeStreaming, calls),
-    runnerFromFixture(WITH_ID)
-  );
+  const agent = new AgentImpl(recording(fakeStreaming, calls), {
+    runner: runnerFromFixture(WITH_ID),
+  });
   const session = agent.session();
   const first = session.run("first");
   const second = session.run("second");
@@ -108,7 +106,7 @@ test("a failed turn rejects its queued successors; a later run retries", async (
       return yield* fakeStreaming.parse(source, opts);
     },
   });
-  const agent = new AgentImpl(flaky, runnerFromFixture(WITH_ID));
+  const agent = new AgentImpl(flaky, { runner: runnerFromFixture(WITH_ID) });
   const session = agent.session();
 
   const first = session.run("first");
@@ -122,10 +120,9 @@ test("a failed turn rejects its queued successors; a later run retries", async (
 
 test("session({ resume }) continues from a persisted id on the first turn", async () => {
   const calls: RunOptions[] = [];
-  const agent = new AgentImpl(
-    recording(fakeStreaming, calls),
-    runnerFromFixture(WITH_ID)
-  );
+  const agent = new AgentImpl(recording(fakeStreaming, calls), {
+    runner: runnerFromFixture(WITH_ID),
+  });
   const session = agent.session({ resume: "saved-9" });
   expect(session.id).toBe("saved-9");
   await session.run("continue");
@@ -134,10 +131,9 @@ test("session({ resume }) continues from a persisted id on the first turn", asyn
 
 test("fork requires resume and rides the first turn only", async () => {
   const calls: RunOptions[] = [];
-  const agent = new AgentImpl(
-    recording(forkable, calls),
-    runnerFromFixture(WITH_ID)
-  );
+  const agent = new AgentImpl(recording(forkable, calls), {
+    runner: runnerFromFixture(WITH_ID),
+  });
   expect(() => agent.session({ fork: true })).toThrow(
     expect.objectContaining({ code: "InvalidOptions" })
   );
@@ -153,16 +149,19 @@ test("fork requires resume and rides the first turn only", async () => {
   expect(calls[1]?.resume).toBe("s1");
 });
 
-test("fork on an adapter without sessionFork throws UnsupportedCapability", async () => {
-  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(WITH_ID));
-  const session = agent.session({ fork: true, resume: "saved-9" });
-  await expect(session.run("first")).rejects.toMatchObject({
-    code: "UnsupportedCapability",
+test("fork on an adapter without sessionFork throws UnsupportedCapability", () => {
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(WITH_ID),
   });
+  expect(() => agent.session({ fork: true, resume: "saved-9" })).toThrow(
+    expect.objectContaining({ code: "UnsupportedCapability" })
+  );
 });
 
 test("passing resume or forkSession through a session turn throws InvalidOptions", () => {
-  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(WITH_ID));
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(WITH_ID),
+  });
   const session = agent.session();
   expect(() => session.run("x", { resume: "s1" } as RunOptions)).toThrow(
     expect.objectContaining({ code: "InvalidOptions" })
@@ -175,13 +174,12 @@ test("passing resume or forkSession through a session turn throws InvalidOptions
 test("settings from agent.session() ride every turn, resumed ones included", async () => {
   const calls: RunOptions[] = [];
   const invocations: Invocation[] = [];
-  const agent = new AgentImpl(
-    recording(threading, calls),
-    (inv: Invocation) => {
+  const agent = new AgentImpl(recording(threading, calls), {
+    runner: (inv: Invocation) => {
       invocations.push(inv);
       return sourceFromBody(WITH_ID);
-    }
-  );
+    },
+  });
   const session = agent.session(SETTINGS);
 
   await session.run("first");
@@ -201,9 +199,11 @@ test("settings from agent.session() ride every turn, resumed ones included", asy
 
 test("a setting passed per-turn throws InvalidOptions and spawns nothing", () => {
   let spawns = 0;
-  const agent = new AgentImpl(fakeStreaming, () => {
-    spawns += 1;
-    return sourceFromBody(WITH_ID);
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: () => {
+      spawns += 1;
+      return sourceFromBody(WITH_ID);
+    },
   });
   const session = agent.session({ model: "opus" });
 
@@ -225,7 +225,9 @@ test("a setting passed per-turn throws InvalidOptions and spawns nothing", () =>
 });
 
 test("a setting on session.run does not compile", () => {
-  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(WITH_ID));
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(WITH_ID),
+  });
   const session = agent.session();
   expect(() =>
     // @ts-expect-error model is the session's setting, not a turn option.
@@ -242,12 +244,14 @@ test("an unsupported setting throws at session(), before any turn", () => {
     ...fakeStreaming,
     capabilities: { ...fakeStreaming.capabilities, modelSelection: false },
   };
-  const agent = new AgentImpl(noModel, runnerFromFixture(WITH_ID));
+  const agent = new AgentImpl(noModel, { runner: runnerFromFixture(WITH_ID) });
   expect(() => agent.session({ model: "opus" })).toThrow(
     expect.objectContaining({ code: "UnsupportedCapability" })
   );
 
-  const closed = new AgentImpl(fakeClosedEffort, runnerFromFixture(WITH_ID));
+  const closed = new AgentImpl(fakeClosedEffort, {
+    runner: runnerFromFixture(WITH_ID),
+  });
   expect(() => closed.session({ effort: "medium" })).toThrow(
     expect.objectContaining({ code: "UnsupportedCapability" })
   );
@@ -262,7 +266,7 @@ test("a seeded adapter registers the handle on turn one, resumes it after", asyn
       id: "seeded-1",
     }),
   });
-  const agent = new AgentImpl(seeded, runnerFromFixture(NO_ID));
+  const agent = new AgentImpl(seeded, { runner: runnerFromFixture(NO_ID) });
   const session = agent.session({ extraArgs: ["--verbose"] });
   expect(session.id).toBe("seeded-1");
 
@@ -276,7 +280,9 @@ test("a seeded adapter registers the handle on turn one, resumes it after", asyn
 });
 
 test("iterating a session turn reveals the id as the session event arrives", async () => {
-  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(WITH_ID));
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(WITH_ID),
+  });
   const session = agent.session();
   const run = session.run("first");
   for await (const ev of run) {
@@ -288,7 +294,9 @@ test("iterating a session turn reveals the id as the session event arrives", asy
 });
 
 test("steer and respond throw in stdout mode, and supports says so", () => {
-  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(WITH_ID));
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(WITH_ID),
+  });
   const session = agent.session();
   expect(session.supports("steer")).toBe(false);
   expect(() => session.steer("go faster")).toThrow(
@@ -301,7 +309,7 @@ test("steer and respond throw in stdout mode, and supports says so", () => {
 
 test("a session on an id-concealing, unseeded adapter fails the second turn honestly", async () => {
   const concealing = { ...fakeStreaming, sessionSeed: undefined };
-  const agent = new AgentImpl(concealing, runnerFromFixture(NO_ID));
+  const agent = new AgentImpl(concealing, { runner: runnerFromFixture(NO_ID) });
   const session = agent.session();
   await session.run("first");
   await expect(session.run("second")).rejects.toMatchObject({

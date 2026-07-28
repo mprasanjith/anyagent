@@ -106,7 +106,7 @@ const checkStdoutStream = async (
   name: string,
   body: string
 ): Promise<void> => {
-  const agent = new AgentImpl(adapter, fixedRunner(body));
+  const agent = new AgentImpl(adapter, { runner: fixedRunner(body) });
   const events: AgentEvent[] = [];
   for await (const ev of agent.run(PROMPT)) {
     events.push(ev);
@@ -286,7 +286,7 @@ const driveTurn = async (
     stopReason: opts.stopReason,
   });
   const session = new AcpSessionImpl(
-    new AgentImpl(adapter, fixedRunner("")),
+    new AgentImpl(adapter, { runner: fixedRunner("") }),
     {},
     () => transport
   );
@@ -414,7 +414,7 @@ export const runConformance = async (
   opts: ConformanceOptions
 ): Promise<void> => {
   const caps = adapter.capabilities;
-  const agentOf = () => new AgentImpl(adapter, fixedRunner(""));
+  const agentOf = () => new AgentImpl(adapter, { runner: fixedRunner("") });
   const runWith = (runOpts: RunOptions) => () => agentOf().run("x", runOpts);
 
   if (adapter.mode === "stdout") {

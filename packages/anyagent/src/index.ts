@@ -1,11 +1,7 @@
 import { AgentImpl } from "./internal/agent.js";
 import { BUILTINS } from "./internal/builtins.js";
 import { runDetect } from "./internal/detect.js";
-import {
-  realProbe,
-  realSystemProbe,
-  spawnAndStream,
-} from "./internal/runtime/spawn.js";
+import { realProbe } from "./internal/runtime/spawn.js";
 import type {
   Adapter,
   Agent,
@@ -40,7 +36,7 @@ export const create = <C extends Capabilities = Capabilities>(
   opts: CreateOptions = {}
 ): Agent<C> => {
   const adapter = ("adapter" in source ? source.adapter : source) as Adapter<C>;
-  return new AgentImpl(adapter, spawnAndStream, opts.probe ?? realSystemProbe);
+  return new AgentImpl(adapter, { probe: opts.probe });
 };
 
 /**

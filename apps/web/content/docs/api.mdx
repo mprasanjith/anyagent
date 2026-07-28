@@ -376,15 +376,6 @@ Everything discovery reads from the machine: the `VersionProbe` operations plus 
   name="SystemProbe"
 />
 
-## RawHandle
-
-Direct access to the native CLI, reached through `agent.raw`, for capabilities the unified interface does not cover. `buildInvocation` returns the exact command AnyAgent would run; `spawn` launches it and hands you the Node `ChildProcess` to drive yourself, with the prompt wired to stdin and no normalized events.
-
-<auto-type-table
-  path="../../../../packages/anyagent/src/types.ts"
-  name="RawHandle"
-/>
-
 ## Next steps
 
 <Cards>

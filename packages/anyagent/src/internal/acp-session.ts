@@ -35,7 +35,9 @@ import type {
 } from "../types.js";
 import type { AcpClient, AcpSession, AcpTransport } from "./acp.js";
 import { connect } from "./acp.js";
+import { validateOptions } from "./capabilities.js";
 import { promptWithSchema } from "./emulate.js";
+import { rejectTurnOptions, sessionRunOptions } from "./settings.js";
 import type { Composed, TurnRun } from "./turn.js";
 import { runTurn, TurnQueue } from "./turn.js";
 
@@ -380,8 +382,9 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
         "fork requires resume: only an existing conversation can branch"
       );
     }
-    // Both throw for a setting this endpoint cannot carry — here, before the
-    // constructor returns, so nothing has spawned yet.
+    // All three throw for a setting this endpoint cannot carry — here, before
+    // the constructor returns, so nothing has spawned yet.
+    validateOptions(adapter, sessionRunOptions(opts));
     this.#acp = this.#spec.settings?.(opts) ?? {};
     this.#mcpServers = toAcpMcpServers(opts.mcp);
   }
@@ -458,12 +461,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
     if (this.#closed) {
       throw new AnyAgentError("InvalidOptions", "this session is closed");
     }
-    if (opts.resume !== undefined || opts.forkSession !== undefined) {
-      throw new AnyAgentError(
-        "InvalidOptions",
-        "resume and forkSession are owned by the session; use agent.session({ resume, fork })"
-      );
-    }
+    rejectTurnOptions(opts);
     return this.#queue.add(
       (turn) => this.#turn(prompt, opts, turn),
       opts.signal

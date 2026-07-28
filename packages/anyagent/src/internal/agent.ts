@@ -1,16 +1,13 @@
-import type { ChildProcess } from "node:child_process";
 import { AnyAgentError } from "../errors.js";
 import type {
   Adapter,
   Agent,
-  AgentEvent,
   AuthStatus,
   Capabilities,
   ExtensionKey,
   Invocation,
   ModelInfo,
   OutputSource,
-  RawHandle,
   Run,
   RunOptions,
   Session,
@@ -19,48 +16,42 @@ import type {
   SystemProbe,
 } from "../types.js";
 import { EXTENSION_CAPABILITY } from "../types.js";
+import type { AcpTransportFactory } from "./acp-session.js";
 import { AcpSessionImpl } from "./acp-session.js";
-import {
-  realSystemProbe,
-  spawnAndStream,
-  spawnChild,
-} from "./runtime/spawn.js";
+import { realSystemProbe, spawnAndStream } from "./runtime/spawn.js";
 import { SessionImpl } from "./session.js";
-import {
-  rejectedRun,
-  runTurn,
-  spawnOnce,
-  TurnRun,
-  whenAborted,
-} from "./turn.js";
+import { splitRunOptions } from "./settings.js";
+import { rejectedRun } from "./turn.js";
 
 type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
-// The concrete {@link Agent}: hands each turn to a {@link RunImpl} (which
-// validates options, spawns via the injected runner, and parses through the
-// adapter), answers discovery through the injected probe, and opens
-// {@link SessionImpl} cursors.
+/**
+ * The I/O an agent does, swappable so tests drive every path without touching
+ * the machine: `probe` answers discovery, `runner` spawns a stdout-mode turn,
+ * and `transport` carries an ACP-mode connection.
+ */
+export interface AgentDeps {
+  probe?: SystemProbe;
+  runner?: Runner;
+  transport?: AcpTransportFactory;
+}
+
+// The concrete {@link Agent}: every turn is a session turn, so `run` opens a
+// thread for one turn and closes it again, and discovery answers through the
+// injected probe.
 export class AgentImpl<C extends Capabilities = Capabilities>
   implements Agent<C>
 {
   readonly adapter: Adapter<C>;
-  private readonly runner: Runner;
-  private readonly probe: SystemProbe;
-  readonly raw: RawHandle = {
-    buildInvocation: (prompt: string, opts: RunOptions = {}) =>
-      this.build(prompt, opts),
-    spawn: (prompt: string, opts: RunOptions = {}): ChildProcess =>
-      spawnChild(this.build(prompt, opts), opts.signal),
-  };
+  readonly #runner: Runner;
+  readonly #probe: SystemProbe;
+  readonly #transport: AcpTransportFactory | undefined;
 
-  constructor(
-    adapter: Adapter<C>,
-    runner: Runner = spawnAndStream,
-    probe: SystemProbe = realSystemProbe
-  ) {
+  constructor(adapter: Adapter<C>, deps: AgentDeps = {}) {
     this.adapter = adapter;
-    this.runner = runner;
-    this.probe = probe;
+    this.#runner = deps.runner ?? spawnAndStream;
+    this.#probe = deps.probe ?? realSystemProbe;
+    this.#transport = deps.transport;
   }
 
   get capabilities(): C {
@@ -76,53 +67,27 @@ export class AgentImpl<C extends Capabilities = Capabilities>
   }
 
   run(prompt: string, opts: RunOptions = {}): Run {
-    const { adapter } = this;
-    if (adapter.mode !== "stdout") {
-      return rejectedRun(
-        new AnyAgentError(
-          "UnsupportedCapability",
-          `${adapter.meta.id} runs every turn over its ACP endpoint`
-        )
-      );
+    try {
+      const { settings, turn } = splitRunOptions(opts);
+      const session = this.#open(settings);
+      const run = session.run(prompt, turn);
+      const close = (): Promise<void> => session.close();
+      run.then(close, close).catch(() => undefined);
+      return run;
+    } catch (failure) {
+      return rejectedRun(failure);
     }
-    const run = new TurnRun();
-    const emit = (event: AgentEvent): void => {
-      run.push(event);
-    };
-    if (opts.signal) {
-      whenAborted(opts.signal, () => {
-        run.abort();
-      });
-    }
-    runTurn(
-      adapter,
-      prompt,
-      opts,
-      (composed) => spawnOnce(adapter, this.runner, composed, run.signal, emit),
-      emit
-    ).then(
-      (result) => {
-        run.settleOk(result);
-      },
-      (failure: unknown) => {
-        run.settleErr(failure);
-      }
-    );
-    return run;
   }
 
   session(opts: SessionOptions = {}): Session<C> {
     const { adapter } = this;
-    if (adapter.mode === "acp") {
-      return new AcpSessionImpl(this, opts);
-    }
-    if (!adapter.capabilities.session) {
+    if (adapter.mode === "stdout" && !adapter.capabilities.session) {
       throw new AnyAgentError(
         "UnsupportedCapability",
         `${adapter.meta.id} cannot continue a conversation`
       );
     }
-    return new SessionImpl(this, this.runner, opts);
+    return this.#open(opts);
   }
 
   async authStatus(): Promise<AuthStatus> {
@@ -133,7 +98,7 @@ export class AgentImpl<C extends Capabilities = Capabilities>
         `${this.adapter.meta.id} does not report auth status`
       );
     }
-    return await impl(this.probe);
+    return await impl(this.#probe);
   }
 
   async models(): Promise<ModelInfo[]> {
@@ -144,20 +109,15 @@ export class AgentImpl<C extends Capabilities = Capabilities>
         `${this.adapter.meta.id} does not list models`
       );
     }
-    return await impl(this.probe);
+    return await impl(this.#probe);
   }
 
-  private build(prompt: string, opts: RunOptions): Invocation {
+  // A one-turn thread is not a conversation, so it opens without the gate
+  // `session()` puts in front of continuing one.
+  #open(opts: SessionOptions): Session<C> {
     const { adapter } = this;
-    if (adapter.mode !== "stdout") {
-      throw new AnyAgentError(
-        "UnsupportedCapability",
-        `${adapter.meta.id} runs every turn over its ACP endpoint`
-      );
-    }
-    const invocation = adapter.buildInvocation(prompt, opts);
-    return opts.extraArgs?.length
-      ? { ...invocation, args: [...invocation.args, ...opts.extraArgs] }
-      : invocation;
+    return adapter.mode === "acp"
+      ? new AcpSessionImpl(this, opts, this.#transport)
+      : new SessionImpl(this, this.#runner, opts);
   }
 }
