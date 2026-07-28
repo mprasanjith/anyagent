@@ -29,19 +29,6 @@ export type CapabilitySupport = "native" | "emulated" | false;
 export type DiscoverySupport = "native" | "probed" | false;
 
 /**
- * The mode {@link Agent.session} runs in:
- *
- * - `"acp"` — the session holds one connection to the agent for its lifetime,
- *   which unlocks the live verbs ({@link Session.steer},
- *   {@link Session.respond}) and `permission-request` events.
- * - `"stdout"` — the session threads the CLI's own resume flag, one process
- *   per turn. Turns behave identically; only the live verbs are unavailable.
- * - `false` — the CLI has no way to continue a conversation; both the
- *   `resume` option and `session()` throw.
- */
-export type SessionSupport = "acp" | "stdout" | false;
-
-/**
  * How hard the model should think, in the shared cross-agent vocabulary. The
  * named levels autocomplete, but any string is accepted and passed through,
  * because several CLIs take provider-defined names AnyAgent cannot enumerate.
@@ -143,10 +130,10 @@ export interface Capabilities {
    */
   reasoningEfforts?: readonly string[];
   /**
-   * The mode sessions run in, gating {@link ExtensionOptions.resume} and
-   * {@link Agent.session}. See {@link SessionSupport}.
+   * Whether a conversation can be continued from a persisted id, gating
+   * {@link ExtensionOptions.resume} and {@link SessionOptions.resume}.
    */
-  session: SessionSupport;
+  resume: CapabilitySupport;
   /**
    * Whether resuming can branch into a new conversation instead of
    * continuing the old one. See {@link SessionOptions.fork} and
@@ -381,7 +368,7 @@ export const EXTENSION_CAPABILITY = {
   forkSession: "sessionFork",
   mcp: "mcp",
   readOnly: "readOnly",
-  resume: "session",
+  resume: "resume",
 } as const satisfies Record<keyof ExtensionOptions, keyof Capabilities>;
 
 /** The name of one gated run option — the keys of {@link ExtensionOptions}. */
@@ -887,8 +874,9 @@ export interface Agent<C extends Capabilities = Capabilities> {
    * Open a session: one conversation spanning many turns. Continuity is the
    * session's job — each `run` threads the previous turn's resume handle
    * automatically, and `session.id` is a plain string you can persist and
-   * pass back later as `{ resume }`. Gated by {@link Capabilities.session};
-   * throws `UnsupportedCapability` where it is `false`.
+   * pass back later as `{ resume }`. On an agent that runs one process per
+   * turn, continuity needs {@link Capabilities.resume}; without it
+   * `session()` throws `UnsupportedCapability`.
    *
    * A session is a thread: its {@link SessionOptions} settings are fixed here
    * and apply to every turn. Fork it to continue the conversation under

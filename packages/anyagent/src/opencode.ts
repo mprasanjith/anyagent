@@ -35,10 +35,9 @@ import type { AcpAdapter, StdoutAdapter } from "./types.js";
  * which `OPENCODE_CONFIG_CONTENT` carries per run. Kilo keeps the family's
  * stdout mode and no MCP until each is verified against its binary.
  */
-export type OpencodeCapabilities = Omit<
-  OpencodeFamilyCapabilities,
-  "mcp" | "session"
-> & { readonly mcp: "native"; readonly session: "acp" };
+export type OpencodeCapabilities = Omit<OpencodeFamilyCapabilities, "mcp"> & {
+  readonly mcp: "native";
+};
 
 export const opencode = (): AcpAdapter<OpencodeCapabilities> &
   Pick<StdoutAdapter<OpencodeCapabilities>, "buildInvocation" | "parse"> => {
@@ -56,7 +55,6 @@ export const opencode = (): AcpAdapter<OpencodeCapabilities> &
     capabilities: {
       ...adapter.capabilities,
       mcp: "native" as const,
-      session: "acp" as const,
     },
   };
 };

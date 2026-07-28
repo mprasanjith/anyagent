@@ -10,7 +10,6 @@ import type {
   Run,
   RunOptions,
   RunResult,
-  SessionSupport,
   StdoutAdapter,
 } from "./types.js";
 
@@ -51,9 +50,9 @@ export interface ConformanceOptions {
   fixtures: Record<string, string>;
   /**
    * Map of scenario name to a recorded ACP transcript (the JSONL
-   * `anyagent-record` writes). Each is replayed through an ACP-mode session,
-   * so an adapter's `session: "acp"` mode answers for the same invariants as
-   * its stdout mode. Requires a declared `acp` endpoint.
+   * `anyagent-record` writes). Each is replayed through a live session, so an
+   * `acp`-mode adapter answers for the same invariants a stdout-mode one does
+   * from its fixtures.
    */
   transcripts?: Record<string, string>;
 }
@@ -451,13 +450,9 @@ export const runConformance = async (
     );
   }
 
-  const gated: [
-    CapabilitySupport | SessionSupport,
-    () => PromiseLike<unknown>,
-    string,
-  ][] = [
+  const gated: [CapabilitySupport, () => PromiseLike<unknown>, string][] = [
     [caps.modelSelection, runWith({ model: "m" }), "model"],
-    [caps.session, runWith({ resume: "s" }), "resume"],
+    [caps.resume, runWith({ resume: "s" }), "resume"],
     [caps.systemPrompt, runWith({ systemPrompt: "s" }), "systemPrompt"],
     [caps.mcp, runWith({ mcp: {} }), "mcp"],
     [caps.cwd, runWith({ cwd: "/tmp" }), "cwd"],

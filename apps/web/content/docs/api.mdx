@@ -95,7 +95,7 @@ One run in flight: a `Promise` of the [`RunResult`](#runresult) that is also an 
 
 ## Session and SessionOptions
 
-One conversation spanning many turns, from `agent.session()`. The session owns continuity — in stdout mode each turn threads the CLI’s own resume flag, one process per turn; in ACP mode one connection stays open for the session’s lifetime — and `id` is a plain string you persist and pass back as `agent.session({ resume: id })` to continue later. Turns queue, and a failed turn rejects the turns queued behind it; `steer` and `respond` are ACP-mode verbs gated by `session.supports()`. Gated by [`Capabilities.session`](#capabilities); [Sessions](/docs/sessions) is the guide.
+One conversation spanning many turns, from `agent.session()`. The session owns continuity — in stdout mode each turn threads the CLI’s own resume flag, one process per turn; in ACP mode one connection stays open for the session’s lifetime — and `id` is a plain string you persist and pass back as `agent.session({ resume: id })` to continue later, which [`Capabilities.resume`](#capabilities) gates. Turns queue, and a failed turn rejects the turns queued behind it; `steer` and `respond` are ACP-mode verbs gated by `session.supports()`. [Sessions](/docs/sessions) is the guide.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -260,7 +260,7 @@ type DiscoverySupport = "native" | "probed" | false;
 
 ## Capabilities
 
-What one agent CLI can do, read from `agent.capabilities` or a [`DetectResult`](#detectresult) before you ask for anything. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns; `authStatus` and `modelListing` are [`DiscoverySupport`](#discoverysupport) values, `session` answers `"acp" | "stdout" | false` — the mode sessions run in, defined in the [matrix legend](/docs/adapters) — and every other field is a [`CapabilitySupport`](#capabilitysupport).
+What one agent CLI can do, read from `agent.capabilities` or a [`DetectResult`](#detectresult) before you ask for anything. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns; `authStatus` and `modelListing` are [`DiscoverySupport`](#discoverysupport) values and every other field is a [`CapabilitySupport`](#capabilitysupport).
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"

@@ -81,7 +81,7 @@ export class AgentImpl<C extends Capabilities = Capabilities>
 
   session(opts: SessionOptions = {}): Session<C> {
     const { adapter } = this;
-    if (adapter.mode === "stdout" && !adapter.capabilities.session) {
+    if (adapter.mode === "stdout" && !adapter.capabilities.resume) {
       throw new AnyAgentError(
         "UnsupportedCapability",
         `${adapter.meta.id} cannot continue a conversation`

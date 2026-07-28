@@ -9,7 +9,7 @@ A session is one conversation spanning many runs: open it with `agent.session()`
 
 ## Run turns
 
-<SupportedBy capability="session" />
+<SupportedBy capability="resume" />
 
 `session.run` works like the agent’s own, returning the same awaitable, iterable handle:
 
@@ -57,7 +57,7 @@ Resuming one id into two sessions without `fork` is a relay, not a branch: both 
 
 ## Which agents run sessions
 
-Every built-in adapter runs sessions; `agent.supports("resume")` is the guard, and `agent.session()` throws where it is false. Agents whose sessions run in ACP mode add steering, covered next; the Sessions column in the [matrix](/docs/adapters) marks them.
+Every built-in adapter opens a session. Continuing one needs `resume`, which `agent.supports("resume")` guards; where it is false, `agent.session({ resume })` throws and a session can only start fresh. Agents in ACP mode add steering, covered next; the Mode and Resume columns in the [matrix](/docs/adapters) mark both.
 
 ## Steer an ACP-mode session
 
@@ -65,7 +65,7 @@ Some agents run sessions in ACP mode, holding one connection open instead of res
 
 ### Steer a running turn
 
-<SupportedBy capability="session" value="acp" guard='session.supports("steer")' />
+<SupportedBy mode="acp" guard='session.supports("steer")' />
 
 `session.steer(text)` injects guidance into the turn that is currently running:
 

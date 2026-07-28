@@ -408,7 +408,7 @@ test("a stdout-mode resume throws instead of running without the conversation", 
 
 test("cline declares ACP-mode sessions over its acp endpoint", () => {
   const adapter = cline();
-  expect(adapter.capabilities.session).toBe("acp");
+  expect(adapter.mode).toBe("acp");
   expect(adapter.acp?.command).toEqual(["cline", "--acp"]);
   // Plan mode is not a read-only guarantee here, so no mode option is declared.
   expect(adapter.acp?.readOnly).toBeUndefined();

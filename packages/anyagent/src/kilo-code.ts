@@ -10,10 +10,9 @@ import type { AcpAdapter, StdoutAdapter } from "./types.js";
  * protocol v1, `loadSession`, `sessionCapabilities.fork`, and a `session/new`
  * carrying the `model`, `effort`, and `mode` options the family's spec drives.
  */
-export type KiloCodeCapabilities = Omit<
-  OpencodeFamilyCapabilities,
-  "mcp" | "session"
-> & { readonly mcp: "native"; readonly session: "acp" };
+export type KiloCodeCapabilities = Omit<OpencodeFamilyCapabilities, "mcp"> & {
+  readonly mcp: "native";
+};
 
 /**
  * The adapter for Kilo Code's CLI (`kilo`). Kilo is an opencode fork with the
@@ -57,7 +56,6 @@ export const kiloCode = (): AcpAdapter<KiloCodeCapabilities> &
     capabilities: {
       ...adapter.capabilities,
       mcp: "native" as const,
-      session: "acp" as const,
     },
   };
 };

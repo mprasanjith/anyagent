@@ -32,7 +32,7 @@ const CAPS = {
   // ACP mode, gated on a recorded real transcript (sessions.md §6 M-2):
   // test/fixtures/acp/cursor.jsonl — initialize on protocolVersion 1, a session
   // id, an agent_message_chunk streaming "pong", and stopReason end_turn.
-  session: "acp",
+  resume: "native",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",

@@ -38,7 +38,7 @@ const CAPS = {
   // reveals no session id, and its `--id` never accepts a prompt alongside it
   // (upstream). This build advertises `loadSession: true`, so resume
   // reattaches over ACP rather than falling back to that stdout path.
-  session: "acp",
+  resume: "native",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",

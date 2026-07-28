@@ -8,7 +8,7 @@ type GuardedCap = keyof Pick<
   | "effort"
   | "mcp"
   | "modelSelection"
-  | "session"
+  | "resume"
   | "structuredOutput"
   | "systemPrompt"
 >;
@@ -20,7 +20,7 @@ const GUARDED_OPTIONS: readonly (readonly [
 ])[] = [
   ["model", "modelSelection", "model selection"],
   ["systemPrompt", "systemPrompt", "a system prompt"],
-  ["resume", "session", "session resume"],
+  ["resume", "resume", "session resume"],
   ["mcp", "mcp", "MCP config"],
   ["cwd", "cwd", "a working directory"],
   ["schema", "structuredOutput", "structured output"],

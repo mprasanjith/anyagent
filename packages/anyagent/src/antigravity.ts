@@ -34,7 +34,7 @@ const CAPS = {
   // mode stays reachable via `extraArgs: ["--mode", "plan"]`.
   readOnly: false,
   reasoningEfforts: ["low", "medium", "high"],
-  session: "stdout",
+  resume: "native",
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",

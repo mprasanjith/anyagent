@@ -26,7 +26,7 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  session: "stdout",
+  resume: "native",
   sessionFork: false,
   streaming: "native",
   // Deliberately emulated: `--output-schema` speaks a restricted JSON Schema

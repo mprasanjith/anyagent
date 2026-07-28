@@ -31,7 +31,7 @@ import { fakeStreaming, runnerFromFixture } from "./fake-adapter.js";
 // An ACP-mode adapter: an ACP endpoint and nothing the core spawns.
 const acpAdapter: Adapter = {
   acp: { command: ["fake-acp"] },
-  capabilities: { ...fakeStreaming.capabilities, session: "acp" },
+  capabilities: fakeStreaming.capabilities,
   detection: {},
   meta: { bin: ["fake-acp"], id: "fake-acp", name: "Fake ACP" },
   mode: "acp",

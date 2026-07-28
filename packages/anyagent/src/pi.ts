@@ -35,7 +35,7 @@ const CAPS = {
     "xhigh",
     "max",
   ],
-  session: "stdout",
+  resume: "native",
   sessionFork: "native",
   streaming: "native",
   structuredOutput: "emulated",

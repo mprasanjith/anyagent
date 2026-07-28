@@ -18,7 +18,7 @@ const caps: Capabilities = {
   modelListing: false,
   modelSelection: "native",
   readOnly: false,
-  session: false,
+  resume: false,
   sessionFork: false,
   streaming: "native",
   structuredOutput: false,

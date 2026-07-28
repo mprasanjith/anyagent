@@ -37,7 +37,7 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  session: "stdout",
+  resume: "native",
   // `--fork  fork the session before continuing (requires --continue or
   // --session)` — the core only sends `forkSession` alongside `resume`, which
   // maps to `--session`, so the prerequisite always holds.

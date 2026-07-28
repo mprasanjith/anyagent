@@ -36,7 +36,7 @@ const CAPS = {
   // Reattachment is broken upstream (#15502): the endpoint advertises
   // `loadSession` and `session/load` then fails, so a session here only ever
   // starts fresh.
-  session: false,
+  resume: false,
   sessionFork: false,
   streaming: "native",
   structuredOutput: "emulated",
