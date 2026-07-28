@@ -1,5 +1,7 @@
 # Sessions v3: Run, Session, fork, and the ACP native tier
 
+> Superseded in part by the one-mode-per-adapter restructure (2026-07-28): adapters are stdout XOR ACP; see CONTRIBUTING.md for the current contract.
+
 Status: accepted direction 2026-07-22 (v3: single-verb surface; ACP in scope for this build; supersedes v2's `AgentSession`/`runStream` shape, which shipped unreleased and is deleted by M-1). Extends api-v2.md; §5 records what this build also adopts from its want-to-haves (`maxTurns`, attachments) and what stays out (`sessions()` listing).
 
 ## 1. Surface

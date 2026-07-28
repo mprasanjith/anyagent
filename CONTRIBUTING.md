@@ -22,18 +22,23 @@ The examples below add a fictional Hopper CLI with the id `hopper`; substitute y
 
 Confirm the CLI's row in `docs/specs/harness-audit.md`: invocation, streaming format, autonomy and sandbox flags. Nothing downstream is trustworthy until the audit is.
 
-### 2. Implement the contract
+### 2. Pick a mode and implement its contract
 
-Implement the `Adapter` interface in `packages/anyagent/src/hopper.ts` and export it as a factory function. Full field-level docs live in the TSDoc on `Adapter` (and `AdapterMeta`, `DetectionSpec`, `Invocation`, `OutputSource`, `SessionSeed`) in `packages/anyagent/src/types.ts`.
+An adapter drives its CLI one way, declared on `mode`. Prefer `"acp"` where the CLI ships an ACP endpoint: the protocol carries streaming, permissions, attachments, and steering, so there is no output format to track.
+
+- `mode: "acp"` (`AcpAdapter`) declares `acp`: the argv that launches the endpoint, an optional `readOnly` config option, and an optional `settings` mapping a session's `SessionOptions` onto the endpoint's own channels. Throw `AnyAgentError` (`code: "UnsupportedCapability"`) from `settings` for a setting the endpoint has no channel for, so the session fails before anything spawns rather than dropping it. Declare `readOnly` only where the endpoint's own option is trustworthy; permission denial holds the line otherwise. `systemPrompt` and `structuredOutput` are never `"native"` here — a live turn carries content blocks and nothing else, so the core emulates both.
+- `mode: "stdout"` (`StdoutAdapter`) declares `buildInvocation` and `parse` (see step 3). Sessions here are client-side bookkeeping over one process per turn, so the CLI must reveal a session id in its output for a second turn to resume.
+
+The two field sets are mutually exclusive: declaring the other mode's fields is a compile error. Write the adapter in `packages/anyagent/src/hopper.ts` and export it as a factory function. Full field-level docs live in the TSDoc on those interfaces (and `AdapterMeta`, `DetectionSpec`, `Invocation`, `OutputSource`) in `packages/anyagent/src/types.ts`.
 
 Two constraints that are not in the types:
 
 - Declare `capabilities` `as const satisfies Capabilities` so the literal types reach consumers and an unsupported option fails to compile. `authStatus` and `listModels` are required exactly when the matching capability is declared, and must never cost a model call.
 - Keep `buildInvocation` pure: it maps the prompt and validated options to command, args, env, and stdin `input`, and never launches anything. The core spawns, which keeps adapters testable offline. Pipe the prompt through `Invocation.input`, never a positional argument, so a large prompt cannot exceed the OS argv limit.
 
-`acp` declares an ACP endpoint that backs a native-tier session; `sessionSeed` supplies a resume handle up front for a CLI that reveals none headless (goose).
-
 ### 3. Map output to events in parse
+
+This step is for `mode: "stdout"` only; an ACP adapter's events come from the protocol.
 
 `parse` maps process output to normalized events and must end with exactly one `done` event. Under `strict: true`, throw `AnyAgentError` with `code: "Parse"` on any shape you do not recognize; the drift canary depends on strict mode to catch upstream format changes.
 
@@ -77,9 +82,9 @@ import { hopper } from "../hopper.js";
 export const BUILTINS: Adapter[] = [claudeCode(), codex(), hopper()];
 ```
 
-### 5. Record real fixtures
+### 5. Record real output
 
-Fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/hopper/`. The recorder builds the read-only invocation where the CLI honors one, runs it, and writes the raw lines. Record from `packages/anyagent/`:
+A stdout adapter's fixtures are recorded real CLI output, checked into `packages/anyagent/test/fixtures/hopper/`. The recorder builds the read-only invocation where the CLI honors one, runs it, and writes the raw lines. Record from `packages/anyagent/`:
 
 ```bash
 bun src/internal/record.ts hopper simple "Reply with exactly the word: pong"
@@ -88,9 +93,15 @@ bun src/internal/record.ts hopper simple "Reply with exactly the word: pong"
 
 Record at least a `simple` scenario. Add `tools` and `edit` scenarios when the CLI's tool-call and file-change output has shapes `simple` does not exercise.
 
+An ACP adapter records one transcript of a real exchange into `test/fixtures/acp/hopper.jsonl` instead:
+
+```bash
+bun src/internal/record-acp.ts hopper /tmp/hopper-scratch
+```
+
 ### 6. Run the conformance suite
 
-`runConformance` replays your fixtures through the full pipeline and asserts the contract invariants. Add a test to `packages/anyagent/test/conformance.test.ts`:
+`runConformance` replays your recording through the full pipeline and asserts the contract invariants: a stdout adapter passes `fixtures`, an ACP adapter passes `transcripts`, and the other mode's key is a compile error. Add a test to `packages/anyagent/test/conformance.test.ts`:
 
 ```ts
 import { test } from "bun:test";
@@ -106,6 +117,8 @@ test("hopper passes conformance", async () => {
   await runConformance(hopper(), { fixtures: { simple: read("fixtures/hopper/simple.jsonl") } });
 });
 ```
+
+An ACP adapter passes `transcripts: { recorded: read("fixtures/acp/hopper.jsonl") }` instead, recorded with `bun src/internal/record-acp.ts hopper <scratchRoot>`; each transcript is replayed through both `agent.run()` and `agent.session()`.
 
 Run it and confirm green before moving on:
 
@@ -131,8 +144,8 @@ Before you open the change, confirm all seven:
 
 1. `src/hopper.ts` exports the `hopper()` factory, with TSDoc on it
 2. The adapter is appended to `BUILTINS`
-3. Recorded fixtures live in `test/fixtures/hopper/`
-4. A conformance test covers those fixtures
+3. A recording lives in `test/fixtures/hopper/` (stdout) or `test/fixtures/acp/hopper.jsonl` (ACP)
+4. A conformance test covers it
 5. A `hopper.live.test.ts` includes the strict-mode drift canary
 6. `bun run check && bun run types && bun test` is green at the repo root
 7. A changeset describes the change: run `bun run changeset` and commit the generated file
@@ -145,7 +158,7 @@ Versioning is driven by [changesets](https://github.com/changesets/changesets). 
 
 ## Contract invariants
 
-`runConformance` in `packages/anyagent/src/conformance.ts` is the executable half of the contract; it asserts what every adapter must uphold: exactly one terminal `done` per stream, `result.text` equal to the concatenated text deltas, a `sessionId` consistent with the `session` event, a valid invocation for whatever the capabilities declare, and an `UnsupportedCapability` throw for everything they do not, `authStatus()` and `models()` included. Read that file rather than reimplement the checks. Conformance helpers (`sourceFromBody`, `fixedRunner`) live in the same file.
+`runConformance` in `packages/anyagent/src/conformance.ts` is the executable half of the contract; it asserts what every adapter must uphold whatever its mode: exactly one terminal `done` per stream, `result.text` equal to the concatenated text deltas, a `sessionId` consistent with the `session` event, and an `UnsupportedCapability` throw for everything the capabilities do not declare, `authStatus()` and `models()` included. A stdout adapter also owes a valid invocation for whatever it declares. An ACP adapter owes the invariants only a live connection can break: a turn opens with its `session` event, an aborted or failed turn reaches exactly one terminal state, a prompt response carrying usage reaches `RunResult.usage`, and neither `systemPrompt` nor `structuredOutput` claims to be native. Read that file rather than reimplement the checks. Conformance helpers (`sourceFromBody`, `fixedRunner`) live in the same file.
 
 ## KnownAgents for custom adapter authors
 

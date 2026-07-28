@@ -1,4 +1,4 @@
-import type { Capabilities } from "anyagent-js/types";
+import type { Adapter, Capabilities } from "anyagent-js/types";
 import Link from "next/link";
 
 import { ADAPTERS } from "@/components/capability-matrix";
@@ -28,7 +28,7 @@ const GUARDS: Record<string, string> = {
   modelListing: "agent.capabilities.modelListing",
   modelSelection: "agent.capabilities.modelSelection",
   readOnly: 'agent.supports("readOnly")',
-  session: 'agent.supports("resume")',
+  resume: 'agent.supports("resume")',
   sessionFork: 'agent.supports("forkSession")',
   streaming: "agent.capabilities.streaming",
   structuredOutput: "agent.capabilities.structuredOutput",
@@ -36,29 +36,34 @@ const GUARDS: Record<string, string> = {
 };
 
 /**
- * A "works with" strip for one capability, rendered from the adapters' own
- * declarations so it can never drift from the code. Shows each supporting
- * harness's logo and name, the tier where it is not native, the derived
- * guard expression, and a link to the full matrix.
+ * A "works with" strip for one capability, or for the agents running in one
+ * mode, rendered from the adapters' own declarations so it can never drift
+ * from the code. Shows each supporting harness's logo and name, the declared
+ * value where it is not plain `native`, the derived guard expression, and a
+ * link to the full matrix.
  */
 export const SupportedBy = ({
   capability,
   guard,
-  tier,
+  mode,
 }: {
-  capability: keyof Capabilities;
+  capability?: keyof Capabilities;
   /** Override the derived guard expression (e.g. session.supports("steer")). */
   guard?: string;
-  /** Only show agents at this tier (e.g. "native" for live sessions). */
-  tier?: "native";
+  /** Only show agents whose adapter drives its CLI this way. */
+  mode?: Adapter["mode"];
 }) => {
-  const rows = ADAPTERS.map((adapter) => ({
+  const rows = ADAPTERS.filter(
+    (adapter) =>
+      (mode === undefined || adapter.mode === mode) &&
+      (capability === undefined || Boolean(adapter.capabilities[capability]))
+  ).map((adapter) => ({
     id: adapter.meta.id,
     name: adapter.meta.name,
-    value: adapter.capabilities[capability],
-  })).filter((row) => (tier ? row.value === tier : Boolean(row.value)));
+    value: capability && adapter.capabilities[capability],
+  }));
   const mixed = new Set(rows.map((row) => row.value)).size > 1;
-  const guardCode = guard ?? GUARDS[capability];
+  const guardCode = guard ?? (capability && GUARDS[capability]);
 
   return (
     <div className="not-prose my-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-fd-card px-3 py-2 text-sm">

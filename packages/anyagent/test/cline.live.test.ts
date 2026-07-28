@@ -1,53 +1,50 @@
 import { expect, test } from "bun:test";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { cline } from "../src/cline.js";
 import { create } from "../src/index.js";
-import { spawnAndStream } from "../src/internal/runtime/spawn.js";
 import { liveEnabled } from "./live-helper.js";
 
 const live = test.skipIf(!(await liveEnabled("cline")));
 
-// Multi-word on purpose: cline misparses a single-word prompt as a command.
 const PROMPT = "Reply with exactly the word: pong";
-// cline uses the provider configured via `cline auth`; the model rides -m,
-// e.g. ANYAGENT_CLINE_MODEL=openai/gpt-4o-mini.
+// cline's ACP session inherits its stored model unless one is pinned, and the
+// stored choice need not be one the signed-in provider serves, e.g.
+// ANYAGENT_CLINE_MODEL=gpt-5.4-mini.
 const MODEL = process.env.ANYAGENT_CLINE_MODEL;
+const settings = MODEL ? { model: MODEL } : {};
 
+// The drift canary: the endpoint's own handshake and config ids are recorded in
+// test/fixtures/acp/cline.jsonl, so a live turn is what catches the recording
+// going stale.
 live(
-  "live: cline answers a trivial prompt",
+  "live: cline answers a trivial prompt over its acp endpoint",
   async () => {
-    const agent = create(cline());
-    const res = await agent.run(PROMPT, MODEL ? { model: MODEL } : {});
+    const res = await create(cline()).run(PROMPT, settings);
     expect(res.text.toLowerCase()).toContain("pong");
-    // Real-output check: usage came from run_result's aggregate accounting.
-    expect(typeof res.usage?.outputTokens).toBe("number");
-    expect(typeof res.usage?.costUsd).toBe("number");
+    // ACP mode names every conversation, one-shot runs included.
+    expect(typeof res.sessionId).toBe("string");
   },
   120_000
 );
 
-// The drift canary: production parsing is lenient, but the live tier runs the
-// real CLI's fresh output through strict mode so an upstream format change
-// throws instead of silently emitting empty text. The stray plain-text
-// notices cline prints are filtered before parsing, in strict mode too.
+// What backs the readOnly capability: cline has no read-only mode of its own,
+// so the guarantee is permission denial, and only a real mutating turn proves
+// it holds.
 live(
-  "live: real output parses clean under strict mode",
+  "live: a read-only turn leaves the disk untouched",
   async () => {
-    const adapter = cline();
-    const inv = adapter.buildInvocation(PROMPT, MODEL ? { model: MODEL } : {});
-    const source = spawnAndStream(inv);
-    let sawText = false;
-    let finalText: string | undefined;
-    for await (const ev of adapter.parse(source, { strict: true })) {
-      if (ev.type === "text-delta") {
-        sawText = true;
-      }
-      if (ev.type === "done") {
-        finalText = ev.result.text;
-      }
-    }
-    expect(sawText).toBe(true);
-    expect(typeof finalText).toBe("string");
+    const cwd = mkdtempSync(path.join(tmpdir(), "anyagent-cline-ro-"));
+    await create(cline())
+      .run(`Create a file named proof.txt containing the word pong in ${cwd}`, {
+        ...settings,
+        cwd,
+        readOnly: true,
+      })
+      .catch(() => undefined);
+    expect(existsSync(path.join(cwd, "proof.txt"))).toBe(false);
   },
-  120_000
+  180_000
 );

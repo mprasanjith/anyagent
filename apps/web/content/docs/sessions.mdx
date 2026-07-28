@@ -9,7 +9,7 @@ A session is one conversation spanning many runs: open it with `agent.session()`
 
 ## Run turns
 
-<SupportedBy capability="session" />
+<SupportedBy capability="resume" />
 
 `session.run` works like the agent’s own, returning the same awaitable, iterable handle:
 
@@ -24,7 +24,7 @@ A session is a thread: the settings you open it with — `model`, `effort`, `cwd
 
 Turns queue: a `run` called while another is in flight starts when it settles, threaded automatically. A failed turn rejects the turns queued behind it; calling `run` again retries from the last good point.
 
-`session.close()` ends the conversation and releases whatever it holds — on a live agent, the process behind it. Turns still queued reject, a closed session refuses new ones ([`InvalidOptions`](/docs/errors)), and calling it twice is safe. `session.id` stays valid, so you can resume later.
+`session.close()` ends the conversation and releases whatever it holds — in ACP mode, the connection behind it. Turns still queued reject, a closed session refuses new ones ([`InvalidOptions`](/docs/errors)), and calling it twice is safe. `session.id` stays valid, so you can resume later.
 
 ## Persist and continue later
 
@@ -57,15 +57,15 @@ Resuming one id into two sessions without `fork` is a relay, not a branch: both 
 
 ## Which agents run sessions
 
-Every built-in adapter except Cline runs sessions; `agent.supports("resume")` is the guard, and `agent.session()` throws where it is false. Agents that hold a live connection add steering, covered next; the Sessions column in the [matrix](/docs/adapters) marks them.
+Every built-in adapter opens a session. Continuing one needs `resume`, which `agent.supports("resume")` guards; where it is false, `agent.session({ resume })` throws and a session can only start fresh. Agents in ACP mode add steering, covered next; the Mode and Resume columns in the [matrix](/docs/adapters) mark both.
 
-## Steer a live session
+## Steer an ACP-mode session
 
-Some agents hold a live connection, keeping one session open instead of respawning per turn. That native connection unlocks two things: steering the turn as it runs, and visibility into permission requests. Gate on `session.supports("steer")`.
+Some agents run sessions in ACP mode, holding one connection open instead of respawning per turn. That connection unlocks two things: steering the turn as it runs, and visibility into permission requests. Gate on `session.supports("steer")`.
 
 ### Steer a running turn
 
-<SupportedBy capability="session" tier="native" guard='session.supports("steer")' />
+<SupportedBy mode="acp" guard='session.supports("steer")' />
 
 `session.steer(text)` injects guidance into the turn that is currently running:
 
@@ -78,11 +78,11 @@ if (session.supports("steer")) {
 await turn;
 ```
 
-Steering adds guidance to an autonomous turn; it does not add an approval gate. On agents without a live connection, `steer` throws [`UnsupportedCapability`](/docs/errors); guard and degrade, as with any capability.
+Steering adds guidance to an autonomous turn; it does not add an approval gate. On stdout-mode agents, `steer` throws [`UnsupportedCapability`](/docs/errors); guard and degrade, as with any capability.
 
 ### Watch permission requests
 
-A live agent asks permission before some tools. AnyAgent answers for you, allowing so a run never blocks, and surfaces each exchange as a `permission-request` event carrying the agent’s own options:
+An ACP-mode agent asks permission before some tools. AnyAgent answers for you, allowing so a run never blocks, and surfaces each exchange as a `permission-request` event carrying the agent’s own options:
 
 ```ts
 for await (const event of session.run("Refactor the auth module.")) {

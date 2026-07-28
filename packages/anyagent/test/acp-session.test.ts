@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { cline } from "../src/cline.js";
 import { cursor } from "../src/cursor.js";
 import { AnyAgentError } from "../src/errors.js";
 import { geminiCli } from "../src/gemini-cli.js";
@@ -8,6 +9,7 @@ import type { AcpTransport } from "../src/internal/acp.js";
 import type { AcpTransportFactory } from "../src/internal/acp-session.js";
 import { AcpSessionImpl } from "../src/internal/acp-session.js";
 import { AgentImpl } from "../src/internal/agent.js";
+import { kiloCode } from "../src/kilo-code.js";
 import { opencode } from "../src/opencode.js";
 import type {
   Adapter,
@@ -24,22 +26,19 @@ import {
   scriptedTransport,
   update,
 } from "./acp-transport.js";
-import {
-  fakeStreaming,
-  runnerFromFixture,
-  sourceFromBody,
-} from "./fake-adapter.js";
+import { fakeStreaming, runnerFromFixture } from "./fake-adapter.js";
 
-// A native-tier adapter: an ACP endpoint plus `session: "native"`. Everything
-// else mirrors the streaming fake so the emulated fallback has a real parser.
-const nativeAdapter: Adapter = {
-  ...fakeStreaming,
+// An ACP-mode adapter: an ACP endpoint and nothing the core spawns.
+const acpAdapter: Adapter = {
   acp: { command: ["fake-acp"] },
-  capabilities: { ...fakeStreaming.capabilities, session: "native" },
+  capabilities: fakeStreaming.capabilities,
+  detection: {},
+  meta: { bin: ["fake-acp"], id: "fake-acp", name: "Fake ACP" },
+  mode: "acp",
 };
 
-const nativeAgent = (runner = runnerFromFixture("")): AgentImpl =>
-  new AgentImpl(nativeAdapter, runner);
+const acpAgent = (runner = runnerFromFixture("")): AgentImpl =>
+  new AgentImpl(acpAdapter, { runner });
 
 // Answers the `initialize` handshake from the agent side with the given
 // capabilities; the client stores them.
@@ -107,8 +106,7 @@ test("a native turn translates updates into events, text, and a sessionId", asyn
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
+    acpAgent(),
     { cwd: "/repo" },
     () => transport
   );
@@ -173,12 +171,7 @@ test("turns queue on one connection, threaded in order", async () => {
     api.emit(response(second.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const [a, b] = await Promise.all([
     session.run("first"),
     session.run("second"),
@@ -188,7 +181,7 @@ test("turns queue on one connection, threaded in order", async () => {
   await transport.done;
 });
 
-test("steer sends an additional prompt on the live session mid-turn", async () => {
+test("steer sends an additional prompt on the open connection mid-turn", async () => {
   const transport = scriptedTransport(async (api) => {
     await handshake(api, {});
     const created = await api.next();
@@ -213,12 +206,7 @@ test("steer sends an additional prompt on the live session mid-turn", async () =
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("go");
   for await (const event of run) {
     if (event.type === "text-delta" && event.text === "working") {
@@ -262,12 +250,7 @@ test("a permission request is surfaced as an event then auto-allowed", async () 
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("edit");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -306,12 +289,7 @@ test("a cancelled turn aborts via session/cancel and throws Aborted", async () =
     api.emit(response(prompt.id, { stopReason: "cancelled" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("long task");
   // Abort once the turn is live; the iterator surfaces the same failure.
   try {
@@ -336,12 +314,7 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
     api.emit(response(prompt.id, { stopReason: "refusal" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   await expect(session.run("bad")).rejects.toMatchObject({
     code: "Invocation",
     raw: { stopReason: "refusal" },
@@ -351,10 +324,9 @@ test("a refusal stop reason throws Invocation carrying the raw response", async 
 
 // No transport factory: these drive the default one, spawning `command`.
 const spawningSession = (command: string[]): AcpSessionImpl => {
-  const adapter: Adapter = { ...nativeAdapter, acp: { command } };
+  const adapter: Adapter = { ...acpAdapter, acp: { command } };
   return new AcpSessionImpl(
-    new AgentImpl(adapter, runnerFromFixture("")),
-    runnerFromFixture("")
+    new AgentImpl(adapter, { runner: runnerFromFixture("") })
   );
 };
 
@@ -393,12 +365,7 @@ test("a non-JSON stdout line rejects the turn with Parse", async () => {
     api.line("Welcome to fake-acp 1.0");
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   await expect(session.run("hi")).rejects.toMatchObject({ code: "Parse" });
   await transport.done;
 });
@@ -428,12 +395,7 @@ test("an agent dying mid-turn rejects the turn with the transport's diagnostics"
     );
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   const events: AgentEvent[] = [];
   let thrown: unknown;
@@ -477,12 +439,7 @@ test("aborting a queued turn leaves the in-flight turn untouched", async () => {
     api.emit(response(first.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const first = session.run("first");
   const second = session.run("second");
   second.abort();
@@ -498,12 +455,7 @@ test("aborting before the connection opens still settles the run Aborted", async
     await api.next();
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   run.abort();
   await expect(run).rejects.toMatchObject({ code: "Aborted" });
@@ -512,20 +464,15 @@ test("aborting before the connection opens still settles the run Aborted", async
 
 test("an already-aborted signal settles the run without opening a transport", async () => {
   let opened = 0;
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => {
-      opened += 1;
-      return {
-        close: () => undefined,
-        onDeath: () => undefined,
-        onLine: () => undefined,
-        send: () => undefined,
-      };
-    }
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => {
+    opened += 1;
+    return {
+      close: () => undefined,
+      onDeath: () => undefined,
+      onLine: () => undefined,
+      send: () => undefined,
+    };
+  });
   const controller = new AbortController();
   controller.abort();
 
@@ -552,12 +499,7 @@ test("opts.signal firing mid-turn cancels the live turn", async () => {
     api.emit(response(prompt.id, { stopReason: "cancelled" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const controller = new AbortController();
   const run = session.run("long task", { signal: controller.signal });
   try {
@@ -582,12 +524,7 @@ test("a failed turn rejects the turns queued behind it", async () => {
     api.emit(response(first.id, { stopReason: "refusal" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const first = session.run("first");
   const second = session.run("second");
 
@@ -620,12 +557,7 @@ test("a failed steer leaves the turn in exactly one terminal state", async () =>
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("go");
   const events: AgentEvent[] = [];
   let thrown: unknown;
@@ -665,12 +597,7 @@ test("session lands once, first, and session_info_update does not repeat it", as
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -715,12 +642,7 @@ test("usage reaches the events and the result", async () => {
     );
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("hi");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -773,12 +695,7 @@ test("a failed tool call reports a tool-result named from its call", async () =>
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => transport
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => transport);
   const run = session.run("read it");
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -813,8 +730,7 @@ test("resume reattaches with session/load when loadSession is advertised", async
   });
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
+    acpAgent(),
     { cwd: "/repo", resume: "s-old" },
     () => transport
   );
@@ -825,21 +741,18 @@ test("resume reattaches with session/load when loadSession is advertised", async
   await transport.done;
 });
 
-test("resume without loadSession falls back to the emulated print-mode cursor", async () => {
-  const fixture =
-    '{"t":"session","v":"s2"}\n{"t":"text","v":"emulated ok"}\n{"t":"end"}';
+test("resume without loadSession fails the turn rather than reattaching", async () => {
   // The agent only completes the handshake; no session/load is ever sent.
   const transport = scriptedTransport((api) => handshake(api, {}));
 
   const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(fixture),
+    acpAgent(),
     { resume: "s-old" },
     () => transport
   );
-  const result = await session.run("continue");
-  expect(result.text).toBe("emulated ok");
-  expect(result.sessionId).toBe("s2");
+  await expect(session.run("continue")).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
   await transport.done;
 });
 
@@ -871,30 +784,18 @@ const countingPrompts = (
 
 test("an unsupported option rejects before the transport is ever opened", async () => {
   let opened = 0;
-  const sent: string[] = [];
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => {
-      opened += 1;
-      return {
-        close: () => undefined,
-        onDeath: () => undefined,
-        onLine: () => undefined,
-        send: (line) => {
-          sent.push(line);
-        },
-      };
-    }
-  );
+  // A throwing factory keeps a regression that validates too late a clean
+  // failure: an inert transport would leave the turn waiting forever.
+  const session = new AcpSessionImpl(acpAgent(), {}, () => {
+    opened += 1;
+    throw new Error("the transport was opened for a rejected turn");
+  });
 
   // `attachments` is false on the fake adapter.
   await expect(
     session.run("hi", { attachments: ["a.png"] })
   ).rejects.toMatchObject({ code: "UnsupportedCapability" });
   expect(opened).toBe(0);
-  expect(sent).toEqual([]);
 });
 
 test("a schema turn re-asks once, emits schema-retry, and resolves with json", async () => {
@@ -925,12 +826,7 @@ test("a schema turn re-asks once, emits schema-retry, and resolves with json", a
   });
   const { counted, prompts } = countingPrompts(scripted);
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => counted
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => counted);
   const run = session.run("give me json", { schema: okSchema });
   const events: AgentEvent[] = [];
   await collect(events, run);
@@ -967,12 +863,7 @@ test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", a
   });
   const { counted, prompts } = countingPrompts(scripted);
 
-  const session = new AcpSessionImpl(
-    nativeAgent(),
-    runnerFromFixture(""),
-    {},
-    () => counted
-  );
+  const session = new AcpSessionImpl(acpAgent(), {}, () => counted);
   const failure = await session
     .run("give me json", { schema: okSchema, schemaRetries: 0 })
     .catch((error: unknown) => error as AnyAgentError);
@@ -983,8 +874,8 @@ test("schemaRetries 0 rejects Parse on the first bad reply without re-asking", a
   await scripted.done;
 });
 
-test("a native adapter with an acp endpoint routes session() to the live tier", () => {
-  const session = nativeAgent().session();
+test('mode: "acp" routes session() to the live connection', () => {
+  const session = acpAgent().session();
   expect(session.supports("steer")).toBe(true);
   expect(session.supports("respond")).toBe(false);
   expect(session.supports()).toBe(true);
@@ -993,9 +884,11 @@ test("a native adapter with an acp endpoint routes session() to the live tier", 
   );
 });
 
-test("session capability short of native tier keeps the emulated behavior", async () => {
+test('mode: "stdout" routes session() to one process per turn', async () => {
   const withId = '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
-  const agent = new AgentImpl(fakeStreaming, runnerFromFixture(withId));
+  const agent = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(withId),
+  });
   const session = agent.session();
   expect(session.supports("steer")).toBe(false);
   expect(() => session.steer("go")).toThrow(
@@ -1004,29 +897,108 @@ test("session capability short of native tier keeps the emulated behavior", asyn
   const result = await session.run("hi");
   expect(result.text).toBe("ok");
   expect(session.id).toBe("s1");
-
-  // A native declaration without an acp endpoint also stays emulated.
-  const noEndpoint: Adapter = {
-    ...fakeStreaming,
-    capabilities: { ...fakeStreaming.capabilities, session: "native" },
-  };
-  const stillEmulated = new AgentImpl(
-    noEndpoint,
-    runnerFromFixture(withId)
-  ).session();
-  expect(stillEmulated.supports("steer")).toBe(false);
 });
 
-// A live session on one shipped adapter, its ACP endpoint replaced by a
+test("attachments ride the prompt as resource links beside its text", async () => {
+  let sent: unknown;
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    sent = (prompt.params as { prompt: unknown }).prompt;
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+  const attaching: Adapter = {
+    ...acpAdapter,
+    capabilities: { ...acpAdapter.capabilities, attachments: "native" },
+  };
+  const session = acpSession(attaching, {}, () => transport);
+
+  await session.run("look at this", { attachments: ["/tmp/a.png"] });
+
+  expect(sent).toEqual([
+    { text: "look at this", type: "text" },
+    { name: "a.png", type: "resource_link", uri: "file:///tmp/a.png" },
+  ]);
+  await transport.done;
+});
+
+const oneTurn = (): ScriptedTransport =>
+  scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "s1" }));
+    const prompt = await api.next();
+    api.emit(
+      update("s1", {
+        content: { text: "pong", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+test("agent.run over ACP hands over the whole turn, then closes the connection", async () => {
+  const scripted = oneTurn();
+  const agent = new AgentImpl(acpAdapter, { transport: () => scripted });
+
+  const run = agent.run("hi");
+  const events: AgentEvent[] = [];
+  await collect(events, run);
+
+  expect((await run).text).toBe("pong");
+  expect(events.map((e) => e.type)).toEqual(["session", "text-delta", "done"]);
+  // The teardown races the consumer, so this resolving is what proves the
+  // events above survived it.
+  await scripted.closed;
+  await scripted.done;
+});
+
+test("each agent.run over ACP opens its own connection", async () => {
+  let opened = 0;
+  const agent = new AgentImpl(acpAdapter, {
+    transport: () => {
+      opened += 1;
+      return oneTurn();
+    },
+  });
+
+  await agent.run("first");
+  await agent.run("second");
+
+  expect(opened).toBe(2);
+});
+
+test("agent.run({ resume }) over ACP loads the session, then prompts once", async () => {
+  const scripted = scriptedTransport(async (api) => {
+    await handshake(api, { loadSession: true });
+    const load = await api.next();
+    expect(load.params).toMatchObject({ sessionId: "s-old" });
+    api.emit(response(load.id, {}));
+    const prompt = await api.next();
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+  const { seen, tapped } = sentMethods(scripted);
+  const agent = new AgentImpl(acpAdapter, { transport: () => tapped });
+
+  await agent.run("continue", { resume: "s-old" });
+
+  expect(seen.filter((method) => method === "session/load")).toHaveLength(1);
+  expect(seen.filter((method) => method === "session/prompt")).toHaveLength(1);
+  expect(seen).not.toContain("session/new");
+  await scripted.done;
+});
+
+// An ACP-mode session on one shipped adapter, its ACP endpoint replaced by a
 // scripted transport so no process is launched.
-const liveSession = (
+const acpSession = (
   adapter: Adapter,
   opts: SessionOptions,
   factory: AcpTransportFactory
 ): AcpSessionImpl =>
   new AcpSessionImpl(
-    new AgentImpl(adapter, runnerFromFixture("")),
-    runnerFromFixture(""),
+    new AgentImpl(adapter, { runner: runnerFromFixture("") }),
     opts,
     factory
   );
@@ -1078,23 +1050,13 @@ test("a live cursor session sets model and effort as one config option", async (
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     cursor(),
     { effort: "high", model: "claude-opus-4-8" },
     () => transport
   );
   await Promise.all([session.run("hi"), transport.done]);
 });
-
-// goose declares `effort: false`, so its live `thinking_effort` channel is only
-// reachable on a shape that allows the option through.
-const gooseWithEffort = (): Adapter => {
-  const adapter = goose();
-  return {
-    ...adapter,
-    capabilities: { ...adapter.capabilities, effort: "native" },
-  };
-};
 
 test("a live goose session sets model and thinking_effort in order", async () => {
   const transport = scriptedTransport(async (api) => {
@@ -1125,8 +1087,8 @@ test("a live goose session sets model and thinking_effort in order", async () =>
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
-    gooseWithEffort(),
+  const session = acpSession(
+    goose(),
     { effort: "high", model: "anthropic/claude-sonnet-4.5" },
     () => transport
   );
@@ -1152,7 +1114,7 @@ test("a live opencode session sets its model config option", async () => {
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(
+  const session = acpSession(
     opencode(),
     { model: "openai/gpt-5.4" },
     () => transport
@@ -1160,13 +1122,56 @@ test("a live opencode session sets its model config option", async () => {
   await Promise.all([session.run("hi"), transport.done]);
 });
 
+test("a live cline session sets its model config option", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "1785_x_cli" }));
+
+    const config = await api.next();
+    expect(config.method).toBe("session/set_config_option");
+    expect(config.params).toEqual({
+      configId: "model",
+      sessionId: "1785_x_cli",
+      value: "gpt-5.4-mini",
+    });
+    api.emit(response(config.id, { configOptions: [] }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = acpSession(
+    cline(),
+    { model: "gpt-5.4-mini" },
+    () => transport
+  );
+  await Promise.all([session.run("hi"), transport.done]);
+});
+
+test("effort on a live cline session throws before anything opens", () => {
+  let opened = 0;
+  expect(
+    () =>
+      new AcpSessionImpl(
+        new AgentImpl(cline(), { runner: runnerFromFixture("") }),
+        { effort: "high" },
+        () => {
+          opened += 1;
+          return inertTransport();
+        }
+      )
+  ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
+  expect(opened).toBe(0);
+});
+
 test("effort on a live opencode session throws before anything opens", () => {
   let opened = 0;
   expect(
     () =>
       new AcpSessionImpl(
-        new AgentImpl(opencode(), runnerFromFixture("")),
-        runnerFromFixture(""),
+        new AgentImpl(opencode(), { runner: runnerFromFixture("") }),
         { effort: "high" },
         () => {
           opened += 1;
@@ -1176,13 +1181,54 @@ test("effort on a live opencode session throws before anything opens", () => {
   ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
   expect(opened).toBe(0);
   expect(() =>
-    new AgentImpl(opencode(), runnerFromFixture("")).session({ effort: "high" })
+    new AgentImpl(opencode(), { runner: runnerFromFixture("") }).session({
+      effort: "high",
+    })
   ).toThrow(expect.objectContaining({ code: "UnsupportedCapability" }));
+});
+
+// Kilo is the family's exception: its live endpoint advertises an `effort`
+// select, so the option reaches the session rather than throwing.
+test("a live kilo session sets model then effort as config options", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, {});
+    const created = await api.next();
+    api.emit(response(created.id, { sessionId: "ses_1" }));
+
+    const model = await api.next();
+    expect(model.method).toBe("session/set_config_option");
+    expect(model.params).toEqual({
+      configId: "model",
+      sessionId: "ses_1",
+      value: "kilo/openai/gpt-5.4",
+    });
+    api.emit(response(model.id, { configOptions: [] }));
+
+    const effort = await api.next();
+    expect(effort.method).toBe("session/set_config_option");
+    expect(effort.params).toEqual({
+      configId: "effort",
+      sessionId: "ses_1",
+      value: "xhigh",
+    });
+    api.emit(response(effort.id, { configOptions: [] }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = acpSession(
+    kiloCode(),
+    { effort: "xhigh", model: "kilo/openai/gpt-5.4" },
+    () => transport
+  );
+  await Promise.all([session.run("hi"), transport.done]);
 });
 
 test("a live gemini session spawns with its model, --skip-trust, and extraArgs", async () => {
   let invocation: Invocation | undefined;
-  const session = liveSession(
+  const session = acpSession(
     geminiCli(),
     {
       cwd: "/work",
@@ -1195,8 +1241,7 @@ test("a live gemini session spawns with its model, --skip-trust, and extraArgs",
       return inertTransport();
     }
   );
-  // A cwd on the turn changes nothing: the thread's settings own it.
-  const run = session.run("hi", { cwd: "/turn" });
+  const run = session.run("hi");
   run.abort();
 
   await expect(run).rejects.toMatchObject({ code: "Aborted" });
@@ -1257,7 +1302,7 @@ test("a readOnly turn switches the mode and a later turn restores it", async () 
     api.emit(response(second.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(cursor(), {}, () => transport);
+  const session = acpSession(cursor(), {}, () => transport);
   await session.run("look", { readOnly: true });
   await session.run("look again");
   await transport.done;
@@ -1300,7 +1345,7 @@ test("a readOnly turn denies every tool kind that could change the machine", asy
     api.emit(response(prompt.id, { stopReason: "end_turn" }));
   });
 
-  const session = liveSession(cursor(), {}, () => transport);
+  const session = acpSession(cursor(), {}, () => transport);
   await session.run("inspect", { readOnly: true });
   await transport.done;
 
@@ -1315,7 +1360,7 @@ test("a readOnly turn denies every tool kind that could change the machine", asy
   });
 });
 
-test("close ends the live session, settles its turns, and kills the transport", async () => {
+test("close ends the session, settles its turns, and kills the transport", async () => {
   const transport = scriptedTransport(async (api) => {
     await handshake(api, { sessionCapabilities: { close: {} } });
     const created = await api.next();
@@ -1330,7 +1375,7 @@ test("close ends the live session, settles its turns, and kills the transport", 
     api.emit(response(closed.id, {}));
   });
 
-  const session = liveSession(nativeAdapter, {}, () => transport);
+  const session = acpSession(acpAdapter, {}, () => transport);
   await session.run("first");
   const queued = session.run("second");
   await session.close();
@@ -1354,7 +1399,7 @@ test("close skips session/close where the agent never advertised it", async () =
   });
   const { seen, tapped } = sentMethods(scripted);
 
-  const session = liveSession(nativeAdapter, {}, () => tapped);
+  const session = acpSession(acpAdapter, {}, () => tapped);
   await session.run("hi");
   await session.close();
 
@@ -1366,10 +1411,9 @@ test("close skips session/close where the agent never advertised it", async () =
 test("closing an emulated session rejects the turns still queued", async () => {
   const fixture =
     '{"t":"session","v":"s1"}\n{"t":"text","v":"ok"}\n{"t":"end"}';
-  const session = new AgentImpl(
-    fakeStreaming,
-    runnerFromFixture(fixture)
-  ).session();
+  const session = new AgentImpl(fakeStreaming, {
+    runner: runnerFromFixture(fixture),
+  }).session();
   const first = session.run("first");
   const queued = session.run("second");
   await session.close();
@@ -1382,56 +1426,95 @@ test("closing an emulated session rejects the turns still queued", async () => {
   );
 });
 
-// A live-tier adapter whose print mode can fork, and whose invocation reports
-// the options the delegate threaded through.
+// An ACP-mode adapter that declares it can branch a conversation.
 const forkAdapter: Adapter = {
-  ...nativeAdapter,
-  buildInvocation: (prompt, opts) => ({
-    args: [
-      "-p",
-      prompt,
-      ...(opts.model ? ["--model", opts.model] : []),
-      ...(opts.forkSession ? ["--fork"] : []),
-      ...(opts.resume ? ["--resume", opts.resume] : []),
-    ],
-    command: "fake-acp",
-    cwd: opts.cwd,
-  }),
-  capabilities: { ...nativeAdapter.capabilities, sessionFork: "native" },
+  ...acpAdapter,
+  capabilities: { ...acpAdapter.capabilities, sessionFork: "native" },
 };
 
-test("fork on a live session runs through the print-mode delegate, settings intact", async () => {
-  const fixture =
-    '{"t":"session","v":"s2"}\n{"t":"text","v":"forked"}\n{"t":"end"}';
-  const seen: Invocation[] = [];
-  let opened = 0;
+test("fork without an advertised session/fork fails the turn rather than branching", async () => {
+  // The agent only completes the handshake; no session/fork is ever sent.
+  const transport = scriptedTransport((api) => handshake(api, {}));
   const session = new AcpSessionImpl(
-    new AgentImpl(forkAdapter, runnerFromFixture(fixture)),
-    (invocation: Invocation) => {
-      seen.push(invocation);
-      return sourceFromBody(fixture);
-    },
+    new AgentImpl(forkAdapter, { runner: runnerFromFixture("") }),
     { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
-    () => {
-      opened += 1;
-      return inertTransport();
-    }
+    () => transport
   );
 
-  expect(session.supports("steer")).toBe(false);
+  await expect(session.run("branch")).rejects.toMatchObject({
+    code: "UnsupportedCapability",
+  });
+  await transport.done;
+});
+
+test("fork branches over the wire when the agent advertises it, settings applied after", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, { sessionCapabilities: { fork: {} } });
+    const fork = await api.next();
+    expect(fork.method).toBe("session/fork");
+    expect(fork.params).toMatchObject({ cwd: "/repo", sessionId: "s-old" });
+    api.emit(
+      response(fork.id, {
+        configOptions: [
+          {
+            currentValue: "sonnet",
+            id: "model",
+            name: "Model",
+            options: [{ name: "Opus", value: "opus" }],
+            type: "select",
+          },
+        ],
+        sessionId: "s-forked",
+      })
+    );
+
+    const configured = await api.next();
+    expect(configured.method).toBe("session/set_config_option");
+    expect(configured.params).toMatchObject({
+      configId: "model",
+      sessionId: "s-forked",
+      value: "opus",
+    });
+    api.emit(response(configured.id, {}));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    expect(prompt.params).toMatchObject({ sessionId: "s-forked" });
+    api.emit(
+      update("s-forked", {
+        content: { text: "branched", type: "text" },
+        sessionUpdate: "agent_message_chunk",
+      })
+    );
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const configuringAdapter: Adapter = {
+    ...forkAdapter,
+    acp: {
+      command: ["fake-acp"],
+      settings: ({ model }) => ({
+        configOptions: model ? [{ configId: "model", value: model }] : [],
+      }),
+    },
+  };
+  const session = new AcpSessionImpl(
+    new AgentImpl(configuringAdapter, { runner: runnerFromFixture("") }),
+    { cwd: "/repo", fork: true, model: "opus", resume: "s-old" },
+    () => transport
+  );
+
   const result = await session.run("branch");
 
-  expect(result.text).toBe("forked");
-  expect(session.id).toBe("s2");
-  expect(opened).toBe(0);
-  expect(seen[0]).toMatchObject({
-    args: ["-p", "branch", "--model", "opus", "--fork", "--resume", "s-old"],
-    cwd: "/repo",
-  });
+  expect(result.text).toBe("branched");
+  expect(result.sessionId).toBe("s-forked");
+  expect(session.id).toBe("s-forked");
+  expect(session.supports("steer")).toBe(true);
+  await transport.done;
 });
 
 test("fork without resume throws InvalidOptions at session creation", () => {
-  const agent = new AgentImpl(forkAdapter, runnerFromFixture(""));
+  const agent = new AgentImpl(forkAdapter, { runner: runnerFromFixture("") });
   expect(() => agent.session({ fork: true })).toThrow(
     expect.objectContaining({ code: "InvalidOptions" })
   );
@@ -1501,7 +1584,7 @@ const loadReplayFixture = (id: string): ReplayFixture => {
   };
 };
 
-for (const id of ["cursor", "goose", "gemini-cli", "opencode"]) {
+for (const id of ["cursor", "goose", "gemini-cli", "opencode", "cline"]) {
   test(`replays the recorded ${id} ACP transcript to a completed turn`, async () => {
     const fx = loadReplayFixture(id);
     const transport = scriptedTransport(async (api) => {
@@ -1524,8 +1607,7 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode"]) {
     });
 
     const session = new AcpSessionImpl(
-      nativeAgent(),
-      runnerFromFixture(""),
+      acpAgent(),
       { cwd: "/repo" },
       () => transport
     );
@@ -1550,3 +1632,160 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode"]) {
     await transport.done;
   });
 }
+
+interface ForkFixtureEntry {
+  body?: {
+    id?: number;
+    method?: string;
+    params?: { cwd?: string; sessionId?: string };
+    result?: Record<string, unknown>;
+  };
+  dir: "in" | "out";
+}
+
+interface ForkFixture {
+  cwd: string;
+  forkedId: string;
+  forkResult: Record<string, unknown>;
+  initResult: Record<string, unknown>;
+  parentId: string;
+}
+
+const loadForkFixture = (): ForkFixture => {
+  const path = `${import.meta.dir}/fixtures/acp/opencode-fork.jsonl`;
+  const entries = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as ForkFixtureEntry);
+  const sent = entries.find(
+    (entry) => entry.dir === "out" && entry.body?.method === "session/fork"
+  )?.body?.params;
+  const answered = (id: number): Record<string, unknown> | undefined =>
+    entries.find((entry) => entry.dir === "in" && entry.body?.id === id)?.body
+      ?.result;
+  const initResult = answered(1);
+  const forkResult = answered(2);
+  if (!(sent?.cwd && sent.sessionId && initResult && forkResult)) {
+    throw new Error(
+      "replay fixture opencode-fork is missing the fork exchange"
+    );
+  }
+  return {
+    cwd: sent.cwd,
+    forkedId: String(forkResult.sessionId),
+    forkResult,
+    initResult,
+    parentId: sent.sessionId,
+  };
+};
+
+// The recorded transcript branches a session the connection never opened, and
+// its `initialize` advertises `loadSession` too — so replaying it proves the
+// fork path reaches for `session/fork` alone. The prompt turn is no part of
+// this fixture (opencode.jsonl backs that), so it ends on a synthetic stop.
+test("replays the recorded opencode session/fork handshake", async () => {
+  const fx = loadForkFixture();
+  const transport = scriptedTransport(async (api) => {
+    const init = await api.next();
+    expect(init.method).toBe("initialize");
+    api.emit(response(init.id, fx.initResult));
+
+    const fork = await api.next();
+    expect(fork.method).toBe("session/fork");
+    expect(fork.params).toMatchObject({
+      cwd: fx.cwd,
+      sessionId: fx.parentId,
+    });
+    api.emit(response(fork.id, fx.forkResult));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    expect(prompt.params).toMatchObject({ sessionId: fx.forkedId });
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = new AcpSessionImpl(
+    new AgentImpl(forkAdapter, { runner: runnerFromFixture("") }),
+    { cwd: fx.cwd, fork: true, resume: fx.parentId },
+    () => transport
+  );
+  const result = await session.run("branch");
+
+  expect(session.id).toBe(fx.forkedId);
+  expect(result.sessionId).toBe(fx.forkedId);
+  expect(session.id).not.toBe(fx.parentId);
+  await transport.done;
+});
+
+// kilo-handshake.jsonl is a handshake-only recording — kilo's advertised
+// capabilities and the option set `session/new` answers with, which is all the
+// fork path needs; the turn below ends on a synthetic stop. The full recorded
+// turn is kilo.jsonl, which backs conformance.
+interface HandshakeFixture {
+  initResult: Record<string, unknown>;
+  newResult: Record<string, unknown>;
+}
+
+const loadHandshakeFixture = (id: string): HandshakeFixture => {
+  const path = `${import.meta.dir}/fixtures/acp/${id}.jsonl`;
+  const answered = (wanted: number): Record<string, unknown> | undefined =>
+    readFileSync(path, "utf8")
+      .split("\n")
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as FixtureEntry)
+      .find((entry) => entry.dir === "in" && entry.body?.id === wanted)?.body
+      ?.result;
+  const initResult = answered(1);
+  const newResult = answered(2);
+  if (!(initResult && newResult)) {
+    throw new Error(`handshake fixture ${id} is missing a keyed response`);
+  }
+  return { initResult, newResult };
+};
+
+test("kilo forks over the wire on its own recorded capabilities", async () => {
+  const fx = loadHandshakeFixture("kilo-handshake");
+  const forkedId = String(fx.newResult.sessionId);
+  const transport = scriptedTransport(async (api) => {
+    const init = await api.next();
+    expect(init.method).toBe("initialize");
+    api.emit(response(init.id, fx.initResult));
+
+    const fork = await api.next();
+    expect(fork.method).toBe("session/fork");
+    expect(fork.params).toMatchObject({ cwd: "/repo", sessionId: "ses_old" });
+    api.emit(response(fork.id, fx.newResult));
+
+    // The family's settings mapping reaches the fork the same as a new session.
+    const configured = await api.next();
+    expect(configured.method).toBe("session/set_config_option");
+    expect(configured.params).toEqual({
+      configId: "model",
+      sessionId: forkedId,
+      value: "kilo/openai/gpt-5.4",
+    });
+    api.emit(response(configured.id, {}));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    expect(prompt.params).toMatchObject({ sessionId: forkedId });
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = acpSession(
+    kiloCode(),
+    {
+      cwd: "/repo",
+      fork: true,
+      model: "kilo/openai/gpt-5.4",
+      resume: "ses_old",
+    },
+    () => transport
+  );
+  const result = await session.run("branch");
+
+  expect(result.sessionId).toBe(forkedId);
+  expect(session.id).toBe(forkedId);
+  expect(session.supports("steer")).toBe(true);
+  await transport.done;
+});

@@ -2,15 +2,19 @@ import {
   type OpencodeFamilyCapabilities,
   opencodeFamilyAdapter,
 } from "./internal/opencode-family.js";
-import type { Adapter } from "./types.js";
+import type { AcpAdapter } from "./types.js";
 
 /**
- * The adapter for opencode (`opencode`). A run gets the CLI's full
- * autonomy by default; `readOnly: true` denies file edits and shell for the
- * run — the adapter owns the `OPENCODE_PERMISSION` env var to guarantee that,
- * so a value you pass in `env` under that key is overridden. `resume`
- * continues a session using the id from `RunResult.sessionId`; `effort`
- * passes a provider-defined variant name to the CLI verbatim.
+ * opencode's capabilities: the family's as they stand — the ACP transcript at
+ * `test/fixtures/acp/opencode.jsonl` backs them. `effort` stays off: the
+ * endpoint's session advertises `model` and `mode` options and nothing for
+ * reasoning effort.
+ */
+export type OpencodeCapabilities = OpencodeFamilyCapabilities;
+
+/**
+ * The adapter for opencode (`opencode`). Every turn runs over the CLI's ACP
+ * endpoint, `opencode acp`, on a connection `agent.session()` holds open.
  *
  * ```ts
  * import { create } from "anyagent-js";
@@ -21,29 +25,17 @@ import type { Adapter } from "./types.js";
  *
  * Models use opencode's `provider/model` form (e.g.
  * `"openrouter/openai/gpt-4o-mini"`); `models()` lists every id the CLI
- * accepts. `authStatus()` answers from opencode's credential store and the
- * standard provider key env vars — a hint, not a guarantee. System prompts,
- * MCP servers, and per-tool permissions live in opencode.json rather than
- * flags; reach them via config or `extraArgs`.
+ * accepts, and a session sets the one you pick as its `model` option.
+ * `readOnly: true` switches the session into plan mode and denies every tool
+ * that is not reading. `resume` continues a conversation from
+ * `RunResult.sessionId`; `fork: true` branches it instead. `mcp` servers reach
+ * the agent with the session, each under the name you key it by. Attachments
+ * ride the prompt as resource links. `authStatus()` answers from opencode's
+ * credential store and the standard provider key env vars — a hint, not a
+ * guarantee. System prompts and per-tool permissions live in opencode.json.
  */
-/**
- * opencode's capabilities: the family's, with sessions live — the ACP
- * transcript at `test/fixtures/acp/opencode.jsonl` backs the native tier.
- * Kilo keeps the family's emulated tier until it records its own.
- */
-export type OpencodeCapabilities = Omit<
-  OpencodeFamilyCapabilities,
-  "session"
-> & { readonly session: "native" };
-
-export const opencode = (): Adapter<OpencodeCapabilities> => {
-  const adapter = opencodeFamilyAdapter({
+export const opencode = (): AcpAdapter<OpencodeCapabilities> =>
+  opencodeFamilyAdapter({
     dataDir: "opencode",
     meta: { bin: ["opencode"], id: "opencode", name: "opencode" },
-    permissionEnv: "OPENCODE_PERMISSION",
   });
-  return {
-    ...adapter,
-    capabilities: { ...adapter.capabilities, session: "native" as const },
-  };
-};

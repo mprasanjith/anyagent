@@ -1,5 +1,3 @@
-import type { ChildProcess } from "node:child_process";
-
 /**
  * How a capability is provided, for each gated field of
  * {@link Capabilities}:
@@ -132,18 +130,10 @@ export interface Capabilities {
    */
   reasoningEfforts?: readonly string[];
   /**
-   * How sessions are provided, gating {@link ExtensionOptions.resume} and
-   * {@link Agent.session}:
-   *
-   * - `"native"` — the session holds a live bidirectional channel to the
-   *   agent, unlocking {@link Session.steer}.
-   * - `"emulated"` — continuity works through `resume`, one turn at a time.
-   *   Turns behave identically; only the live-channel members
-   *   ({@link Session.steer}) are unavailable.
-   * - `false` — the CLI has no way to continue a conversation; both the
-   *   `resume` option and `session()` throw.
+   * Whether a conversation can be continued from a persisted id, gating
+   * {@link ExtensionOptions.resume} and {@link SessionOptions.resume}.
    */
-  session: CapabilitySupport;
+  resume: CapabilitySupport;
   /**
    * Whether resuming can branch into a new conversation instead of
    * continuing the old one. See {@link SessionOptions.fork} and
@@ -378,26 +368,26 @@ export const EXTENSION_CAPABILITY = {
   forkSession: "sessionFork",
   mcp: "mcp",
   readOnly: "readOnly",
-  resume: "session",
+  resume: "resume",
 } as const satisfies Record<keyof ExtensionOptions, keyof Capabilities>;
 
 /** The name of one gated run option — the keys of {@link ExtensionOptions}. */
 export type ExtensionKey = keyof ExtensionOptions;
 
-type Available = Exclude<CapabilitySupport, false>;
+type Gate<K extends ExtensionKey> = (typeof EXTENSION_CAPABILITY)[K];
+
+type Available<P extends keyof Capabilities> = Exclude<Capabilities[P], false>;
 
 /**
  * The capability-table shape {@link Agent.supports} narrows to: the named
  * extensions' gates, known truthy.
  */
 export type SupportedCapabilities<K extends ExtensionKey> = {
-  [P in (typeof EXTENSION_CAPABILITY)[K]]: Available;
+  [P in Gate<K>]: Available<P>;
 };
 
 type EnabledExtensionKeys<C extends Capabilities> = {
-  [K in ExtensionKey]: C[(typeof EXTENSION_CAPABILITY)[K]] extends Available
-    ? K
-    : never;
+  [K in ExtensionKey]: C[Gate<K>] extends Available<Gate<K>> ? K : never;
 }[ExtensionKey];
 
 /**
@@ -530,8 +520,8 @@ export interface RunResult {
 
 /**
  * A fully-resolved command line: what an adapter's `buildInvocation` returns
- * and what the core (or you, via {@link RawHandle}) spawns. `env` is merged
- * over the parent process's environment rather than replacing it. `input`,
+ * and what the core spawns. `env` is merged over the parent process's
+ * environment rather than replacing it. `input`,
  * when present, is written to the child's stdin, which is then closed — this
  * is how prompts reach CLIs that read them from a pipe.
  */
@@ -709,7 +699,7 @@ export interface AcpConfigOption {
   value: string;
 }
 
-/** What a session's settings become on one CLI's live endpoint. */
+/** What a session's settings become on one CLI's ACP endpoint. */
 export interface AcpSettings {
   /** Appended to the endpoint's argv. */
   args?: string[];
@@ -737,36 +727,19 @@ export interface AcpSpec {
 }
 
 /**
- * The contract for supporting one agent CLI. An adapter is data plus pure
- * functions: it describes how to invoke its CLI and how to read its output,
- * while the core does all actual I/O (spawning, stream handling, validation,
- * lifecycle). That split keeps adapters testable offline.
+ * What every adapter declares, whichever channel it drives its CLI over.
  *
  * Declare `capabilities` with `as const satisfies Capabilities` so the
  * table's literal types reach {@link Agent} and unsupported options become
  * compile errors for your consumers.
- *
- * To add one, implement this interface (use `ndjsonParser` when the CLI
- * emits NDJSON), record real fixtures, and run `runConformance` over them.
  */
-export interface Adapter<C extends Capabilities = Capabilities> {
-  /**
-   * How to launch and configure this CLI's ACP (Agent Client Protocol)
-   * endpoint, when it ships one; the shared client does the rest. Declaring it
-   * is what backs `session: "native"`.
-   */
-  acp?: AcpSpec;
+export interface AdapterCore<C extends Capabilities = Capabilities> {
   /**
    * Answer {@link Agent.authStatus} from the probe. Required when `authStatus` is declared
    * available; read files and env, or run a
    * credential-status subcommand — never anything that costs a model call.
    */
   authStatus?: (probe: SystemProbe) => Promise<AuthStatus>;
-  /**
-   * Map a prompt plus validated options to the exact process to spawn. Pure:
-   * build the {@link Invocation}, never launch it.
-   */
-  buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
   capabilities: C;
   /** Replace default detection entirely; most adapters omit this. */
   detect?: (probe: VersionProbe) => Promise<Detection>;
@@ -778,6 +751,24 @@ export interface Adapter<C extends Capabilities = Capabilities> {
    */
   listModels?: (probe: SystemProbe) => Promise<ModelInfo[]>;
   meta: AdapterMeta;
+}
+
+/**
+ * An adapter that drives its CLI one process per turn: it describes how to
+ * invoke the CLI and how to read its output, and the core does the I/O.
+ *
+ * To add one, implement this interface (use `ndjsonParser` when the CLI emits
+ * NDJSON), record real fixtures, and run `runConformance` over them.
+ */
+export interface StdoutAdapter<C extends Capabilities = Capabilities>
+  extends AdapterCore<C> {
+  acp?: never;
+  /**
+   * Map a prompt plus validated options to the exact process to spawn. Pure:
+   * build the {@link Invocation}, never launch it.
+   */
+  buildInvocation: (prompt: string, opts: RunOptions) => Invocation;
+  mode: "stdout";
   /**
    * Map the process output to normalized events, ending with exactly one
    * `done`. Under `strict`, throw `AnyAgentError` (`code: "Parse"`) on any
@@ -787,44 +778,32 @@ export interface Adapter<C extends Capabilities = Capabilities> {
     source: OutputSource,
     opts: { strict: boolean }
   ) => AsyncGenerator<AgentEvent, RunResult>;
-  /**
-   * Provide a session handle up front, for CLIs that never reveal one
-   * headless. `id` becomes the session's resume handle, and
-   * `firstRunOptions` are merged into the session's first turn so the CLI
-   * registers it (goose: `extraArgs: ["--name", id]`). Later turns pass `id`
-   * back as {@link ExtensionOptions.resume}. Omit when the CLI reveals a
-   * session id in its output.
-   */
-  sessionSeed?: () => SessionSeed;
 }
 
 /**
- * What {@link Adapter.sessionSeed} returns: the handle a session's later
- * turns resume under, and the options that register it on the first turn.
+ * An adapter that drives its CLI over ACP (Agent Client Protocol): it
+ * describes how to launch and configure the endpoint, and the shared client
+ * speaks the protocol. Every turn runs on a live connection, which is what
+ * unlocks {@link Session.steer} and `permission-request` events.
  */
-export interface SessionSeed {
-  firstRunOptions?: RunOptions;
-  id: string;
+export interface AcpAdapter<C extends Capabilities = Capabilities>
+  extends AdapterCore<C> {
+  acp: AcpSpec;
+  buildInvocation?: never;
+  mode: "acp";
+  parse?: never;
+  sessionSeed?: never;
 }
 
 /**
- * Direct access to the native CLI, for capabilities the unified surface does
- * not model (bidirectional sessions, CLI-specific output modes, …).
- *
- * `buildInvocation` returns the exact command AnyAgent would run — useful for
- * logging, or for running it yourself somewhere else. `spawn` launches it and
- * hands you the Node `ChildProcess` to drive: you read stdout, you handle
- * exit, and you get no normalized events and no lifecycle management. The
- * prompt is already wired to stdin.
- *
- * Neither call validates options against the declared capabilities — an option
- * the CLI does not support is silently left out of the argv rather than
- * throwing `UnsupportedCapability`.
+ * The contract for supporting one agent CLI: a {@link StdoutAdapter} or an
+ * {@link AcpAdapter}, told apart by `mode`. An adapter is data plus pure
+ * functions; the core does all actual I/O (spawning, connecting, stream
+ * handling, validation, lifecycle), which keeps adapters testable offline.
  */
-export interface RawHandle {
-  buildInvocation: (prompt: string, opts?: RunOptions) => Invocation;
-  spawn: (prompt: string, opts?: RunOptions) => ChildProcess;
-}
+export type Adapter<C extends Capabilities = Capabilities> =
+  | AcpAdapter<C>
+  | StdoutAdapter<C>;
 
 /**
  * A ready-to-run handle on one installed coding agent; get one from
@@ -864,7 +843,6 @@ export interface Agent<C extends Capabilities = Capabilities> {
    * `modelListing: false` — some CLIs simply have no list.
    */
   models: () => Promise<ModelInfo[]>;
-  readonly raw: RawHandle;
   run: (prompt: string, opts?: RunOptionsFor<C>) => Run;
   /**
    * Check extension support and unlock the matching options in one gesture:
@@ -882,8 +860,9 @@ export interface Agent<C extends Capabilities = Capabilities> {
    * Open a session: one conversation spanning many turns. Continuity is the
    * session's job — each `run` threads the previous turn's resume handle
    * automatically, and `session.id` is a plain string you can persist and
-   * pass back later as `{ resume }`. Gated by {@link Capabilities.session};
-   * throws `UnsupportedCapability` where it is `false`.
+   * pass back later as `{ resume }`. On an agent that runs one process per
+   * turn, continuity needs {@link Capabilities.resume}; without it
+   * `session()` throws `UnsupportedCapability`.
    *
    * A session is a thread: its {@link SessionOptions} settings are fixed here
    * and apply to every turn. Fork it to continue the conversation under
@@ -1008,7 +987,7 @@ export type SessionRunOptionsFor<C extends Capabilities> = Omit<
   | "resume"
 >;
 
-/** The members {@link Session.supports} gates: the native-tier verbs. */
+/** The members {@link Session.supports} gates: the ACP-mode verbs. */
 export type SessionKey = "respond" | "steer";
 
 /**
@@ -1029,9 +1008,9 @@ export type SessionKey = "respond" | "steer";
  * `agent.session({ resume: id })` to continue the conversation later, from
  * any process.
  *
- * `steer` and `respond` exist on the live tier only
- * (`Capabilities.session: "native"`); check with `session.supports("steer")`,
- * the same gesture as {@link Agent.supports}.
+ * `steer` and `respond` exist on ACP-mode sessions only
+ * (`adapter.mode: "acp"`); check with `session.supports("steer")`, the same
+ * gesture as {@link Agent.supports}.
  */
 export interface Session<C extends Capabilities = Capabilities> {
   readonly agent: Agent<C>;

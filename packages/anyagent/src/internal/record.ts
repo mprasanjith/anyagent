@@ -18,6 +18,12 @@ const main = async (): Promise<void> => {
     process.stderr.write(`unknown adapter: ${id}\n`);
     process.exit(2);
   }
+  if (adapter.mode !== "stdout") {
+    process.stderr.write(
+      `${id} drives its CLI over ACP; record it with record-acp.ts\n`
+    );
+    process.exit(2);
+  }
   // Recording confines the run where the CLI can honor it; adapters without
   // a read-only mapping record at their default autonomy.
   const inv = adapter.buildInvocation(promptParts.join(" "), {

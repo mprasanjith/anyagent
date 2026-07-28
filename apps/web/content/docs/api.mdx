@@ -95,7 +95,7 @@ One run in flight: a `Promise` of the [`RunResult`](#runresult) that is also an 
 
 ## Session and SessionOptions
 
-One conversation spanning many turns, from `agent.session()`. The session owns continuity: each turn threads the previous turn’s resume handle automatically, one CLI process per turn, and `id` is a plain string you persist and pass back as `agent.session({ resume: id })` to continue later. Turns queue, and a failed turn rejects the turns queued behind it; `steer` and `respond` are live-tier verbs gated by `session.supports()`. Gated by [`Capabilities.session`](#capabilities); [Sessions](/docs/sessions) is the guide.
+One conversation spanning many turns, from `agent.session()`. The session owns continuity — in stdout mode each turn threads the CLI’s own resume flag, one process per turn; in ACP mode one connection stays open for the session’s lifetime — and `id` is a plain string you persist and pass back as `agent.session({ resume: id })` to continue later, which [`Capabilities.resume`](#capabilities) gates. Turns queue, and a failed turn rejects the turns queued behind it; `steer` and `respond` are ACP-mode verbs gated by `session.supports()`. [Sessions](/docs/sessions) is the guide.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -190,11 +190,11 @@ One normalized event from a running agent, as yielded by iterating a [`Run`](#ru
 | `tool-result`     | `name: ToolName`, `nativeName: string`, `callId?`, `output`      | a tool returned this output                                           |
 | `file-change`     | `kind: "create" \| "modify" \| "delete"`, `path: string`         | the agent changed a file, on CLIs that report it                      |
 | `usage`           | `usage: Usage`                                                   | token and cost accounting became available                            |
-| `permission-request` | `requestId`, `name`, `nativeName`, `input`, `options: PermissionOption[]` | a live-tier agent asked permission for a tool, offering its own options |
+| `permission-request` | `requestId`, `name`, `nativeName`, `input`, `options: PermissionOption[]` | an ACP-mode agent asked permission for a tool, offering its own options |
 | `schema-retry`    | `issues: string[]`                                               | the reply failed the run’s `schema`; a corrected one is being asked for |
 | `done`            | `result: RunResult`                                              | the run finished; carries the final result                            |
 
-How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `permission-request` is emitted only by live-tier sessions, which resolve it themselves by allowing the tool. Every event after a `schema-retry` belongs to the corrected attempt.
+How much text one `text-delta` carries depends on the agent: a token, a chunk, or a whole assistant message. Concatenating every delta’s `text` reproduces `RunResult.text` exactly; `reasoning-delta` text is never part of it. `permission-request` is emitted only by ACP-mode sessions, which resolve it themselves by allowing the tool. Every event after a `schema-retry` belongs to the corrected attempt.
 
 Each `permission-request` carries the agent’s own choices as [`PermissionOption`](#agentevent)s — `id`, a normalized `kind` (`allow-once`, `allow-always`, `reject-once`, `reject-always`, or the agent’s own), and the agent’s `label`:
 
@@ -260,7 +260,7 @@ type DiscoverySupport = "native" | "probed" | false;
 
 ## Capabilities
 
-What one agent CLI can do, read from `agent.capabilities` or a [`DetectResult`](#detectresult) before you ask for anything. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns; `authStatus` and `modelListing` are [`DiscoverySupport`](#discoverysupport) values, and every other field is a [`CapabilitySupport`](#capabilitysupport).
+What one agent CLI can do, read from `agent.capabilities` or a [`DetectResult`](#detectresult) before you ask for anything. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns; `authStatus` and `modelListing` are [`DiscoverySupport`](#discoverysupport) values and every other field is a [`CapabilitySupport`](#capabilitysupport).
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -374,15 +374,6 @@ Everything discovery reads from the machine: the `VersionProbe` operations plus 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
   name="SystemProbe"
-/>
-
-## RawHandle
-
-Direct access to the native CLI, reached through `agent.raw`, for capabilities the unified interface does not cover. `buildInvocation` returns the exact command AnyAgent would run; `spawn` launches it and hands you the Node `ChildProcess` to drive yourself, with the prompt wired to stdin and no normalized events.
-
-<auto-type-table
-  path="../../../../packages/anyagent/src/types.ts"
-  name="RawHandle"
 />
 
 ## Next steps

@@ -1,5 +1,10 @@
 import { AnyAgentError } from "./errors.js";
-import type { Adapter, AgentEvent, OutputSource, RunResult } from "./types.js";
+import type {
+  AgentEvent,
+  OutputSource,
+  RunResult,
+  StdoutAdapter,
+} from "./types.js";
 
 /**
  * The three pieces an NDJSON adapter supplies to {@link ndjsonParser}:
@@ -32,7 +37,9 @@ export interface NdjsonSpec<Ctx> {
  * descriptive `Invocation` error, and the stream ends with the single
  * terminal `done` event carrying the finalized result.
  */
-export const ndjsonParser = <Ctx>(spec: NdjsonSpec<Ctx>): Adapter["parse"] =>
+export const ndjsonParser = <Ctx>(
+  spec: NdjsonSpec<Ctx>
+): StdoutAdapter["parse"] =>
   async function* parse(
     source: OutputSource,
     opts: { strict: boolean }

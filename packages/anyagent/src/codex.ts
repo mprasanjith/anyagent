@@ -1,13 +1,13 @@
 import { AnyAgentError } from "./errors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
-  Adapter,
   AgentEvent,
   AuthStatus,
   Capabilities,
   Invocation,
   ModelInfo,
   RunOptions,
+  StdoutAdapter,
   SystemProbe,
   Usage,
 } from "./types.js";
@@ -26,7 +26,7 @@ const CAPS = {
   modelListing: "native",
   modelSelection: "native",
   readOnly: "native",
-  session: "emulated",
+  resume: "native",
   sessionFork: false,
   streaming: "native",
   // Deliberately emulated: `--output-schema` speaks a restricted JSON Schema
@@ -352,12 +352,13 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * purpose: Codex's `--output-schema` accepts only a restricted schema
  * dialect, so whether it worked would depend on your schema.
  */
-export const codex = (): Adapter<typeof CAPS> => ({
+export const codex = (): StdoutAdapter<typeof CAPS> => ({
   authStatus,
   buildInvocation,
   capabilities: CAPS,
   detection: {},
   listModels,
   meta: { bin: ["codex"], id: "codex", name: "Codex" },
+  mode: "stdout",
   parse,
 });

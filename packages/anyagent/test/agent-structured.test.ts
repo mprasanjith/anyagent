@@ -37,10 +37,9 @@ const objectSchema = {
 
 test("run() with schema parses and validates on the first try", async () => {
   const prompts: string[] = [];
-  const agent = new AgentImpl(
-    emulated,
-    scriptedRunner([streamOf('{"n":1}')], prompts)
-  );
+  const agent = new AgentImpl(emulated, {
+    runner: scriptedRunner([streamOf('{"n":1}')], prompts),
+  });
   const res = await agent.run("q", { schema: objectSchema });
   expect(res.json).toEqual({ n: 1 });
   expect(prompts).toHaveLength(1);
@@ -49,10 +48,12 @@ test("run() with schema parses and validates on the first try", async () => {
 
 test("run() with schema retries once, quoting the error and previous reply", async () => {
   const prompts: string[] = [];
-  const agent = new AgentImpl(
-    emulated,
-    scriptedRunner([streamOf('{"n":"bad"}'), streamOf('{"n":2}')], prompts)
-  );
+  const agent = new AgentImpl(emulated, {
+    runner: scriptedRunner(
+      [streamOf('{"n":"bad"}'), streamOf('{"n":2}')],
+      prompts
+    ),
+  });
   const res = await agent.run("q", { schema: objectSchema });
   expect(res.json).toEqual({ n: 2 });
   expect(prompts).toHaveLength(2);
@@ -62,13 +63,12 @@ test("run() with schema retries once, quoting the error and previous reply", asy
 
 test("run() with schema throws Parse when the retry also fails", async () => {
   const prompts: string[] = [];
-  const agent = new AgentImpl(
-    emulated,
-    scriptedRunner(
+  const agent = new AgentImpl(emulated, {
+    runner: scriptedRunner(
       [streamOf('{"n":"bad"}'), streamOf('{"n":"still bad"}')],
       prompts
-    )
-  );
+    ),
+  });
   const failure = await agent
     .run("q", { schema: objectSchema })
     .catch((e: unknown) => e as AnyAgentError);
@@ -79,10 +79,12 @@ test("run() with schema throws Parse when the retry also fails", async () => {
 
 test("schemaRetries: 0 fails on the first bad reply without a second attempt", async () => {
   const prompts: string[] = [];
-  const agent = new AgentImpl(
-    emulated,
-    scriptedRunner([streamOf('{"n":"bad"}'), streamOf('{"n":2}')], prompts)
-  );
+  const agent = new AgentImpl(emulated, {
+    runner: scriptedRunner(
+      [streamOf('{"n":"bad"}'), streamOf('{"n":2}')],
+      prompts
+    ),
+  });
   const failure = await agent
     .run("q", { schema: objectSchema, schemaRetries: 0 })
     .catch((e: unknown) => e as AnyAgentError);
@@ -95,10 +97,9 @@ test("schemaRetries: 0 fails on the first bad reply without a second attempt", a
 });
 
 test("a schema retry is announced between the two attempts' events", async () => {
-  const agent = new AgentImpl(
-    emulated,
-    scriptedRunner([streamOf('{"n":"bad"}'), streamOf('{"n":2}')], [])
-  );
+  const agent = new AgentImpl(emulated, {
+    runner: scriptedRunner([streamOf('{"n":"bad"}'), streamOf('{"n":2}')], []),
+  });
   const run = agent.run("q", { schema: objectSchema });
   const events: AgentEvent[] = [];
   for await (const ev of run) {
@@ -122,7 +123,9 @@ test("a schema retry is announced between the two attempts' events", async () =>
 
 test("schemaRetries without schema throws InvalidOptions before spawning", async () => {
   const prompts: string[] = [];
-  const agent = new AgentImpl(emulated, scriptedRunner([], prompts));
+  const agent = new AgentImpl(emulated, {
+    runner: scriptedRunner([], prompts),
+  });
   await expect(agent.run("q", { schemaRetries: 0 })).rejects.toMatchObject({
     code: "InvalidOptions",
   });
@@ -130,10 +133,9 @@ test("schemaRetries without schema throws InvalidOptions before spawning", async
 });
 
 test("iterating a schema run yields text events and a done carrying the parsed json", async () => {
-  const agent = new AgentImpl(
-    emulated,
-    scriptedRunner([streamOf('{"n":1}')], [])
-  );
+  const agent = new AgentImpl(emulated, {
+    runner: scriptedRunner([streamOf('{"n":1}')], []),
+  });
   const types: string[] = [];
   let json: unknown;
   for await (const ev of agent.run("q", { schema: objectSchema })) {
@@ -145,17 +147,4 @@ test("iterating a schema run yields text events and a done carrying the parsed j
   expect(types).toContain("text-delta");
   expect(types.filter((t) => t === "done")).toHaveLength(1);
   expect(json).toEqual({ n: 1 });
-});
-
-test("raw.buildInvocation does not emulate an emulated capability", () => {
-  const systemEmulated: Adapter = {
-    ...fakeStreaming,
-    buildInvocation: (prompt) => ({ args: ["-p", prompt], command: "fake" }),
-    capabilities: { ...fakeStreaming.capabilities, systemPrompt: "emulated" },
-  };
-  const agent = new AgentImpl(systemEmulated);
-  const inv = agent.raw.buildInvocation("hi", { systemPrompt: "secret" });
-  expect(JSON.stringify(inv)).not.toContain("secret");
-  expect(JSON.stringify(inv)).not.toContain("system-instructions");
-  expect(inv.args).toEqual(["-p", "hi"]);
 });

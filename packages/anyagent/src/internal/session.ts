@@ -3,114 +3,59 @@ import type {
   Agent,
   AgentEvent,
   Capabilities,
+  Invocation,
+  OutputSource,
   Run,
   RunOptions,
   RunResult,
   Session,
   SessionKey,
   SessionOptions,
+  StdoutAdapter,
 } from "../types.js";
-import { AcpSessionImpl } from "./acp-session.js";
 import { validateOptions } from "./capabilities.js";
-import { RunImpl } from "./run.js";
+import {
+  rejectTurnOptions,
+  sessionRunOptions,
+  settingsOf,
+} from "./settings.js";
+import type { TurnRun } from "./turn.js";
+import { runTurn, spawnOnce, TurnQueue } from "./turn.js";
 
-type Runner = ConstructorParameters<typeof RunImpl>[1];
-
-const SESSION_SETTINGS = [
-  "cwd",
-  "effort",
-  "env",
-  "extraArgs",
-  "mcp",
-  "model",
-] as const;
-
-const settingsOf = (opts: SessionOptions): RunOptions => {
-  const settings: RunOptions = {};
-  for (const key of SESSION_SETTINGS) {
-    const value = opts[key];
-    if (value !== undefined) {
-      Object.assign(settings, { [key]: value });
-    }
-  }
-  return settings;
-};
-
-// JS callers bypass the compile-time omission on `SessionRunOptionsFor`.
-const rejectOwned = (opts: RunOptions): void => {
-  if (opts.resume !== undefined || opts.forkSession !== undefined) {
-    throw new AnyAgentError(
-      "InvalidOptions",
-      "resume and forkSession are owned by the session; use agent.session({ resume, fork })"
-    );
-  }
-  const owned = SESSION_SETTINGS.filter((key) => opts[key] !== undefined);
-  if (owned.length > 0) {
-    const many = owned.length > 1;
-    throw new AnyAgentError(
-      "InvalidOptions",
-      `${owned.join(", ")} ${many ? "are" : "is"} owned by the session; set ${many ? "them" : "it"} on agent.session()`
-    );
-  }
-};
-
-interface PendingTurn {
-  opts: RunOptions;
-  rejectGate: (failure: unknown) => void;
-  resolveGate: (threaded: RunOptions) => void;
-  run: Run;
-}
+type Runner = (invocation: Invocation, signal?: AbortSignal) => OutputSource;
 
 // The concrete {@link Session}: client-side bookkeeping over the agent's
-// one-process-per-turn model. Turns queue through an explicit FIFO — each
-// gate resolves with the threaded options once every earlier turn settled. A
-// failed turn rejects the turns queued behind it and the queue resets to the
-// last good handle, so a later `run` retries from there.
-//
-// This class is the tier seam: when the agent declares `session: "native"`
-// with an ACP endpoint it delegates every verb to an {@link AcpSessionImpl}
-// live session; otherwise the emulated path below runs untouched. `steer`/
-// `respond` are native-tier verbs; the emulated tier throws.
+// one-process-per-turn model. The resume handle is threaded at dequeue, so a
+// turn that failed leaves the queue on the last good handle and a later `run`
+// retries from there.
 export class SessionImpl<C extends Capabilities = Capabilities>
   implements Session<C>
 {
   readonly agent: Agent<C>;
+  readonly #adapter: StdoutAdapter;
   readonly #runner: Runner;
-  readonly #native: AcpSessionImpl<C> | undefined;
   #id: string | undefined;
   #resumeNext: string | undefined;
   #forkNext: boolean;
-  readonly #seedFirstRunOptions: RunOptions | undefined;
   readonly #settings: RunOptions;
-  readonly #delegated: boolean;
-  readonly #pending: PendingTurn[] = [];
-  #draining = false;
+  readonly #queue = new TurnQueue();
   #turns = 0;
   #closed = false;
 
-  constructor(
-    agent: Agent<C>,
-    runner: Runner,
-    opts: SessionOptions = {},
-    // The mixed-tier fallback constructs an emulated cursor directly; this flag
-    // keeps it from re-selecting the native tier and looping back on itself.
-    // Its turns arrive with the outer session's settings already merged in.
-    forceEmulated = false
-  ) {
-    this.agent = agent;
-    this.#runner = runner;
-    this.#delegated = forceEmulated;
-    this.#settings = settingsOf(opts);
-    validateOptions(agent.adapter, this.#settings);
-    this.#forkNext = opts.fork === true;
-    if (
-      !forceEmulated &&
-      agent.adapter.capabilities.session === "native" &&
-      agent.adapter.acp
-    ) {
-      this.#native = new AcpSessionImpl(agent, runner, opts);
-      return;
+  constructor(agent: Agent<C>, runner: Runner, opts: SessionOptions = {}) {
+    const { adapter } = agent;
+    if (adapter.mode !== "stdout") {
+      throw new AnyAgentError(
+        "UnsupportedCapability",
+        `${adapter.meta.id} runs every turn over its ACP endpoint`
+      );
     }
+    this.agent = agent;
+    this.#adapter = adapter;
+    this.#runner = runner;
+    this.#settings = settingsOf(opts);
+    validateOptions(adapter, sessionRunOptions(opts));
+    this.#forkNext = opts.fork === true;
     if (this.#forkNext && opts.resume === undefined) {
       throw new AnyAgentError(
         "InvalidOptions",
@@ -120,60 +65,36 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     if (opts.resume !== undefined) {
       this.#id = opts.resume;
       this.#resumeNext = opts.resume;
-      return;
-    }
-    const seed = agent.adapter.sessionSeed?.();
-    if (seed) {
-      this.#id = seed.id;
-      this.#seedFirstRunOptions = seed.firstRunOptions;
     }
   }
 
   get id(): string | undefined {
-    return this.#native ? this.#native.id : this.#id;
+    return this.#id;
   }
 
   supports(...keys: SessionKey[]): boolean {
-    if (this.#native) {
-      return this.#native.supports(...keys);
-    }
-    // The emulated tier has no live channel; ACP-backed sessions provide
-    // these verbs by construction.
     return keys.length === 0;
   }
 
-  steer(text: string): void {
-    if (this.#native) {
-      this.#native.steer(text);
-      return;
-    }
+  steer(_text: string): void {
     throw new AnyAgentError(
       "UnsupportedCapability",
-      `${this.agent.adapter.meta.id} has no live session channel to steer`
+      `${this.agent.adapter.meta.id} runs sessions in stdout mode; steer needs an ACP-mode session`
     );
   }
 
-  respond(requestId: string, choice: string): void {
-    if (this.#native) {
-      this.#native.respond(requestId, choice);
-      return;
-    }
+  respond(_requestId: string, _choice: string): void {
     throw new AnyAgentError(
       "UnsupportedCapability",
-      `${this.agent.adapter.meta.id} has no live session channel to respond on`
+      `${this.agent.adapter.meta.id} runs sessions in stdout mode; respond needs an ACP-mode session`
     );
   }
 
   close(): Promise<void> {
-    if (this.#native) {
-      return this.#native.close();
-    }
     this.#closed = true;
-    for (const queued of this.#pending.splice(0)) {
-      queued.rejectGate(new AnyAgentError("Aborted", "the run was aborted"));
-    }
-    // The emulated tier holds no process between turns, so an emptied queue is
-    // the whole teardown.
+    this.#queue.abandonQueued();
+    // Stdout mode holds no process between turns, so an emptied queue is the
+    // whole teardown.
     return Promise.resolve();
   }
 
@@ -181,85 +102,33 @@ export class SessionImpl<C extends Capabilities = Capabilities>
     if (this.#closed) {
       throw new AnyAgentError("InvalidOptions", "this session is closed");
     }
-    if (!this.#delegated) {
-      rejectOwned(callOpts);
-    }
+    rejectTurnOptions(callOpts);
     const opts: RunOptions = { ...callOpts, ...this.#settings };
-    if (this.#native) {
-      return this.#native.run(prompt, opts);
-    }
-
-    let resolveGate: PendingTurn["resolveGate"] = () => {
-      throw new Error("unreachable: promise executors run synchronously");
-    };
-    let rejectGate: PendingTurn["rejectGate"] = () => {
-      throw new Error("unreachable: promise executors run synchronously");
-    };
-    const gate = new Promise<RunOptions>((resolve, reject) => {
-      resolveGate = resolve;
-      rejectGate = reject;
-    });
-
-    const run = new RunImpl(
-      this.agent.adapter,
-      this.#runner,
-      prompt,
-      opts,
-      gate,
-      (event) => {
-        this.#capture(event);
-      }
+    return this.#queue.add(
+      (turn) => this.#turn(prompt, opts, turn),
+      opts.signal
     );
-    this.#pending.push({ opts, rejectGate, resolveGate, run });
-    this.#drain();
-    return run;
   }
 
-  #drain(): void {
-    if (this.#draining) {
-      return;
-    }
-    this.#draining = true;
-    this.#processQueue().finally(() => {
-      this.#draining = false;
-      if (this.#pending.length > 0) {
-        this.#drain();
-      }
-    });
-  }
-
-  async #processQueue(): Promise<void> {
-    let turn = this.#pending.shift();
-    while (turn) {
-      // biome-ignore lint/performance/noAwaitInLoops: turns are sequential by contract — each waits for the previous.
-      await this.#runTurn(turn);
-      turn = this.#pending.shift();
-    }
-  }
-
-  async #runTurn(turn: PendingTurn): Promise<void> {
-    try {
-      turn.resolveGate(this.#threadedOptions(turn.opts));
-      this.#endTurn(await turn.run);
-    } catch (failure) {
-      turn.rejectGate(failure);
-      for (const queued of this.#pending.splice(0)) {
-        queued.rejectGate(failure);
-      }
-    }
+  async #turn(prompt: string, opts: RunOptions, run: TurnRun): Promise<void> {
+    const emit = (event: AgentEvent): void => {
+      this.#capture(event);
+      run.push(event);
+    };
+    const result = await runTurn(
+      this.#adapter,
+      prompt,
+      this.#threadedOptions(opts),
+      (composed) =>
+        spawnOnce(this.#adapter, this.#runner, composed, run.signal, emit),
+      emit
+    );
+    this.#endTurn(result);
+    run.settleOk(result);
   }
 
   #threadedOptions(opts: RunOptions): RunOptions {
-    // The seed applies to whichever turn runs first — including a retry
-    // after a failed first turn, when the conversation never started.
-    const seed = this.#turns === 0 ? this.#seedFirstRunOptions : undefined;
-    const merged: RunOptions = { ...seed, ...opts };
-    if (seed?.extraArgs || opts.extraArgs) {
-      merged.extraArgs = [
-        ...(seed?.extraArgs ?? []),
-        ...(opts.extraArgs ?? []),
-      ];
-    }
+    const merged: RunOptions = { ...opts };
     if (this.#resumeNext !== undefined) {
       merged.resume = this.#resumeNext;
     }

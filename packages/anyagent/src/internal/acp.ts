@@ -65,6 +65,14 @@ export interface LoadSessionInput {
   sessionId: string;
 }
 
+/** Ergonomic input for `session/fork`; carries the id to branch from. */
+export interface ForkSessionInput {
+  additionalDirectories?: string[];
+  cwd: string;
+  mcpServers?: NewSessionRequest["mcpServers"];
+  sessionId: string;
+}
+
 /** A prompt string, or the raw content blocks when the caller needs them. */
 export type PromptInput = string | ContentBlock[];
 
@@ -368,6 +376,35 @@ export class AcpClient {
     );
     return new AcpSessionImpl(
       request.sessionId,
+      this.#connection.agent,
+      this.#dispatch,
+      currentValues(response.configOptions)
+    );
+  }
+
+  /**
+   * Branches an existing session with `session/fork`: the returned session is a
+   * new one carrying the original's context, and `request.sessionId` is left
+   * untouched. Gated on the agent's advertised `sessionCapabilities.fork`:
+   * throws before sending if `initialize` did not advertise it.
+   */
+  async forkSession(request: ForkSessionInput): Promise<AcpSession> {
+    if (!this.#capabilities?.sessionCapabilities?.fork) {
+      throw new AnyAgentError(
+        "UnsupportedCapability",
+        "the agent did not advertise session/fork support"
+      );
+    }
+    const response = await this.#alive(
+      this.#connection.agent.request("session/fork", {
+        additionalDirectories: request.additionalDirectories,
+        cwd: request.cwd,
+        mcpServers: request.mcpServers ?? [],
+        sessionId: request.sessionId,
+      })
+    );
+    return new AcpSessionImpl(
+      response.sessionId,
       this.#connection.agent,
       this.#dispatch,
       currentValues(response.configOptions)

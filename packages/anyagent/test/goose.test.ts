@@ -4,278 +4,109 @@ import path from "node:path";
 
 import { runConformance } from "../src/conformance.js";
 import { goose } from "../src/goose.js";
-import { spawnAndStream } from "../src/internal/runtime/spawn.js";
-import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
-import { fakeSystemProbe, sourceFromBody } from "./fake-adapter.js";
+import { AcpSessionImpl } from "../src/internal/acp-session.js";
+import { AgentImpl } from "../src/internal/agent.js";
+import type { SessionOptions } from "../src/types.js";
+import {
+  response,
+  type ScriptApi,
+  type ScriptedTransport,
+  scriptedTransport,
+} from "./acp-transport.js";
+import { fakeSystemProbe } from "./fake-adapter.js";
 
-const FIXTURES = [
-  "simple.jsonl",
-  "tools.jsonl",
-  "edit.jsonl",
-  "reasoning.jsonl",
-] as const;
-
-const bodySource = (lines: unknown[]): OutputSource =>
-  sourceFromBody(lines.map((l) => JSON.stringify(l)).join("\n"));
-
-const readFixture = (name: string): string =>
-  readFileSync(path.join(import.meta.dir, "fixtures/goose", name), "utf-8");
-
-const fixtureSource = (name: string): OutputSource =>
-  sourceFromBody(readFixture(name));
-
-const collectSource = async (
-  src: OutputSource,
-  strict = false
-): Promise<{ events: AgentEvent[]; result?: RunResult }> => {
-  const events: AgentEvent[] = [];
-  for await (const ev of goose().parse(src, { strict })) {
-    events.push(ev);
-  }
-  const done = events.find((e) => e.type === "done");
-  return { events, result: done?.type === "done" ? done.result : undefined };
+const handshake = async (api: ScriptApi): Promise<void> => {
+  const init = await api.next();
+  expect(init.method).toBe("initialize");
+  api.emit(response(init.id, { agentCapabilities: {}, protocolVersion: 1 }));
 };
 
-const collect = (name: string) => collectSource(fixtureSource(name));
+const gooseSession = (
+  opts: SessionOptions,
+  transport: ScriptedTransport
+): AcpSessionImpl =>
+  new AcpSessionImpl(new AgentImpl(goose()), opts, () => transport);
 
-const assistantMessage = (content: unknown[]): unknown => ({
-  message: { content, role: "assistant" },
-  type: "message",
+test("goose drives its CLI over ACP", () => {
+  const adapter = goose();
+  expect(adapter.mode).toBe("acp");
+  expect(adapter.acp.command).toEqual(["goose", "acp"]);
 });
 
-const toolRequest = (name: string, args: unknown): unknown =>
-  assistantMessage([
+test("the capabilities match what the endpoint carries", () => {
+  const caps = goose().capabilities;
+  expect(caps.mcp).toBe("native");
+  expect(caps.effort).toBe("native");
+  expect(caps.reasoningEfforts).toEqual([
+    "off",
+    "low",
+    "medium",
+    "high",
+    "max",
+  ]);
+  expect(caps.readOnly).toBe("emulated");
+  expect(caps.systemPrompt).toBe("emulated");
+  expect(caps.structuredOutput).toBe("emulated");
+});
+
+test("readOnly rests on permission denial, reached through approve mode", () => {
+  const adapter = goose();
+  expect(adapter.capabilities.readOnly).toBe("emulated");
+  // The default `auto` mode runs tools without asking, so denial needs the
+  // mode switch to have anything to deny.
+  expect(adapter.acp.readOnly).toEqual({ configId: "mode", value: "approve" });
+});
+
+test("a session's model and effort become config options", () => {
+  const { settings } = goose().acp;
+  expect(
+    settings?.({ effort: "high", model: "anthropic/claude-sonnet-4.5" })
+  ).toEqual({
+    configOptions: [
+      { configId: "model", value: "anthropic/claude-sonnet-4.5" },
+      { configId: "thinking_effort", value: "high" },
+    ],
+  });
+  expect(settings?.({})).toEqual({ configOptions: [] });
+});
+
+test("mcp servers reach session/new in both the command and the url shape", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api);
+    const created = await api.next();
+    expect(created.method).toBe("session/new");
+    expect((created.params as { mcpServers?: unknown }).mcpServers).toEqual([
+      {
+        args: ["-y", "db-server"],
+        command: "npx",
+        env: [{ name: "TOKEN", value: "t" }],
+        name: "db",
+      },
+      {
+        headers: [],
+        name: "docs",
+        type: "http",
+        url: "https://mcp.example/mcp",
+      },
+    ]);
+    api.emit(response(created.id, { sessionId: "s1" }));
+
+    const prompt = await api.next();
+    expect(prompt.method).toBe("session/prompt");
+    api.emit(response(prompt.id, { stopReason: "end_turn" }));
+  });
+
+  const session = gooseSession(
     {
-      id: `call_${name}`,
-      toolCall: { status: "success", value: { arguments: args, name } },
-      type: "toolRequest",
+      mcp: {
+        db: { args: ["-y", "db-server"], command: "npx", env: { TOKEN: "t" } },
+        docs: { url: "https://mcp.example/mcp" },
+      },
     },
-  ]);
-
-test("buildInvocation maps stream-json, quiet mode, stdin input, and the auto default", () => {
-  const inv = goose().buildInvocation("hi", {});
-  expect(inv.command).toBe("goose");
-  // --quiet keeps stdout pure NDJSON; -i - pipes the prompt over stdin.
-  expect(inv.args).toEqual([
-    "run",
-    "--output-format",
-    "stream-json",
-    "--quiet",
-    "-i",
-    "-",
-  ]);
-  expect(inv.input).toBe("hi");
-  // The unattended baseline pins GOOSE_MODE=auto by default.
-  expect(inv.env).toEqual({ GOOSE_MODE: "auto" });
-});
-
-test("a caller's env merges over the GOOSE_MODE default and can override it", () => {
-  const merged = goose().buildInvocation("x", { env: { FOO: "bar" } });
-  expect(merged.env).toEqual({ FOO: "bar", GOOSE_MODE: "auto" });
-  const pinned = goose().buildInvocation("x", {
-    env: { GOOSE_MODE: "approve" },
-  });
-  expect(pinned.env).toEqual({ GOOSE_MODE: "approve" });
-});
-
-test("model splits at the first slash into --provider and --model", () => {
-  const inv = goose().buildInvocation("hi", {
-    model: "openrouter/openai/gpt-4o-mini",
-  });
-  const at = (flag: string): string | undefined =>
-    inv.args[inv.args.indexOf(flag) + 1];
-  expect(at("--provider")).toBe("openrouter");
-  // The rest may itself contain slashes (openrouter model paths).
-  expect(at("--model")).toBe("openai/gpt-4o-mini");
-});
-
-test("a slash-free model rides --model alone, provider left to goose config", () => {
-  const inv = goose().buildInvocation("hi", { model: "gpt-4o-mini" });
-  expect(inv.args).not.toContain("--provider");
-  expect(inv.args[inv.args.indexOf("--model") + 1]).toBe("gpt-4o-mini");
-});
-
-test("buildInvocation emits system and resume flags and cwd", () => {
-  const inv = goose().buildInvocation("hi", {
-    cwd: "/work",
-    resume: "my-session",
-    systemPrompt: "be brief",
-  });
-  const at = (flag: string): string | undefined =>
-    inv.args[inv.args.indexOf(flag) + 1];
-  expect(at("--system")).toBe("be brief");
-  // Resume is by session name: --name <name> --resume.
-  expect(at("--name")).toBe("my-session");
-  expect(inv.args).toContain("--resume");
-  expect(inv.cwd).toBe("/work");
-});
-
-test("parses a simple text answer with usage from complete", async () => {
-  const { events, result } = await collect("simple.jsonl");
-  expect(result?.text).toBe("pong");
-  expect(typeof result?.usage?.inputTokens).toBe("number");
-  expect(typeof result?.usage?.outputTokens).toBe("number");
-  expect(events.at(-1)?.type).toBe("done");
-});
-
-test("goose never reveals a session id headless: no session event, no sessionId", async () => {
-  const { events, result } = await collect("simple.jsonl");
-  expect(events.some((e) => e.type === "session")).toBe(false);
-  expect(result?.sessionId).toBeUndefined();
-});
-
-test("shell tool normalizes to bash, keeping the native name and callId", async () => {
-  const { events } = await collect("tools.jsonl");
-  const call = events.find((e) => e.type === "tool-call");
-  const res = events.find((e) => e.type === "tool-result");
-  expect(call?.type === "tool-call" && call.name).toBe("bash");
-  expect(call?.type === "tool-call" && call.nativeName).toBe("shell");
-  expect(call?.type === "tool-call" && typeof call.callId).toBe("string");
-  // The response pairs with its request: same callId, same names.
-  expect(res?.type === "tool-result" && res.callId).toBe(
-    call?.type === "tool-call" ? call.callId : ""
+    transport
   );
-  expect(res?.type === "tool-result" && res.name).toBe("bash");
-  expect(res?.type === "tool-result" && res.nativeName).toBe("shell");
-  expect(res?.type === "tool-result" && JSON.stringify(res.output)).toContain(
-    "petrichor"
-  );
-});
-
-test("the edit fixture surfaces write; unknown tools keep their native name", async () => {
-  const { events } = await collect("edit.jsonl");
-  const calls = events.filter(
-    (e): e is Extract<AgentEvent, { type: "tool-call" }> =>
-      e.type === "tool-call"
-  );
-  expect(calls.map((c) => c.name)).toContain("write");
-  const todo = calls.find((c) => c.nativeName === "todo__todo_write");
-  expect(todo?.name).toBe("todo__todo_write");
-});
-
-test("thinking blocks map to reasoning-delta and stay out of result.text", async () => {
-  const { events, result } = await collect("reasoning.jsonl");
-  const reasoning = events.filter(
-    (e): e is Extract<AgentEvent, { type: "reasoning-delta" }> =>
-      e.type === "reasoning-delta"
-  );
-  expect(reasoning).toHaveLength(1);
-  expect(reasoning[0]?.text).toContain("pong");
-  expect(result?.text).toBe("pong");
-});
-
-test("extension-prefixed tool names normalize on the bare tool", async () => {
-  const { events } = await collectSource(
-    bodySource([toolRequest("developer__shell", { command: "ls" })])
-  );
-  const call = events.find((e) => e.type === "tool-call");
-  expect(call?.type === "tool-call" && call.name).toBe("bash");
-  expect(call?.type === "tool-call" && call.nativeName).toBe(
-    "developer__shell"
-  );
-});
-
-test("text_editor normalizes per command: create writes, str_replace edits", async () => {
-  const nameFor = async (args: unknown): Promise<string> => {
-    const { events } = await collectSource(
-      bodySource([toolRequest("developer__text_editor", args)])
-    );
-    const call = events.find((e) => e.type === "tool-call");
-    return call?.type === "tool-call" ? call.name : "";
-  };
-  expect(await nameFor({ command: "create", path: "a.txt" })).toBe("write");
-  expect(await nameFor({ command: "str_replace", path: "a.txt" })).toBe("edit");
-  // A command outside the known set keeps the honest native name.
-  expect(await nameFor({ command: "view", path: "a.txt" })).toBe(
-    "developer__text_editor"
-  );
-});
-
-test("strict mode tolerates every recorded real shape", async () => {
-  await expect(
-    Promise.all(FIXTURES.map((f) => collectSource(fixtureSource(f), true)))
-  ).resolves.toHaveLength(FIXTURES.length);
-});
-
-test("a toolResponse with an unseen id falls back to unknown names", async () => {
-  const { events } = await collectSource(
-    bodySource([
-      {
-        message: {
-          content: [
-            {
-              id: "never-seen",
-              toolResult: { value: { content: [] } },
-              type: "toolResponse",
-            },
-          ],
-          role: "user",
-        },
-        type: "message",
-      },
-    ])
-  );
-  const res = events.find((e) => e.type === "tool-result");
-  expect(res?.type === "tool-result" && res.name).toBe("unknown");
-  expect(res?.type === "tool-result" && res.nativeName).toBe("unknown");
-});
-
-test("a failed run's complete with null tokens leaves usage undefined", async () => {
-  // Goose reports provider errors as ordinary assistant text and closes with
-  // a complete event whose token counts are null.
-  const { events, result } = await collectSource(
-    bodySource([
-      {
-        message: {
-          content: [{ text: "Ran into this error: Bad request", type: "text" }],
-          role: "assistant",
-        },
-        type: "message",
-      },
-      {
-        input_tokens: null,
-        output_tokens: null,
-        total_tokens: null,
-        type: "complete",
-      },
-    ])
-  );
-  expect(result?.usage).toBeUndefined();
-  expect(events.some((e) => e.type === "usage")).toBe(false);
-  expect(result?.text).toContain("Ran into this error");
-});
-
-test("strict mode throws on unknown event and content types", async () => {
-  await expect(
-    collectSource(bodySource([{ type: "mystery" }]), true)
-  ).rejects.toMatchObject({ code: "Parse" });
-  await expect(
-    collectSource(
-      bodySource([
-        {
-          message: { content: [{ type: "hologram" }], role: "assistant" },
-          type: "message",
-        },
-      ]),
-      true
-    )
-  ).rejects.toMatchObject({ code: "Parse" });
-});
-
-test("nonzero exit after valid output fails loud instead of returning it", async () => {
-  const line = JSON.stringify({
-    input_tokens: 1,
-    output_tokens: 1,
-    total_tokens: 2,
-    type: "complete",
-  });
-  const src = spawnAndStream({
-    args: ["-c", `printf '%s\\n' '${line}'; exit 1`],
-    command: "sh",
-  });
-  await expect(collectSource(src)).rejects.toMatchObject({
-    code: "Invocation",
-  });
+  await Promise.all([session.run("hi"), transport.done]);
+  await session.close();
 });
 
 const INFO_CONFIGURED = [
@@ -354,8 +185,13 @@ test("authStatus: exec failure or nonzero exit is unknown", async () => {
   expect((await goose().authStatus?.(nonzero))?.state).toBe("unknown");
 });
 
-test("goose passes conformance over its recorded fixtures", async () => {
+test("goose passes conformance over its recorded transcript", async () => {
   await runConformance(goose(), {
-    fixtures: Object.fromEntries(FIXTURES.map((f) => [f, readFixture(f)])),
+    transcripts: {
+      recorded: readFileSync(
+        path.join(import.meta.dir, "fixtures/acp/goose.jsonl"),
+        "utf-8"
+      ),
+    },
   });
 });

@@ -3,11 +3,11 @@ title: Gemini CLI
 description: "Use the Gemini CLI through AnyAgent: what you can ask for, how it behaves, and the flags underneath."
 ---
 
-The `gemini-cli` adapter drives the Gemini CLI in headless mode, detected as the `gemini` binary on `PATH`; import `geminiCli` from `anyagent-js/gemini-cli`.
+The `gemini-cli` adapter drives the Gemini CLI over its ACP endpoint, detected as the `gemini` binary on `PATH`; import `geminiCli` from `anyagent-js/gemini-cli`.
 
 ## What you can ask for
 
-`model`, `readOnly`, and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `effort`, `mcp`, and model listing are undeclared and throw. `authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain. The full grid is on the [support matrix](/docs/adapters).
+`model` rides the endpoint's own flag; `readOnly`, `systemPrompt`, and `schema` are provided by AnyAgent. `effort`, `mcp`, `resume`, and model listing are undeclared and throw. `authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
@@ -15,16 +15,15 @@ The `gemini-cli` adapter drives the Gemini CLI in headless mode, detected as the
 Pin a model. Automatic routing can spend minutes self-investigating a trivial prompt, so never leave `model` unset expecting a sane default.
 </Callout>
 
-- The init event’s session id lands on `result.sessionId`; `resume` takes that UUID.
-- Resuming a live session from a different process can fail; start a fresh session instead.
-- Usage maps the terminal stats block: `cached` becomes `cacheReadTokens`.
+- A session always starts fresh: reattaching is broken upstream, so `agent.session({ resume })` throws.
+- Runs report no token usage: the endpoint puts its counts outside the protocol's usage field.
 
 ## Under the hood
 
-Every run executes `gemini -p "" --output-format stream-json --skip-trust --approval-mode yolo` with the prompt piped over stdin. [Run options](/docs/api#run-options) change the mode and append flags:
+Every session launches `gemini --acp --skip-trust` and talks the [Agent Client Protocol](https://agentclientprotocol.com) to it; the prompt travels as a content block. [Run options](/docs/api#run-options) map onto the endpoint like this:
 
-| Option           | Flag                                                                          |
-| ---------------- | ----------------------------------------------------------------------------- |
-| `readOnly: true` | `--approval-mode default`, whose headless toolset has no write or shell tools |
-| `model`          | `-m <name>`, in the Gemini CLI’s own vocabulary; never defaulted              |
-| `resume`         | `--resume <sessionId>`                                                        |
+| Option           | What it becomes                                                          |
+| ---------------- | ------------------------------------------------------------------------ |
+| `model`          | `-m <name>` on the endpoint's argv, in the Gemini CLI's own vocabulary    |
+| `cwd`            | the `cwd` of the new session                                             |
+| `readOnly: true` | a denial of every permission request for a tool that could change the machine |

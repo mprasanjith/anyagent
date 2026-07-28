@@ -205,6 +205,55 @@ test("loadSession reattaches when the capability is advertised", async () => {
   await transport.done;
 });
 
+test("forkSession branches when the capability is advertised", async () => {
+  const transport = scriptedTransport(async (api) => {
+    await handshake(api, { sessionCapabilities: { fork: {} } });
+    const fork = await api.next();
+    expect(fork.method).toBe("session/fork");
+    expect(fork.params).toEqual({
+      cwd: "/repo",
+      mcpServers: [],
+      sessionId: "s-old",
+    });
+    api.emit(
+      response(fork.id, {
+        configOptions: [
+          {
+            currentValue: "build",
+            id: "mode",
+            name: "Session Mode",
+            options: [{ name: "plan", value: "plan" }],
+            type: "select",
+          },
+        ],
+        sessionId: "s-forked",
+      })
+    );
+  });
+
+  const client = connect(transport);
+  await client.initialize();
+  const session = await client.forkSession({
+    cwd: "/repo",
+    sessionId: "s-old",
+  });
+
+  expect(session.sessionId).toBe("s-forked");
+  expect(session.config.get("mode")).toBe("build");
+  await transport.done;
+});
+
+test("forkSession throws UnsupportedCapability when the agent did not advertise it", async () => {
+  const transport = scriptedTransport((api) => handshake(api, {}));
+  const client: AcpClient = connect(transport);
+  await client.initialize();
+
+  await expect(
+    client.forkSession({ cwd: "/repo", sessionId: "s-old" })
+  ).rejects.toMatchObject({ code: "UnsupportedCapability" });
+  await transport.done;
+});
+
 test("loadSession throws UnsupportedCapability when the agent did not advertise it", async () => {
   const transport = scriptedTransport((api) => handshake(api, {}));
   const client: AcpClient = connect(transport);

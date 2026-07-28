@@ -18,7 +18,7 @@ const caps: Capabilities = {
   modelListing: false,
   modelSelection: "native",
   readOnly: false,
-  session: false,
+  resume: false,
   sessionFork: false,
   streaming: "native",
   structuredOutput: false,
@@ -42,6 +42,7 @@ const adapter: Adapter = {
     versionRegex: /(?<version>\d+\.\d+\.\d+)/u,
   },
   meta: { bin: ["demo", "demo-cli"], id: "demo", name: "Demo" },
+  mode: "stdout",
   parse: noopParse,
 };
 

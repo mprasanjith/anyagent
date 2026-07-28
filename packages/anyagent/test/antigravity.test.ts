@@ -61,10 +61,10 @@ const canceledResult = {
   },
 };
 
-test("buildInvocation defaults: print mode, stream-json, permissions skipped", () => {
+test("buildInvocation defaults: stdout mode, stream-json, permissions skipped", () => {
   const inv = antigravity().buildInvocation("hi", {});
   expect(inv.command).toBe("agy");
-  // The prompt is -p's value on argv; agy ignores piped stdin in print mode.
+  // The prompt is -p's value on argv; agy ignores piped stdin in stdout mode.
   expect(inv.args.slice(0, 2)).toEqual(["-p", "hi"]);
   expect(inv.input).toBeUndefined();
   expect(argAfter(inv.args, "--output-format")).toBe("stream-json");

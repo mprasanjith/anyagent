@@ -1,5 +1,7 @@
 # API v2: baseline standard plus gated extensions
 
+> Superseded in part by the one-mode-per-adapter restructure (2026-07-28): adapters are stdout XOR ACP; see CONTRIBUTING.md for the current contract.
+
 Status: M1 implemented on `feat/api-v2` (with §1.5 type-level tiering; `CapabilityTable` shipped under the name `Capabilities`); M2/M3 pending. Sources: a 7-harness upstream audit (flags live-verified on claude 2.1.216, codex 0.144.6, opencode 1.18.3, pi 0.80.6; kilo/cline via npx; goose from source and docs), a source-level audit of the AI SDK's experimental harness packages and the three community `ai-sdk-provider-*` packages, and two adversarial review passes whose confirmed findings are folded in below. Open items that still need live verification before implementation are collected in §12.
 
 ## 1. Product frame

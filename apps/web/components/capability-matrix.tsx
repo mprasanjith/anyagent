@@ -36,7 +36,7 @@ const COLUMNS = [
   { key: "effort", label: "Effort" },
   { key: "authStatus", label: "Auth status" },
   { key: "modelListing", label: "Models" },
-  { key: "session", label: "Sessions" },
+  { key: "resume", label: "Resume" },
   { key: "sessionFork", label: "Fork" },
   { key: "mcp", label: "MCP" },
   { key: "attachments", label: "Attachments" },
@@ -63,6 +63,7 @@ export const CapabilityMatrix = () => (
       <tr>
         <th>Agent</th>
         <th>Binary</th>
+        <th>Mode</th>
         {COLUMNS.map((c) => (
           <th key={c.key}>{c.label}</th>
         ))}
@@ -79,6 +80,7 @@ export const CapabilityMatrix = () => (
           <td>
             <code>{adapter.meta.bin[0]}</code>
           </td>
+          <td>{adapter.mode}</td>
           {COLUMNS.map((c) => (
             <td key={c.key}>{cell(adapter.capabilities[c.key])}</td>
           ))}

@@ -47,6 +47,17 @@ test("the registry ships all ten builtin adapters", () => {
   expect([...byId.keys()].sort()).toEqual([...ALL].sort());
 });
 
+test("every builtin declares one mode, with an ACP endpoint exactly where it says", () => {
+  for (const adapter of BUILTINS) {
+    expect(["acp", "stdout"]).toContain(adapter.mode);
+    expect("acp" in adapter).toBe(adapter.mode === "acp");
+    if (adapter.mode === "acp") {
+      expect("parse" in adapter).toBe(false);
+      expect("buildInvocation" in adapter).toBe(false);
+    }
+  }
+});
+
 const DISCOVERY: readonly unknown[] = ["native", "probed", false];
 const SUPPORT: readonly unknown[] = ["native", "emulated", false];
 
@@ -75,14 +86,14 @@ test("readOnly is truthy exactly where a no-writes run is guaranteed", () => {
     "pi",
     "gemini-cli",
     "cursor",
+    "cline",
+    "goose",
   ]) {
     expect(Boolean(capsOf(id)?.readOnly)).toBe(true);
   }
-  // goose/cline offer no native guarantee; antigravity's plan mode leaks
-  // writes into its always-allowed scratch dirs (live-verified).
-  for (const id of ["goose", "cline", "antigravity"]) {
-    expect(capsOf(id)?.readOnly).toBe(false);
-  }
+  // antigravity's plan mode leaks writes into its always-allowed scratch dirs
+  // (live-verified).
+  expect(capsOf("antigravity")?.readOnly).toBe(false);
 });
 
 test("modelListing is native exactly where a real list command exists", () => {

@@ -2,33 +2,52 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { runConformance } from "../src/conformance.js";
+import { AgentImpl } from "../src/internal/agent.js";
 import { kiloCode } from "../src/kilo-code.js";
-import type { AgentEvent, OutputSource, RunResult } from "../src/types.js";
-import { fakeSystemProbe, sourceFromBody } from "./fake-adapter.js";
+import type { SessionOptions } from "../src/types.js";
+import {
+  response,
+  type ScriptMessage,
+  scriptedTransport,
+} from "./acp-transport.js";
+import { fakeSystemProbe } from "./fake-adapter.js";
 
-const SESSION_ID = /^ses_/u;
-const CALL_ID = /^call_/u;
+// Kilo shares the opencode-family implementation, which opencode.test.ts
+// exercises in depth. These tests pin kilo's own identity and the one thing
+// the siblings do differently — reasoning effort — against kilo's own
+// recorded endpoint.
 
-// Kilo shares the opencode-family implementation; the shared mapping logic is
-// exercised in depth by opencode.test.ts. These tests pin kilo's own identity
-// and verify the shared parser against kilo's *own* recorded output, so a
-// fork-side format drift cannot hide behind the opencode fixtures.
+const SESSION_ID = "ses_kilo";
 
-const fixture = (name: string): string =>
-  readFileSync(path.join(import.meta.dir, "fixtures/kilo-code", name), "utf-8");
+interface Wire {
+  configured: unknown[];
+  newSession: ScriptMessage;
+}
 
-const collect = async (
-  name: string,
-  strict = false
-): Promise<{ events: AgentEvent[]; result?: RunResult }> => {
-  const events: AgentEvent[] = [];
-  const src: OutputSource = sourceFromBody(fixture(name));
-  for await (const ev of kiloCode().parse(src, { strict })) {
-    events.push(ev);
-  }
-  const done = events.find((e) => e.type === "done");
-  return { events, result: done?.type === "done" ? done.result : undefined };
+const turnOverAcp = async (settings: SessionOptions): Promise<Wire> => {
+  const wire: Wire = { configured: [], newSession: {} };
+  const transport = scriptedTransport(async (api) => {
+    const init = await api.next();
+    api.emit(response(init.id, { agentCapabilities: {}, protocolVersion: 1 }));
+
+    wire.newSession = await api.next();
+    api.emit(response(wire.newSession.id, { sessionId: SESSION_ID }));
+
+    let message = await api.next();
+    while (message.method === "session/set_config_option") {
+      wire.configured.push(message.params);
+      api.emit(response(message.id, {}));
+      // biome-ignore lint/performance/noAwaitInLoops: each option is acknowledged before the next.
+      message = await api.next();
+    }
+    api.emit(response(message.id, { stopReason: "end_turn" }));
+  });
+  const agent = new AgentImpl(kiloCode(), { transport: () => transport });
+  const session = agent.session(settings);
+  await session.run("hi");
+  await session.close();
+  await transport.done;
+  return wire;
 };
 
 test("meta names the kilo binaries and identity", () => {
@@ -37,107 +56,31 @@ test("meta names the kilo binaries and identity", () => {
   expect(meta.bin).toEqual(["kilo", "kilocode"]);
 });
 
-test("buildInvocation drives the kilo binary with the shared flags", () => {
-  const inv = kiloCode().buildInvocation("hi", {
-    effort: "brainstorm",
-    model: "openrouter/openai/gpt-4o-mini",
-    resume: "ses_abc",
-  });
-  expect(inv.command).toBe("kilo");
-  expect(inv.args.slice(0, 4)).toEqual(["run", "--format", "json", "--auto"]);
-  expect(inv.args).toContain("ses_abc");
-  expect(inv.args[inv.args.indexOf("--variant") + 1]).toBe("brainstorm");
-  expect(inv.input).toBe("hi");
-  expect(inv.env?.KILO_PERMISSION).toBeUndefined();
-});
-
-test("forkSession and attachments map through the kilo binary", () => {
-  const inv = kiloCode().buildInvocation("hi", {
-    attachments: ["/a/one.png", "/b/two.pdf"],
-    forkSession: true,
-    resume: "ses_abc",
-  });
-  // `--fork` rides with the --session it requires.
-  expect(inv.args).toContain("--fork");
-  expect(inv.args[inv.args.indexOf("--session") + 1]).toBe("ses_abc");
-  // `-f` repeats once per attachment path.
-  const files = inv.args
-    .map((a, i) => (a === "-f" ? inv.args[i + 1] : undefined))
-    .filter((v): v is string => v !== undefined);
-  expect(files).toEqual(["/a/one.png", "/b/two.pdf"]);
-});
-
-test("kilo declares its own acp endpoint and native fork/attachments", () => {
+test("kilo declares its own acp endpoint on the family's spec", () => {
   const agent = kiloCode();
-  expect(agent.acp?.command).toEqual(["kilo", "acp"]);
+  expect(agent.mode).toBe("acp");
+  expect(agent.acp.command).toEqual(["kilo", "acp"]);
+  expect(agent.acp.readOnly).toEqual({ configId: "mode", value: "plan" });
+  expect(agent.capabilities.mcp).toBe("native");
   expect(agent.capabilities.sessionFork).toBe("native");
-  expect(agent.capabilities.attachments).toBe("native");
 });
 
-test("readOnly sets the deny matrix in KILO_PERMISSION, overriding the caller's", () => {
-  const inv = kiloCode().buildInvocation("x", {
-    env: { KEEP: "yes", KILO_PERMISSION: '{"*":"allow"}' },
-    readOnly: true,
-  });
-  expect(inv.args).toContain("--auto");
-  expect(inv.env?.KEEP).toBe("yes");
-  expect(JSON.parse(inv.env?.KILO_PERMISSION ?? "")).toEqual({
-    bash: "deny",
-    edit: "deny",
-  });
+// The sibling difference: kilo's session advertises an `effort` option
+// (`test/fixtures/acp/kilo.jsonl`), opencode's does not.
+test("kilo carries effort, ordered after the model it is scoped to", async () => {
+  expect(kiloCode().capabilities.effort).toBe("native");
+  const wire = await turnOverAcp({ effort: "high", model: "openai/gpt-5.4" });
+  expect(wire.configured).toEqual([
+    { configId: "model", sessionId: SESSION_ID, value: "openai/gpt-5.4" },
+    { configId: "effort", sessionId: SESSION_ID, value: "high" },
+  ]);
 });
 
-test("parses kilo's own simple fixture with the session formalized", async () => {
-  const { events, result } = await collect("simple.jsonl");
-  expect(result?.text).toBe("pong");
-  expect(typeof result?.usage?.inputTokens).toBe("number");
-  const session = events.find(
-    (e): e is Extract<AgentEvent, { type: "session" }> => e.type === "session"
-  );
-  expect(session?.sessionId).toMatch(SESSION_ID);
-  expect(result?.sessionId).toBe(session?.sessionId ?? "");
-});
-
-test("parses kilo's own tools and edit fixtures", async () => {
-  const tools = await collect("tools.jsonl");
-  const call = tools.events.find(
-    (e): e is Extract<AgentEvent, { type: "tool-call" }> =>
-      e.type === "tool-call"
-  );
-  expect(call?.name).toBe("read");
-  expect(call?.nativeName).toBe("read");
-  expect(call?.callId).toMatch(CALL_ID);
-  // Both recorded kilo steps were partially served from the prompt cache.
-  expect(tools.result?.usage?.cacheReadTokens).toBe(11_008);
-
-  const edit = await collect("edit.jsonl");
-  const write = edit.events.find(
-    (e) => e.type === "tool-call" && e.name === "write"
-  );
-  expect(write).toBeDefined();
-});
-
-test("tolerates kilo's named reasoning event and maps it to reasoning-delta", async () => {
-  const events: AgentEvent[] = [];
-  const src = sourceFromBody(
-    JSON.stringify({ part: { text: "hmm" }, type: "reasoning" })
-  );
-  for await (const ev of kiloCode().parse(src, { strict: true })) {
-    events.push(ev);
-  }
-  const reasoning = events.find(
-    (e): e is Extract<AgentEvent, { type: "reasoning-delta" }> =>
-      e.type === "reasoning-delta"
-  );
-  expect(reasoning?.text).toBe("hmm");
-});
-
-test("strict mode tolerates every recorded real kilo shape", async () => {
-  await expect(
-    Promise.all(
-      ["simple.jsonl", "tools.jsonl", "edit.jsonl"].map((n) => collect(n, true))
-    )
-  ).resolves.toHaveLength(3);
+test("mcp servers ride kilo's session/new under the caller's own name", async () => {
+  const wire = await turnOverAcp({ mcp: { mydb: { command: "npx" } } });
+  expect(
+    (wire.newSession.params as { mcpServers: unknown }).mcpServers
+  ).toEqual([{ args: [], command: "npx", env: [], name: "mydb" }]);
 });
 
 test("authStatus reads kilo's own auth store path", async () => {
@@ -166,8 +109,8 @@ test("authStatus falls back to provider env keys, else unauthenticated", async (
 });
 
 test("listModels execs `kilo models` and parses provider/model lines", async () => {
-  // No kilo binary is installed here to snapshot; kilo is the same fork, so
-  // the shared parser is fed the opencode-shaped recorded snapshot.
+  // Kilo is the same fork, so the shared parser is fed the opencode-shaped
+  // recorded snapshot.
   const calls: [string, string[]][] = [];
   const probe = fakeSystemProbe({
     exec: (bin, args) => {
@@ -186,14 +129,4 @@ test("listModels execs `kilo models` and parses provider/model lines", async () 
   expect(calls).toEqual([["kilo", ["models"]]]);
   expect(models?.length).toBe(6);
   expect(models?.every((m) => m.provider === "opencode")).toBe(true);
-});
-
-test("kilo-code passes conformance", async () => {
-  await runConformance(kiloCode(), {
-    fixtures: {
-      edit: fixture("edit.jsonl"),
-      simple: fixture("simple.jsonl"),
-      tools: fixture("tools.jsonl"),
-    },
-  });
 });

@@ -3,7 +3,7 @@ import type { Adapter, RunOptions } from "../types.js";
 const withSystemPrompt = (prompt: string, systemPrompt: string): string =>
   `<system-instructions>\n${systemPrompt}\n</system-instructions>\n\n${prompt}`;
 
-// Also the live tier's only channel for a schema: an ACP turn carries text and
+// Also ACP mode's only channel for a schema: an ACP turn carries text and
 // nothing else, so there is no flag to hand the schema to.
 export const promptWithSchema = (
   prompt: string,
