@@ -259,7 +259,10 @@ test("authStatus reads providers from auth.json", async () => {
   });
   const status = await pi().authStatus?.(probe);
   // Exact shape: the store holds live keys, so nothing extra may come back.
+  // An oauth entry beside an api key is a mixed store: billing asserts
+  // neither mode.
   expect(status).toEqual({
+    billing: "unknown",
     providers: ["anthropic", "zai"],
     state: "authenticated",
   });

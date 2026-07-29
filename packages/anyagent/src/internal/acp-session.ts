@@ -179,6 +179,27 @@ const toUsage = (usage: AcpUsage | null | undefined): Usage | undefined =>
       }
     : undefined;
 
+// Gemini's endpoint reports a turn's tokens in the prompt response's
+// `_meta.quota.token_count` instead of the protocol's `usage` field
+// (test/fixtures/acp/gemini-cli.jsonl); without this fallback those tokens
+// are silently dropped. Per-model attribution stays on the result `raw`.
+const metaQuotaUsage = (response: unknown): Usage | undefined => {
+  const count = (
+    response as {
+      _meta?: { quota?: { token_count?: Record<string, unknown> } };
+    }
+  )?._meta?.quota?.token_count;
+  const input = count?.input_tokens;
+  const output = count?.output_tokens;
+  if (typeof input !== "number" && typeof output !== "number") {
+    return;
+  }
+  return {
+    inputTokens: typeof input === "number" ? input : undefined,
+    outputTokens: typeof output === "number" ? output : undefined,
+  };
+};
+
 // A tool call announces its name once, so `tools` carries that identity forward
 // to the update that ends it.
 const translateUpdate = (
@@ -705,7 +726,7 @@ export class AcpSessionImpl<C extends Capabilities = Capabilities>
         { raw: response }
       );
     }
-    const usage = toUsage(response.usage);
+    const usage = toUsage(response.usage) ?? metaQuotaUsage(response);
     if (usage) {
       this.#emit(active, { raw: response, type: "usage", usage });
     }

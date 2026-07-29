@@ -74,7 +74,7 @@ test("authStatus reads `agent status --format json`: isAuthenticated wins", asyn
       }),
   });
   const status = await cursor().authStatus?.(probe);
-  expect(status).toEqual({ state: "authenticated" });
+  expect(status).toEqual({ billing: "subscription", state: "authenticated" });
 });
 
 test("authStatus maps isAuthenticated false to unauthenticated", async () => {

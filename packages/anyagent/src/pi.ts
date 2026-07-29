@@ -1,4 +1,6 @@
 import { AnyAgentError } from "./errors.js";
+import { credentialBilling } from "./internal/billing.js";
+import { vendorOf } from "./internal/vendors.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
   AgentEvent,
@@ -40,6 +42,8 @@ const CAPS = {
   streaming: "native",
   structuredOutput: "emulated",
   systemPrompt: "native",
+  // BYOK: every meter lives at a provider, where no probe can read.
+  usageStatus: false,
 } as const satisfies Capabilities;
 
 interface Ctx {
@@ -336,12 +340,21 @@ const ENV_PROVIDERS: readonly (readonly [string, string])[] = [
 
 const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   const providers = new Set<string>();
+  // The store's `type` per entry is the billing signal: `oauth` entries are
+  // subscription-backed, `api_key` entries and env keys are metered.
+  let oauthSeen = false;
+  let keySeen = false;
   const body = await probe.readFile(`${probe.homedir()}/.pi/agent/auth.json`);
   if (body !== undefined) {
     try {
       const stored = JSON.parse(body) as Record<string, unknown>;
-      for (const provider of Object.keys(stored)) {
+      for (const [provider, cred] of Object.entries(stored)) {
         providers.add(provider);
+        if ((cred as { type?: unknown })?.type === "oauth") {
+          oauthSeen = true;
+        } else {
+          keySeen = true;
+        }
       }
     } catch {
       // A corrupt auth.json proves nothing; the env vars still count.
@@ -350,9 +363,12 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   for (const [envVar, provider] of ENV_PROVIDERS) {
     if (probe.env[envVar]) {
       providers.add(provider);
+      keySeen = true;
     }
   }
   return {
+    billing:
+      providers.size > 0 ? credentialBilling(oauthSeen, keySeen) : "unknown",
     providers: [...providers],
     state: providers.size > 0 ? "authenticated" : "unauthenticated",
   };
@@ -373,9 +389,13 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
   // provider  model  context  max-out  thinking  images
   const models: ModelInfo[] = [];
   for (const line of stdout.split("\n").slice(1)) {
-    const [provider, model] = line.trim().split(COLUMN_GAP);
-    if (provider && model) {
-      models.push({ id: `${provider}/${model}`, provider, raw: line });
+    const [registry, model] = line.trim().split(COLUMN_GAP);
+    if (registry && model) {
+      const id = `${registry}/${model}`;
+      // The vendor, not Pi's registry name — `openrouter/openai/gpt-4o` is
+      // openai's model billed through openrouter; see `vendorOf`.
+      const provider = vendorOf(id);
+      models.push(provider ? { id, provider, raw: line } : { id, raw: line });
     }
   }
   return models;

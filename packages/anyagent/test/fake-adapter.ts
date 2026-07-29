@@ -21,6 +21,7 @@ const allCaps: Capabilities = {
   streaming: "native",
   structuredOutput: "native",
   systemPrompt: "native",
+  usageStatus: false,
 };
 
 // A canned OutputSource so parser and agent tests never spawn a process.
@@ -49,6 +50,7 @@ export const fakeSystemProbe = (
   exec: () => Promise.resolve({ code: 0, stderr: "", stdout: "" }),
   homedir: () => "/home/fake",
   readFile: () => Promise.resolve(undefined),
+  rpc: () => Promise.resolve([]),
   which: () => Promise.resolve(undefined),
   ...overrides,
 });
@@ -101,7 +103,8 @@ const streamParse = ndjsonParser<{
 });
 
 export const fakeStreaming: StdoutAdapter = {
-  authStatus: () => Promise.resolve({ state: "authenticated" }),
+  authStatus: () =>
+    Promise.resolve({ billing: "unknown", state: "authenticated" }),
   buildInvocation: (prompt) => ({
     args: ["-p", prompt],
     command: "fake-stream",

@@ -1626,8 +1626,19 @@ for (const id of ["cursor", "goose", "gemini-cli", "opencode", "cline"]) {
     expect(events.filter((e) => e.type === "session")).toHaveLength(1);
     expect(events.some((e) => e.type === "text-delta")).toBe(true);
     expect(events.at(-1)?.type).toBe("done");
-    if (fx.promptResult.usage) {
+    // Gemini reports tokens in `_meta.quota` instead of `usage`; the fallback
+    // must surface them, not drop them.
+    const quota = (
+      fx.promptResult as {
+        _meta?: { quota?: { token_count?: Record<string, number> } };
+      }
+    )._meta?.quota?.token_count;
+    if (fx.promptResult.usage || quota) {
       expect(result.usage).toBeDefined();
+    }
+    if (quota && !fx.promptResult.usage) {
+      expect(result.usage?.inputTokens).toBe(quota.input_tokens);
+      expect(result.usage?.outputTokens).toBe(quota.output_tokens);
     }
     await transport.done;
   });

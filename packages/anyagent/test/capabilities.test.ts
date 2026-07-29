@@ -17,6 +17,7 @@ const full: Capabilities = {
   streaming: "native",
   structuredOutput: "native",
   systemPrompt: "native",
+  usageStatus: false,
 };
 
 const adapterWith = (caps: Capabilities, id = "demo"): Adapter =>
@@ -42,6 +43,7 @@ const bare = adapterWith(
     streaming: "native",
     structuredOutput: false,
     systemPrompt: false,
+    usageStatus: false,
   },
   "bare"
 );

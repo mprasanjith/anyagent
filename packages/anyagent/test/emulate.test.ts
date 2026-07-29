@@ -21,6 +21,7 @@ const adapterWith = (
     streaming: "native",
     structuredOutput,
     systemPrompt,
+    usageStatus: false,
   };
   return { capabilities: caps } as Adapter;
 };

@@ -3,6 +3,7 @@ import { ndjsonParser } from "./ndjson.js";
 import type {
   AgentEvent,
   AuthStatus,
+  BillingMode,
   Capabilities,
   Invocation,
   ModelInfo,
@@ -10,6 +11,8 @@ import type {
   StdoutAdapter,
   SystemProbe,
   Usage,
+  UsageStatus,
+  UsageWindow,
 } from "./types.js";
 
 const CAPS = {
@@ -36,6 +39,9 @@ const CAPS = {
   // `codex exec` has no append-system-prompt flag; the core folds the system
   // prompt into the prompt text instead.
   systemPrompt: "emulated",
+  // The CLI's own app-server answers `account/rateLimits/read` live; the
+  // exec surface itself has no such command.
+  usageStatus: "native",
 } as const satisfies Capabilities;
 
 interface Ctx {
@@ -266,21 +272,90 @@ const AUTH_METHODS: readonly (readonly [RegExp, string])[] = [
   [/api key/i, "api-key"],
 ];
 
+// A ChatGPT login is the plan's rolling window; an API key is metered.
+const BILLING_BY_METHOD: Record<string, BillingMode> = {
+  "api-key": "api-key",
+  chatgpt: "subscription",
+};
+
 const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   let res: { stdout: string; stderr: string; code: number };
   try {
     res = await probe.exec("codex", ["login", "status"]);
   } catch {
-    return { state: "unknown" };
+    return { billing: "unknown", state: "unknown" };
   }
   // Exit 0 when logged in, nonzero when not; the verdict text ("Logged in
   // using ChatGPT") prints to stderr, so both streams are read.
   const text = `${res.stdout}\n${res.stderr}`.trim();
   if (res.code !== 0) {
-    return { state: "unauthenticated" };
+    return { billing: "unknown", state: "unauthenticated" };
   }
   const method = AUTH_METHODS.find(([re]) => re.test(text))?.[1];
-  return { method, state: "authenticated" };
+  const billing = (method && BILLING_BY_METHOD[method]) || "unknown";
+  return { billing, method, state: "authenticated" };
+};
+
+// The app-server needs its handshake delivered in order: the requests only
+// count once `initialize`'s response has arrived and `initialized` is sent.
+const RATE_LIMIT_EXCHANGES = [
+  {
+    method: "initialize",
+    params: {
+      clientInfo: { name: "anyagent", title: "AnyAgent", version: "0" },
+    },
+  },
+  { method: "initialized", notification: true },
+  { method: "account/rateLimits/read", params: {} },
+];
+
+const windowFrom = (label: string, limit: Json): UsageWindow | undefined => {
+  if (typeof limit?.usedPercent !== "number") {
+    return;
+  }
+  const window: UsageWindow = { label, usedPercent: limit.usedPercent };
+  if (typeof limit.resetsAt === "number") {
+    // Epoch seconds on the wire.
+    window.resetsAt = new Date(limit.resetsAt * 1000);
+  }
+  return window;
+};
+
+// Codex's limits are account-level — no model buckets — so the `model`
+// scoping option changes nothing here and every answer applies to any
+// placement on this harness.
+const usageStatus = async (probe: SystemProbe): Promise<UsageStatus> => {
+  let outcomes: Awaited<ReturnType<SystemProbe["rpc"]>>;
+  try {
+    outcomes = await probe.rpc("codex", ["app-server"], RATE_LIMIT_EXCHANGES);
+  } catch {
+    // A missing binary or a dead dialogue answers "unknown", not an error —
+    // the caller's posture is the same either way.
+    return { state: "unknown" };
+  }
+  const limits = (outcomes[2] as Json)?.result?.rateLimits;
+  if (!limits) {
+    return { state: "unknown" };
+  }
+  const windows = [
+    windowFrom("primary", limits.primary),
+    windowFrom("secondary", limits.secondary),
+  ].filter((w): w is UsageWindow => w !== undefined);
+  const exhausted =
+    Boolean(limits.rateLimitReachedType) ||
+    limits.spendControlReached === true ||
+    windows.some((w) => (w.usedPercent ?? 0) >= 100);
+  let state: UsageStatus["state"] = "unknown";
+  if (exhausted) {
+    state = "exhausted";
+  } else if (windows.length > 0) {
+    state = "ok";
+  }
+  const status: UsageStatus = { asOf: new Date(), state };
+  if (windows.length > 0) {
+    status.windows = windows;
+  }
+  return status;
 };
 
 const effortsOf = (model: Json): string[] | undefined => {
@@ -325,6 +400,8 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
       .filter((model) => typeof model.slug === "string")
       .map((model) => ({
         id: model.slug as string,
+        // Bare slugs (`gpt-5.6-sol`) with a single vendor behind them.
+        provider: "openai",
         raw: model,
         reasoningEfforts: effortsOf(model),
       }))
@@ -337,7 +414,9 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
  * it to the `read-only` sandbox instead. `resume` continues a prior thread
  * using the id from {@link RunResult.sessionId}; `effort` passes through to
  * the CLI, whose accepted values are per-model — `models()` lists them.
- * `authStatus()` asks `codex login status`.
+ * `authStatus()` asks `codex login status`; `usageStatus()` asks the CLI's
+ * app-server for live rate-limit standing (account-level windows, no model
+ * buckets).
  *
  * ```ts
  * import { create } from "anyagent-js";
@@ -361,4 +440,5 @@ export const codex = (): StdoutAdapter<typeof CAPS> => ({
   meta: { bin: ["codex"], id: "codex", name: "Codex" },
   mode: "stdout",
   parse,
+  usageStatus,
 });

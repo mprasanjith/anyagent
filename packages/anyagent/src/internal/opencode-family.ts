@@ -8,6 +8,8 @@ import type {
   ModelInfo,
   SystemProbe,
 } from "../types.js";
+import { credentialBilling } from "./billing.js";
+import { vendorOf } from "./vendors.js";
 
 // Shared implementation for opencode and its fork Kilo Code. Both CLIs expose
 // the same ACP endpoint, the same auth store layout, and the same `models`
@@ -40,6 +42,10 @@ const CAPS = {
   // No per-run system prompt channel (system prompts are config-file /
   // agent-file concerns); the core folds the system prompt into the prompt.
   systemPrompt: "emulated",
+  // `<bin> stats` is a local consumption ledger, not remaining quota; the
+  // meter itself lives at the provider (or the sibling's gateway), where no
+  // probe can read it.
+  usageStatus: false,
 } as const satisfies Capabilities;
 
 export type OpencodeFamilyCapabilities = typeof CAPS;
@@ -58,36 +64,59 @@ const ENV_PROVIDERS: readonly (readonly [string, string])[] = [
   ["DEEPSEEK_API_KEY", "deepseek"],
 ];
 
+// Scan the auth store body: which providers hold credentials, and whether
+// any entry is oauth-typed. The `type` per entry is the billing signal — an
+// oauth entry is subscription-backed, anything else is metered.
+const scanStore = (
+  body: string | undefined,
+  providers: Set<string>
+): { keySeen: boolean; oauthSeen: boolean } => {
+  const seen = { keySeen: false, oauthSeen: false };
+  if (body === undefined) {
+    return seen;
+  }
+  let store: unknown;
+  try {
+    store = JSON.parse(body);
+  } catch {
+    // A corrupt store proves nothing either way; env keys still count.
+  }
+  if (store !== null && typeof store === "object") {
+    for (const [provider, cred] of Object.entries(store)) {
+      providers.add(provider);
+      if ((cred as { type?: unknown })?.type === "oauth") {
+        seen.oauthSeen = true;
+      } else {
+        seen.keySeen = true;
+      }
+    }
+  }
+  return seen;
+};
+
 // Never exec `auth list` here: its exit code is untrustworthy (0 with zero
 // credentials), so the auth store plus env vars are the whole probe.
 const makeAuthStatus =
   (dataDir: string) =>
   async (probe: SystemProbe): Promise<AuthStatus> => {
     const providers = new Set<string>();
-    let store: unknown;
     const body = await probe.readFile(
       `${probe.homedir()}/.local/share/${dataDir}/auth.json`
     );
-    if (body !== undefined) {
-      try {
-        store = JSON.parse(body);
-      } catch {
-        // A corrupt store proves nothing either way; env keys still count.
-      }
-      if (store !== null && typeof store === "object") {
-        for (const provider of Object.keys(store)) {
-          providers.add(provider);
-        }
-      }
-    }
+    const seen = scanStore(body, providers);
     for (const [envVar, provider] of ENV_PROVIDERS) {
       if (probe.env[envVar]) {
         providers.add(provider);
+        seen.keySeen = true;
       }
     }
     return providers.size > 0
-      ? { providers: [...providers], state: "authenticated" }
-      : { state: "unauthenticated" };
+      ? {
+          billing: credentialBilling(seen.oauthSeen, seen.keySeen),
+          providers: [...providers],
+          state: "authenticated",
+        }
+      : { billing: "unknown", state: "unauthenticated" };
   };
 
 // `<bin> models` prints one `provider/model` id per line and nothing else.
@@ -106,8 +135,9 @@ const makeListModels =
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .map((id) => {
-        const slash = id.indexOf("/");
-        return slash > 0 ? { id, provider: id.slice(0, slash) } : { id };
+        // The vendor, never the leading gateway segment: see `vendorOf`.
+        const provider = vendorOf(id);
+        return provider ? { id, provider } : { id };
       });
   };
 

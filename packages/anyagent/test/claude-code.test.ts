@@ -519,3 +519,164 @@ test("nonzero exit after valid output fails loud instead of returning it", async
     code: "Invocation",
   });
 });
+
+// A ~/.claude.json shaped like the real one (recorded 2026-07-29): the usage
+// snapshot plus the org-specific model cache the alias join reads.
+const CLAUDE_JSON = JSON.stringify({
+  additionalModelOptionsCache: [
+    { description: "Fable 5", label: "Fable", value: "claude-fable-5[1m]" },
+  ],
+  cachedUsageUtilization: {
+    accountUuid: "10b77b8b-0000-0000-0000-000000000000",
+    fetchedAtMs: 1_785_324_930_920,
+    utilization: {
+      limits: [
+        {
+          group: "session",
+          is_active: false,
+          kind: "session",
+          percent: 13,
+          resets_at: "2026-07-29T14:39:59.825792+00:00",
+          scope: null,
+          severity: "normal",
+        },
+        {
+          group: "weekly",
+          is_active: false,
+          kind: "weekly_all",
+          percent: 20,
+          resets_at: "2026-07-31T10:59:59.825810+00:00",
+          scope: null,
+          severity: "normal",
+        },
+        {
+          group: "weekly",
+          is_active: true,
+          kind: "weekly_scoped",
+          percent: 26,
+          resets_at: "2026-07-31T10:59:59.826050+00:00",
+          scope: { model: { display_name: "Fable", id: null }, surface: null },
+          severity: "normal",
+        },
+      ],
+    },
+  },
+});
+
+const usageProbe = (body: string = CLAUDE_JSON) =>
+  fakeSystemProbe({
+    readFile: (p) =>
+      Promise.resolve(p === "/home/fake/.claude.json" ? body : undefined),
+  });
+
+test("usageStatus maps the cached snapshot to normalized windows", async () => {
+  const status = await claudeCode().usageStatus?.(usageProbe(), {});
+  expect(status?.state).toBe("ok");
+  expect(status?.asOf).toEqual(new Date(1_785_324_930_920));
+  expect(status?.windows?.map((w) => w.label)).toEqual([
+    "session",
+    "weekly_all",
+    "weekly_scoped",
+  ]);
+  const scoped = status?.windows?.at(-1);
+  expect(scoped?.usedPercent).toBe(26);
+  expect(scoped?.modelScope).toBe("Fable");
+  // The cache join upgrades the label to the fully-qualified model string.
+  expect(scoped?.model).toBe("claude-fable-5[1m]");
+  expect(scoped?.resetsAt).toEqual(
+    new Date("2026-07-31T10:59:59.826050+00:00")
+  );
+});
+
+test("usageStatus scoped to another family drops the foreign bucket", async () => {
+  const status = await claudeCode().usageStatus?.(usageProbe(), {
+    model: "haiku",
+  });
+  expect(status?.windows?.map((w) => w.label)).toEqual([
+    "session",
+    "weekly_all",
+  ]);
+});
+
+test("usageStatus keeps a matching bucket and every account-wide window", async () => {
+  const status = await claudeCode().usageStatus?.(usageProbe(), {
+    model: "claude-fable-5[1m]",
+  });
+  expect(status?.windows).toHaveLength(3);
+});
+
+test("usageStatus keeps scoped windows for a model it cannot place", async () => {
+  // Exclusion requires assertion: an unrecognized model errs conservative.
+  const status = await claudeCode().usageStatus?.(usageProbe(), {
+    model: "claude-newthing-6",
+  });
+  expect(status?.windows).toHaveLength(3);
+});
+
+test("usageStatus reports exhausted at a spent window", async () => {
+  const body = JSON.parse(CLAUDE_JSON);
+  body.cachedUsageUtilization.utilization.limits[0].percent = 100;
+  const status = await claudeCode().usageStatus?.(
+    usageProbe(JSON.stringify(body)),
+    {}
+  );
+  expect(status?.state).toBe("exhausted");
+});
+
+test("usageStatus trusts a non-normal severity as near-limit", async () => {
+  const body = JSON.parse(CLAUDE_JSON);
+  body.cachedUsageUtilization.utilization.limits[1].severity = "elevated";
+  const status = await claudeCode().usageStatus?.(
+    usageProbe(JSON.stringify(body)),
+    {}
+  );
+  expect(status?.state).toBe("near-limit");
+});
+
+test("usageStatus with no cache file is unknown", async () => {
+  const status = await claudeCode().usageStatus?.(fakeSystemProbe(), {});
+  expect(status).toEqual({ state: "unknown" });
+});
+
+test("listModels lists the documented aliases plus the cached org entries", async () => {
+  const models = await claudeCode().listModels?.(usageProbe());
+  const ids = models?.map((m) => m.id);
+  expect(ids).toContain("fable");
+  expect(ids).toContain("sonnet[1m]");
+  expect(ids).not.toContain("default");
+  // The cache adds the org-specific fully-qualified entry, deduplicated.
+  expect(ids).toContain("claude-fable-5[1m]");
+  expect(ids?.filter((id) => id === "claude-fable-5[1m]")).toHaveLength(1);
+  expect(models?.every((m) => m.provider === "anthropic")).toBe(true);
+});
+
+test("authStatus asserts subscription billing from the subscription tier", async () => {
+  const probe = fakeSystemProbe({
+    exec: () =>
+      Promise.resolve({
+        code: 0,
+        stderr: "",
+        stdout: JSON.stringify({
+          apiProvider: "firstParty",
+          authMethod: "claude.ai",
+          loggedIn: true,
+          subscriptionType: "max",
+        }),
+      }),
+  });
+  const status = await claudeCode().authStatus?.(probe);
+  expect(status?.billing).toBe("subscription");
+});
+
+test("authStatus asserts api-key billing behind metered infrastructure", async () => {
+  const probe = fakeSystemProbe({
+    exec: () =>
+      Promise.resolve({
+        code: 0,
+        stderr: "",
+        stdout: JSON.stringify({ apiProvider: "bedrock", loggedIn: true }),
+      }),
+  });
+  const status = await claudeCode().authStatus?.(probe);
+  expect(status?.billing).toBe("api-key");
+});

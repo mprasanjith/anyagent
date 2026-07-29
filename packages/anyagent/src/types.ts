@@ -29,6 +29,15 @@ export type CapabilitySupport = "native" | "emulated" | false;
 export type DiscoverySupport = "native" | "probed" | false;
 
 /**
+ * How runs are paid for: a rolling-window `"subscription"` (marginal cost is
+ * zero until the window fills), a metered `"api-key"`, or `"unknown"`.
+ * Always the adapter's own assertion, from the same signals that answer
+ * {@link Agent.authStatus} — never inferred downstream from
+ * {@link AuthStatus.method} strings.
+ */
+export type BillingMode = "subscription" | "api-key" | "unknown";
+
+/**
  * How hard the model should think, in the shared cross-agent vocabulary. The
  * named levels autocomplete, but any string is accepted and passed through,
  * because several CLIs take provider-defined names AnyAgent cannot enumerate.
@@ -164,6 +173,20 @@ export interface Capabilities {
    * observably weaker adherence than `"native"`, from the same call.
    */
   systemPrompt: CapabilitySupport;
+  /**
+   * How {@link Agent.usageStatus} answers: `"native"` — the CLI reports its
+   * own limit standing, live and authoritative. `"probed"` — read from the
+   * CLI's local state; a hint, possibly stale (check
+   * {@link UsageStatus.asOf}). `false` — no surface exists.
+   *
+   * Unlike the other discovery fields this one never gates: the call works
+   * on every agent, and `false` just means the answer is always
+   * `{ state: "unknown" }` — itself the routing signal ("unmetered, spend
+   * cautiously"), so there is nothing for a throw to tell you. `false` is a
+   * claim about observability, not about limits existing: a BYOK harness is
+   * metered at its provider, where no CLI can see.
+   */
+  usageStatus: DiscoverySupport;
 }
 
 /**
@@ -187,6 +210,13 @@ export type AuthState = "authenticated" | "unauthenticated" | "unknown";
  * paid call is ever made on your behalf.
  */
 export interface AuthStatus {
+  /**
+   * How runs on this harness are paid for — the harness-level default, which
+   * a {@link ModelInfo.billing} may override on CLIs that mix modes.
+   * `"unknown"` is a first-class answer: treat such a placement as unmetered
+   * and spend cautiously.
+   */
+  billing: BillingMode;
   method?: string;
   providers?: string[];
   state: AuthState;
@@ -200,10 +230,92 @@ export interface AuthStatus {
  * the CLI reports them.
  */
 export interface ModelInfo {
+  /**
+   * Overrides the harness-level {@link AuthStatus.billing} for this model,
+   * on CLIs that mix modes (a first-party gateway beside BYOK providers).
+   * Absent means "inherit the harness default".
+   */
+  billing?: BillingMode;
   id: string;
+  /**
+   * The canonical model-vendor slug (`"anthropic"`, `"openai"`, `"google"`,
+   * …) — the join key from this model to public pricing and benchmarks.
+   * Never a gateway or biller: an id like `kilo/~anthropic/claude-…` yields
+   * `"anthropic"`, not `"kilo"`. Present only when the adapter can assert
+   * it; absent is honest, a guess would poison the join.
+   */
   provider?: string;
   raw?: unknown;
   reasoningEfforts?: string[];
+}
+
+/**
+ * How much of a harness's rolling usage limits remain — the answer to
+ * {@link Agent.usageStatus}:
+ *
+ * - `"ok"` — no window is constrained.
+ * - `"near-limit"` — the CLI itself flags a window as elevated.
+ * - `"exhausted"` — a window is spent; a run would be refused or degraded.
+ *   The one value worth treating as hard: placing work here takes the
+ *   user's own interactive tool dark.
+ * - `"unknown"` — nothing is known; treat the placement as unmetered and
+ *   spend cautiously.
+ *
+ * `state` always summarizes the windows in the same answer — the worst
+ * standing among them — so a scoped query yields the placement's truth and
+ * an unscoped one is conservatively account-wide.
+ */
+export type UsageState = "ok" | "near-limit" | "exhausted" | "unknown";
+
+/** One rolling-window limit, normalized across agents. */
+export interface UsageWindow {
+  /**
+   * The CLI's own name for the window (`"session"`, `"weekly_all"`,
+   * `"primary"`) — vocabulary, not semantics; compare within one agent only.
+   */
+  label: string;
+  /**
+   * A model string for the bucket this window binds, valid verbatim as
+   * {@link BaselineRunOptions.model} on this agent. Present only when the
+   * adapter can assert the mapping; absent when it can't.
+   */
+  model?: string;
+  /**
+   * The CLI's display label for the model bucket this window binds
+   * (`"Fable"`), when the limit is narrower than the whole account. A
+   * label, not a model id; account-wide windows leave it absent.
+   */
+  modelScope?: string;
+  /** When the window rolls over, if known. */
+  resetsAt?: Date;
+  /** Share of the window consumed, 0–100, when the CLI reports it. */
+  usedPercent?: number;
+}
+
+/**
+ * The answer to {@link Agent.usageStatus}. No `raw` on purpose: native
+ * usage payloads embed account identifiers, and everything decision-relevant
+ * is normalized here. `asOf` is when the CLI produced the numbers, not when
+ * you asked — a cached source can be hours old, and staleness is the
+ * caller's judgment to make.
+ */
+export interface UsageStatus {
+  asOf?: Date;
+  state: UsageState;
+  windows?: UsageWindow[];
+}
+
+/**
+ * Options for {@link Agent.usageStatus}. `model` scopes the answer to one
+ * placement: anything valid as {@link BaselineRunOptions.model} on this
+ * agent. The returned windows narrow to those that bind this model —
+ * account-wide windows plus matching model buckets — and `state` is judged
+ * over that subset. Exclusion requires assertion: a scoped window is
+ * dropped only when the adapter can place the model *outside* its bucket,
+ * so an unrecognized model keeps every window and errs conservative.
+ */
+export interface UsageStatusOptions {
+  model?: string;
 }
 
 /**
@@ -578,17 +690,55 @@ export interface VersionProbe {
 }
 
 /**
+ * One step of a JSON-RPC dialogue for {@link SystemProbe.rpc}: a request
+ * awaiting a response, or a fire-and-forget notification (no id, nothing
+ * awaited) when `notification` is set.
+ */
+export interface RpcExchange {
+  method: string;
+  notification?: boolean;
+  params?: unknown;
+}
+
+/**
+ * The response to one {@link RpcExchange}, index-aligned with the exchanges:
+ * a `result` or an `error` for requests, `undefined` for notifications.
+ */
+export type RpcOutcome =
+  | { result: unknown; error?: never }
+  | { error: { code?: number; message: string }; result?: never }
+  | undefined;
+
+/**
  * Everything discovery reads from the machine: the {@link VersionProbe}
- * operations plus the environment, the home directory, and file contents —
- * what {@link Agent.authStatus} and {@link Agent.models} consult. The real
- * one is the default; tests pass a fake via `create(source, { probe })` to
- * simulate any machine, credentials included, with zero subprocesses.
- * `readFile` resolves `undefined` for a missing or unreadable file.
+ * operations plus the environment, the home directory, file contents, and a
+ * service dialogue — what {@link Agent.authStatus}, {@link Agent.models},
+ * and {@link Agent.usageStatus} consult. The real one is the default; tests
+ * pass a fake via `create(source, { probe })` to simulate any machine,
+ * credentials included, with zero subprocesses. `readFile` resolves
+ * `undefined` for a missing or unreadable file.
  */
 export interface SystemProbe extends VersionProbe {
   env: Record<string, string | undefined>;
   homedir: () => string;
   readFile: (path: string) => Promise<string | undefined>;
+  /**
+   * Drive a one-shot JSON-RPC 2.0 dialogue (NDJSON over stdio) against a
+   * CLI's service subcommand. Exchanges run strictly in order — each request
+   * is sent only after the previous request's response arrives, so a
+   * handshake is just the first exchanges in the list. The probe owns id
+   * assignment, matches responses by id, drops unsolicited server traffic,
+   * and terminates the process after the last response — service processes
+   * never exit on their own. Output that is not JSON-RPC kills the process
+   * and throws `AnyAgentError` (`code: "Parse"`) at once, so a CLI that
+   * misreads the dialogue as a prompt fails fast instead of being fed input.
+   */
+  rpc: (
+    bin: string,
+    args: string[],
+    exchanges: RpcExchange[],
+    opts?: { timeoutMs?: number }
+  ) => Promise<RpcOutcome[]>;
 }
 
 /**
@@ -759,6 +909,18 @@ export interface AdapterCore<C extends Capabilities = Capabilities> {
    */
   listModels?: (probe: SystemProbe) => Promise<ModelInfo[]>;
   meta: AdapterMeta;
+  /**
+   * Answer {@link Agent.usageStatus} from the probe: read the CLI's local
+   * state or drive a service dialogue ({@link SystemProbe.rpc}) — never
+   * anything that costs a model call. Omitted (with `usageStatus: false`),
+   * the core answers `{ state: "unknown" }` itself. The adapter owns the
+   * {@link UsageStatusOptions.model} scoping, since bucket membership is
+   * vocabulary knowledge.
+   */
+  usageStatus?: (
+    probe: SystemProbe,
+    opts: UsageStatusOptions
+  ) => Promise<UsageStatus>;
 }
 
 /**
@@ -886,6 +1048,21 @@ export interface Agent<C extends Capabilities = Capabilities> {
   supports: <K extends ExtensionKey[]>(
     ...keys: K
   ) => this is Agent<C & SupportedCapabilities<K[number]>>;
+  /**
+   * How much of this harness's rolling usage limits remain — never verified
+   * with a paid call. Works on every agent: where
+   * {@link Capabilities.usageStatus} is `false` the answer is always
+   * `{ state: "unknown" }`, no throw. Pass `{ model }` to scope the answer
+   * to one placement:
+   *
+   * ```ts
+   * const { state } = await agent.usageStatus({ model: "fable" });
+   * if (state !== "exhausted") {
+   *   await agent.run(prompt, { model: "fable" });
+   * }
+   * ```
+   */
+  usageStatus: (opts?: UsageStatusOptions) => Promise<UsageStatus>;
 }
 
 /**

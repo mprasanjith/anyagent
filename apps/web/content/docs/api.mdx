@@ -246,7 +246,7 @@ Both `"native"` and `"emulated"` are truthy, so a `caps.systemPrompt ? … : …
 
 ## DiscoverySupport
 
-How a discovery question, [`authStatus`](#authstatus-and-authstate) or [`models`](#modelinfo), is answered. It is the value type of the `authStatus` and `modelListing` capability fields:
+How a discovery question — [`authStatus`](#authstatus-and-authstate), [`models`](#modelinfo), or [`usageStatus`](#usagestatus) — is answered. It is the value type of the `authStatus`, `modelListing`, and `usageStatus` capability fields:
 
 ```ts
 type DiscoverySupport = "native" | "probed" | false;
@@ -255,12 +255,12 @@ type DiscoverySupport = "native" | "probed" | false;
 | Value      | Meaning                                                                                                      |
 | ---------- | ------------------------------------------------------------------------------------------------------------ |
 | `"native"` | the CLI answers itself, so the answer is authoritative                                                       |
-| `"probed"` | best-effort heuristics over the CLI’s credential files and environment variables; a hint, not a guarantee    |
-| `false`    | no answer exists; calling the method throws `UnsupportedCapability`                                          |
+| `"probed"` | best-effort heuristics over the CLI’s local files and environment; a hint, not a guarantee                   |
+| `false`    | no answer exists; calling the method throws `UnsupportedCapability` — except `usageStatus`, which answers `{ state: "unknown" }` instead |
 
 ## Capabilities
 
-What one agent CLI can do, read from `agent.capabilities` or a [`DetectResult`](#detectresult) before you ask for anything. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns; `authStatus` and `modelListing` are [`DiscoverySupport`](#discoverysupport) values and every other field is a [`CapabilitySupport`](#capabilitysupport).
+What one agent CLI can do, read from `agent.capabilities` or a [`DetectResult`](#detectresult) before you ask for anything. A field guards the run option or `Agent` method of the same name, so requesting something declared `false` throws `UnsupportedCapability` before anything spawns; `authStatus`, `modelListing`, and `usageStatus` are [`DiscoverySupport`](#discoverysupport) values and every other field is a [`CapabilitySupport`](#capabilitysupport).
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
@@ -281,6 +281,32 @@ The answer to `agent.authStatus()`: whether this CLI looks ready to run. This is
 ```ts
 type AuthState = "authenticated" | "unauthenticated" | "unknown";
 ```
+
+`billing` is the adapter's own assertion of how runs are paid for — never inferred downstream from `method` strings; a [`ModelInfo.billing`](#modelinfo) may override it per model on CLIs that mix modes:
+
+```ts
+type BillingMode = "subscription" | "api-key" | "unknown";
+```
+
+## UsageStatus
+
+The answer to `agent.usageStatus(opts?)`: how much of the harness's rolling usage limits remain — never verified with a paid call. The call works on every agent; where the `usageStatus` capability is `false` it answers `{ state: "unknown" }` instead of throwing, because that answer is itself the routing signal ("unmetered, spend cautiously"). Pass `{ model }` to scope the answer to one placement: windows narrow to those that bind the model, and `state` summarizes the windows in the same answer — the worst standing among them. There is no `raw`: native usage payloads embed account identifiers.
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="UsageStatus"
+/>
+
+```ts
+type UsageState = "ok" | "near-limit" | "exhausted" | "unknown";
+```
+
+`"exhausted"` is the one value worth treating as hard: placing work there takes the user's own interactive tool dark. Each window:
+
+<auto-type-table
+  path="../../../../packages/anyagent/src/types.ts"
+  name="UsageWindow"
+/>
 
 ## ModelInfo
 
@@ -369,7 +395,7 @@ The two I/O operations detection needs. `detect` uses a real implementation by d
 
 ## SystemProbe
 
-Everything discovery reads from the machine: the `VersionProbe` operations plus the environment, home directory, and file contents, consulted by `authStatus()` and `models()`. The real one is the default; tests pass a fake via `create(source, { probe })` to simulate any machine, credentials included, with zero subprocesses.
+Everything discovery reads from the machine: the `VersionProbe` operations plus the environment, home directory, file contents, and a JSON-RPC service dialogue (`rpc`), consulted by `authStatus()`, `models()`, and `usageStatus()`. The real one is the default; tests pass a fake via `create(source, { probe })` to simulate any machine, credentials included, with zero subprocesses.
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
