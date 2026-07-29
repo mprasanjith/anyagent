@@ -213,6 +213,7 @@ test("redacted_thinking emits no event and passes strict", async () => {
 test("structured output synthesizes the serialized JSON as text", async () => {
   const { events, result } = await collect("structured.jsonl");
   expect(result.text).toBe('{"ok":true}');
+  expect(result.structuredOutput).toEqual({ ok: true });
   const deltas = events.filter((e) => e.type === "text-delta");
   expect(deltas).toHaveLength(1);
   expect(deltas[0]?.type === "text-delta" && deltas[0].text).toBe(
@@ -221,26 +222,39 @@ test("structured output synthesizes the serialized JSON as text", async () => {
   expect(result.sessionId).toBe("9c24f1e5-355e-4431-9851-9f75de402916");
 });
 
-test("structured output never overrides assistant text that was streamed", async () => {
+test("streamed prose stays the text; the payload rides structuredOutput", async () => {
   const { result } = await collectSource(
     bodySource([
       {
         message: {
-          content: [{ text: '{"ok":false}', type: "text" }],
+          content: [{ text: "Sure — here it is.", type: "text" }],
           role: "assistant",
         },
         type: "assistant",
       },
       {
         is_error: false,
-        result: '{"ok":false}',
+        result: '{"ok":true}',
         structured_output: { ok: true },
         subtype: "success",
         type: "result",
       },
     ])
   );
-  expect(result?.text).toBe('{"ok":false}');
+  expect(result?.text).toBe("Sure — here it is.");
+  expect(result?.structuredOutput).toEqual({ ok: true });
+});
+
+// 2.1.220 drifted from the 2.1.218 recording behind structured.jsonl: prose
+// text blocks now stream before the StructuredOutput call, and the result
+// event's `result` string is the serialized payload, not the prose.
+test("recorded 2.1.220 run: prose precedes the payload and both survive", async () => {
+  const { events, result } = await collect("structured-prose.jsonl");
+  const deltas = events.filter((e) => e.type === "text-delta");
+  expect(deltas.length).toBeGreaterThan(0);
+  expect(result.text.startsWith('"Wet" means covered')).toBe(true);
+  expect(result.structuredOutput).toMatchObject({ ok: true });
+  expect(result.sessionId).toBe("5c3a0d12-91d8-472d-b35b-63738da4463c");
 });
 
 test("agent-level error (is_error) throws instead of returning success", async () => {
@@ -271,11 +285,14 @@ test("agent-level error (is_error) throws instead of returning success", async (
 test("strict mode tolerates every recorded real-output shape", async () => {
   await expect(
     Promise.all(
-      ["simple.jsonl", "tools.jsonl", "structured.jsonl"].map((f) =>
-        collectSource(fixtureSource(f), true)
-      )
+      [
+        "simple.jsonl",
+        "tools.jsonl",
+        "structured.jsonl",
+        "structured-prose.jsonl",
+      ].map((f) => collectSource(fixtureSource(f), true))
     )
-  ).resolves.toHaveLength(3);
+  ).resolves.toHaveLength(4);
 });
 
 test("strict mode tolerates the named expansion types and drops them", async () => {
@@ -479,6 +496,7 @@ test("conformance passes over all recorded fixtures", async () => {
     fixtures: {
       simple: fixture("simple.jsonl"),
       structured: fixture("structured.jsonl"),
+      "structured-prose": fixture("structured-prose.jsonl"),
       tools: fixture("tools.jsonl"),
     },
   });

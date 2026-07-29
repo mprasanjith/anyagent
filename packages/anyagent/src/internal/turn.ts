@@ -23,16 +23,31 @@ export interface Composed {
 
 type Parsed = { json: unknown } | { errors: string[] };
 
-const evaluate = (text: string, schema: Record<string, unknown>): Parsed => {
+// A native payload is authoritative — the text may be prose streamed before
+// the schema channel answered; text extraction is the emulated-tier path.
+const evaluate = (
+  result: RunResult,
+  schema: Record<string, unknown>
+): Parsed => {
+  if (result.structuredOutput !== undefined) {
+    const errors = validateAgainstSchema(result.structuredOutput, schema);
+    return errors.length ? { errors } : { json: result.structuredOutput };
+  }
   let value: unknown;
   try {
-    value = extractJson(text);
+    value = extractJson(result.text);
   } catch (error) {
     return { errors: [error instanceof Error ? error.message : String(error)] };
   }
   const errors = validateAgainstSchema(value, schema);
   return errors.length ? { errors } : { json: value };
 };
+
+// The reply quoted back on failure is whatever failed the checks.
+const replyOf = (result: RunResult): string =>
+  result.structuredOutput === undefined
+    ? result.text
+    : JSON.stringify(result.structuredOutput);
 
 const schemaFailure = (errors: string[], text: string): AnyAgentError =>
   new AnyAgentError(
@@ -62,20 +77,20 @@ const runWithSchema = async (
   if (opts.schema === undefined) {
     return first;
   }
-  const parsed = evaluate(first.text, opts.schema);
+  const parsed = evaluate(first, opts.schema);
   if ("json" in parsed) {
     return { ...first, json: parsed.json };
   }
   if (opts.schemaRetries === 0) {
-    throw schemaFailure(parsed.errors, first.text);
+    throw schemaFailure(parsed.errors, replyOf(first));
   }
   emit({ issues: parsed.errors, type: "schema-retry" });
   const retry = await attempt(
-    correctionPrompt(prompt, first.text, parsed.errors)
+    correctionPrompt(prompt, replyOf(first), parsed.errors)
   );
-  const second = evaluate(retry.text, opts.schema);
+  const second = evaluate(retry, opts.schema);
   if ("errors" in second) {
-    throw schemaFailure(second.errors, retry.text);
+    throw schemaFailure(second.errors, replyOf(retry));
   }
   return { ...retry, json: second.json };
 };

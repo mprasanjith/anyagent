@@ -500,11 +500,12 @@ export interface RunResult {
    */
   events: AgentEvent[];
   /**
-   * The reply parsed as JSON, present only when a
-   * {@link BaselineRunOptions.schema} was passed to {@link Agent.run}. It has
-   * been validated against that schema before landing here; a reply that
-   * could not be parsed or validated throws `AnyAgentError` (`code: "Parse"`)
-   * instead.
+   * The run's JSON value, present only when a
+   * {@link BaselineRunOptions.schema} was passed to {@link Agent.run}. Taken
+   * from {@link structuredOutput} when the CLI returned one, otherwise parsed
+   * out of `text`; either way it has been validated against the schema before
+   * landing here — a reply that could not be parsed or validated throws
+   * `AnyAgentError` (`code: "Parse"`) instead.
    */
   json?: unknown;
   raw: unknown;
@@ -514,6 +515,13 @@ export interface RunResult {
    * headless — absence is honest, not an error.
    */
   sessionId?: string;
+  /**
+   * The schema-shaped payload the CLI itself returned, verbatim, on native
+   * structured-output runs. `text` may hold prose the model streamed before
+   * answering through the schema channel; the validated value lands on
+   * {@link json}.
+   */
+  structuredOutput?: unknown;
   text: string;
   usage?: Usage;
 }

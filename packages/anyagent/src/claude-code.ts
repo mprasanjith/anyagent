@@ -52,6 +52,7 @@ const READ_ONLY_DENY = "Bash,Edit,NotebookEdit,Write";
 interface Ctx {
   raw?: unknown;
   sessionId?: string;
+  structured?: unknown;
   text: string[];
   toolNames: Map<string, string>;
   usage?: Usage;
@@ -114,6 +115,9 @@ const mapUser = (obj: Json, ctx: Ctx, strict: boolean): AgentEvent[] => {
         raw: block,
         type: "tool-result",
       });
+    } else if (block.type === "text") {
+      // CLI-injected steering (e.g. the structured-output enforcement nudge),
+      // not agent output; known, so not a strict error.
     } else if (strict) {
       throw new AnyAgentError("Parse", `unknown content block ${block.type}`);
     }
@@ -135,10 +139,11 @@ const mapResult = (obj: Json, ctx: Ctx): AgentEvent[] => {
     });
   }
   const out: AgentEvent[] = [];
-  // Under --json-schema the model answers through a StructuredOutput tool and
-  // emits no text blocks; the run's authoritative JSON arrives only here. The
-  // serialized form becomes the run's text — synthesized as a delta so the
-  // deltas-concatenate-to-text invariant holds.
+  // Under --json-schema the model may stream prose before answering through
+  // the StructuredOutput tool; the authoritative JSON arrives only here. With
+  // no streamed text, its serialized form becomes the run's text — synthesized
+  // as a delta so the deltas-concatenate-to-text invariant holds.
+  ctx.structured = obj.structured_output;
   if (obj.structured_output !== undefined && ctx.text.length === 0) {
     const text = JSON.stringify(obj.structured_output);
     ctx.text.push(text);
@@ -155,6 +160,7 @@ const parse = ndjsonParser<Ctx>({
     events: [],
     raw: ctx.raw,
     sessionId: ctx.sessionId,
+    structuredOutput: ctx.structured,
     text: ctx.text.join(""),
     usage: ctx.usage,
   }),
