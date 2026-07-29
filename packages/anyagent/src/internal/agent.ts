@@ -14,6 +14,8 @@ import type {
   SessionOptions,
   SupportedCapabilities,
   SystemProbe,
+  UsageStatus,
+  UsageStatusOptions,
 } from "../types.js";
 import { EXTENSION_CAPABILITY } from "../types.js";
 import type { AcpTransportFactory } from "./acp-session.js";
@@ -109,6 +111,16 @@ export class AgentImpl<C extends Capabilities = Capabilities>
       );
     }
     return await impl(this.#probe);
+  }
+
+  // Never gated: `{ state: "unknown" }` is itself the routing answer for a
+  // harness with no usage surface, so there is nothing for a throw to say.
+  async usageStatus(opts: UsageStatusOptions = {}): Promise<UsageStatus> {
+    const impl = this.adapter.usageStatus;
+    if (!(this.adapter.capabilities.usageStatus && impl)) {
+      return { state: "unknown" };
+    }
+    return await impl(this.#probe, opts);
   }
 
   // A one-turn thread is not a conversation, so it opens without the gate

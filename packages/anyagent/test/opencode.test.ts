@@ -194,7 +194,10 @@ test("authStatus reads the opencode auth store and reports its providers", async
   });
   const status = await opencode().authStatus?.(probe);
   // Exact shape: the store holds live keys, so nothing extra may come back.
+  // An oauth entry beside an api key is a mixed store: billing asserts
+  // neither mode.
   expect(status).toEqual({
+    billing: "unknown",
     providers: ["anthropic", "openrouter"],
     state: "authenticated",
   });
@@ -227,24 +230,26 @@ test("listModels parses the recorded `opencode models` snapshot", async () => {
   const models = await opencode().listModels?.(probe);
   expect(calls).toEqual([["opencode", ["models"]]]);
   expect(models?.length).toBe(6);
-  expect(models?.[0]).toEqual({
-    id: "opencode/big-pickle",
-    provider: "opencode",
-  });
+  // `opencode/` is the gateway, not a vendor; a rebranded gateway model has
+  // no assertable vendor, so `provider` stays absent.
+  expect(models?.[0]).toEqual({ id: "opencode/big-pickle" });
 });
 
-test("listModels takes the provider from the prefix before the first slash", async () => {
+test("listModels resolves the vendor through a gateway prefix", async () => {
   const probe = fakeSystemProbe({
     exec: () =>
       Promise.resolve({
         code: 0,
         stderr: "",
-        stdout: "openrouter/openai/gpt-4o-mini\n",
+        stdout: "openrouter/openai/gpt-4o-mini\nanthropic/claude-sonnet-4-5\n",
       }),
   });
   const models = await opencode().listModels?.(probe);
+  // The vendor is the pricing join key: openrouter is the biller, openai
+  // the vendor.
   expect(models).toEqual([
-    { id: "openrouter/openai/gpt-4o-mini", provider: "openrouter" },
+    { id: "openrouter/openai/gpt-4o-mini", provider: "openai" },
+    { id: "anthropic/claude-sonnet-4-5", provider: "anthropic" },
   ]);
 });
 

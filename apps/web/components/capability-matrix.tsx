@@ -36,6 +36,7 @@ const COLUMNS = [
   { key: "effort", label: "Effort" },
   { key: "authStatus", label: "Auth status" },
   { key: "modelListing", label: "Models" },
+  { key: "usageStatus", label: "Usage" },
   { key: "resume", label: "Resume" },
   { key: "sessionFork", label: "Fork" },
   { key: "mcp", label: "MCP" },

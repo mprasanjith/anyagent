@@ -7,7 +7,7 @@ The `codex` adapter drives the Codex CLI through its non-interactive `codex exec
 
 ## What you can ask for
 
-`readOnly`, `model`, `effort`, `resume`, and `attachments` map to the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/run-an-agent). `authStatus()` asks `codex login status` and `models()` asks `codex debug models`. The full grid is on the [support matrix](/docs/adapters).
+`readOnly`, `model`, `effort`, `resume`, and `attachments` map to the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/run-an-agent). `authStatus()` asks `codex login status` (a ChatGPT login asserts `billing: "subscription"`), `models()` asks `codex debug models`, and `usageStatus()` asks the CLI’s app-server for live rate-limit standing — account-level windows, no model buckets. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 

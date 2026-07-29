@@ -41,6 +41,9 @@ const CAPS = {
   // No append-system-prompt flag exists; the core folds the system prompt
   // into the prompt text instead.
   systemPrompt: "emulated",
+  // Account quotas exist server-side, but the CLI has no command that
+  // reports them.
+  usageStatus: false,
 } as const satisfies Capabilities;
 
 const TOOL_NAMES: Record<string, ToolName> = {
@@ -266,12 +269,13 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   try {
     res = await probe.exec("agy", ["models"]);
   } catch {
-    return { state: "unknown" };
+    return { billing: "unknown", state: "unknown" };
   }
   if (res.code !== 0 || modelIds(res.stdout).length === 0) {
-    return { state: "unauthenticated" };
+    return { billing: "unknown", state: "unauthenticated" };
   }
-  return { method: "oauth", state: "authenticated" };
+  // OAuth only: every run draws on the Google account's quotas.
+  return { billing: "subscription", method: "oauth", state: "authenticated" };
 };
 
 const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {

@@ -23,6 +23,7 @@ const caps: Capabilities = {
   streaming: "native",
   structuredOutput: false,
   systemPrompt: false,
+  usageStatus: false,
 };
 
 // biome-ignore lint/correctness/useYield: stub parser; never invoked in detection tests.

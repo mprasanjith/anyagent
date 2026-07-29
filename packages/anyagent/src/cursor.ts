@@ -32,6 +32,9 @@ const CAPS = {
   // of its own.
   structuredOutput: "emulated",
   systemPrompt: "emulated",
+  // `agent status` reports identity only — no plan or window fields
+  // (verified live); Cursor's usage surface is its web dashboard.
+  usageStatus: false,
 } as const satisfies Capabilities;
 
 // biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
@@ -62,18 +65,22 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   try {
     res = await probe.exec("agent", ["status", "--format", "json"]);
   } catch {
-    return { state: "unknown" };
+    return { billing: "unknown", state: "unknown" };
   }
   let parsed: Json;
   try {
     parsed = JSON.parse(res.stdout);
   } catch {
-    return res.code === 0 ? { state: "unknown" } : { state: "unauthenticated" };
+    return res.code === 0
+      ? { billing: "unknown", state: "unknown" }
+      : { billing: "unknown", state: "unauthenticated" };
   }
   if (res.code !== 0 || parsed?.isAuthenticated !== true) {
-    return { state: "unauthenticated" };
+    return { billing: "unknown", state: "unauthenticated" };
   }
-  return { state: "authenticated" };
+  // Every Cursor login bills the Cursor account's plan — there is no BYOK
+  // path on this CLI.
+  return { billing: "subscription", state: "authenticated" };
 };
 
 // One model per `<id> - <label>` line; the header and the trailing tip line

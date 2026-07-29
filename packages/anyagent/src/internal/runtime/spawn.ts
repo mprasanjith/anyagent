@@ -11,6 +11,7 @@ import type {
   VersionProbe,
 } from "../../types.js";
 import { outputSourceFromChild } from "./output-source.js";
+import { realRpc } from "./rpc.js";
 
 // Launch an invocation's process: merge its env over the parent's, and close
 // stdin (carrying the prompt payload, if any) so an agent reading it isn't
@@ -110,4 +111,5 @@ export const realSystemProbe: SystemProbe = {
       // Missing and unreadable both mean "no answer here": resolve undefined.
     }
   },
+  rpc: realRpc,
 };

@@ -7,7 +7,7 @@ The `claude-code` adapter drives the Claude Code CLI in headless mode, detected 
 
 ## What you can ask for
 
-Nearly every run option works: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own, never replacing it), `resume`, `forkSession`, `mcp`, and `schema`. Only `attachments` throws, since Claude Code has no headless attachment flag. `authStatus()` asks `claude auth status --json`; `models()` throws, since the CLI has no listing mechanism. The full grid is on the [support matrix](/docs/adapters).
+Nearly every run option works: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own, never replacing it), `resume`, `forkSession`, `mcp`, and `schema`. Only `attachments` throws, since Claude Code has no headless attachment flag. `authStatus()` asks `claude auth status --json` and asserts `billing` from the subscription tier. `models()` lists the documented alias vocabulary (`fable`, `opus`, `sonnet[1m]`, …) plus the CLI’s cached org-specific entries — probed, since the CLI has no list command. `usageStatus()` reads the CLI’s cached rolling-window snapshot: the 5-hour and weekly windows plus model-scoped buckets, with `asOf` carrying the cache’s age and `{ model }` scoping the answer to one placement. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 

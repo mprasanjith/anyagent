@@ -128,5 +128,7 @@ test("listModels execs `kilo models` and parses provider/model lines", async () 
   const models = await kiloCode().listModels?.(probe);
   expect(calls).toEqual([["kilo", ["models"]]]);
   expect(models?.length).toBe(6);
-  expect(models?.every((m) => m.provider === "opencode")).toBe(true);
+  // `opencode/` gateway ids carry no assertable vendor, so `provider` is
+  // absent on every one — never the gateway's own name.
+  expect(models?.every((m) => m.provider === undefined)).toBe(true);
 });

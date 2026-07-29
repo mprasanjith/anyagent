@@ -356,7 +356,11 @@ test("authStatus reads `codex login status`: exit 0 is authenticated", async () 
       }),
   });
   const status = await codex().authStatus?.(probe);
-  expect(status).toEqual({ method: "chatgpt", state: "authenticated" });
+  expect(status).toEqual({
+    billing: "subscription",
+    method: "chatgpt",
+    state: "authenticated",
+  });
 });
 
 test("authStatus recognizes the API-key login method", async () => {
@@ -444,4 +448,84 @@ test("codex passes the adapter conformance suite", async () => {
       tools: fixture("tools.jsonl"),
     },
   });
+});
+
+// The app-server's rateLimits payload as recorded live (2026-07-29).
+const RATE_LIMITS = {
+  planType: "plus",
+  primary: {
+    resetsAt: 1_785_940_556,
+    usedPercent: 12,
+    windowDurationMins: 10_080,
+  },
+  rateLimitReachedType: null,
+  secondary: null,
+  spendControlReached: false,
+};
+
+const rpcProbe = (limits: unknown = RATE_LIMITS) => {
+  const calls: { args: string[]; bin: string; methods: string[] }[] = [];
+  const probe = fakeSystemProbe({
+    rpc: (bin, args, exchanges) => {
+      calls.push({ args, bin, methods: exchanges.map((e) => e.method) });
+      return Promise.resolve([
+        { result: {} },
+        undefined,
+        { result: { rateLimits: limits } },
+      ]);
+    },
+  });
+  return { calls, probe };
+};
+
+test("usageStatus drives the app-server handshake then reads rate limits", async () => {
+  const { calls, probe } = rpcProbe();
+  const status = await codex().usageStatus?.(probe, {});
+  expect(calls).toEqual([
+    {
+      args: ["app-server"],
+      bin: "codex",
+      methods: ["initialize", "initialized", "account/rateLimits/read"],
+    },
+  ]);
+  expect(status?.state).toBe("ok");
+  expect(status?.windows).toEqual([
+    {
+      label: "primary",
+      resetsAt: new Date(1_785_940_556 * 1000),
+      usedPercent: 12,
+    },
+  ]);
+  expect(status?.asOf).toBeDefined();
+});
+
+test("usageStatus reports exhausted when the CLI says the limit is reached", async () => {
+  const { probe } = rpcProbe({
+    ...RATE_LIMITS,
+    rateLimitReachedType: "usage_limit_reached",
+  });
+  const status = await codex().usageStatus?.(probe, {});
+  expect(status?.state).toBe("exhausted");
+});
+
+test("usageStatus is unknown when the dialogue fails", async () => {
+  const probe = fakeSystemProbe({
+    rpc: () => Promise.reject(new Error("ENOENT")),
+  });
+  const status = await codex().usageStatus?.(probe, {});
+  expect(status).toEqual({ state: "unknown" });
+});
+
+test("listModels stamps the vendor on every slug", async () => {
+  const probe = fakeSystemProbe({
+    exec: () =>
+      Promise.resolve({
+        code: 0,
+        stderr: "",
+        stdout: fixture("debug-models.json"),
+      }),
+  });
+  const models = await codex().listModels?.(probe);
+  expect(models?.length).toBeGreaterThan(0);
+  expect(models?.every((m) => m.provider === "openai")).toBe(true);
 });

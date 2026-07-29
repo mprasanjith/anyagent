@@ -33,6 +33,9 @@ const CAPS = {
   streaming: "native",
   structuredOutput: "emulated",
   systemPrompt: "emulated",
+  // The first-party provider's credits are metered server-side; no CLI
+  // command reports the balance.
+  usageStatus: false,
 } as const satisfies Capabilities;
 
 // biome-ignore lint/suspicious/noExplicitAny: the CLI's JSON is dynamically shaped.
@@ -66,18 +69,22 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   const index = bodies.findIndex((b) => b !== undefined);
   const body = bodies[index];
   if (body === undefined) {
-    return { state: "unauthenticated" };
+    return { billing: "unknown", state: "unauthenticated" };
   }
   let parsed: Json;
   try {
     parsed = JSON.parse(body);
   } catch {
-    return { state: "unknown" };
+    return { billing: "unknown", state: "unknown" };
   }
   const providers = Object.keys(parsed?.providers ?? {});
-  return providers.length > 0
-    ? { providers, state: "authenticated" }
-    : { state: "unauthenticated" };
+  if (providers.length === 0) {
+    return { billing: "unknown", state: "unauthenticated" };
+  }
+  // BYOK provider keys are metered; the first-party `cline` provider is
+  // credits whose semantics the CLI never states, so it asserts nothing.
+  const billing = providers.includes("cline") ? "unknown" : "api-key";
+  return { billing, providers, state: "authenticated" };
 };
 
 /**

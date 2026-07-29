@@ -133,7 +133,7 @@ test("authStatus is unknown on unparseable JSON", async () => {
     readFile: (p) =>
       Promise.resolve(p === HOME_PROVIDERS ? "{not json" : undefined),
   });
-  expect(status).toEqual({ state: "unknown" });
+  expect(status).toEqual({ billing: "unknown", state: "unknown" });
 });
 
 test("cline drives its CLI over the acp endpoint", () => {

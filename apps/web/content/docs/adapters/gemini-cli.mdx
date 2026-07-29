@@ -7,7 +7,7 @@ The `gemini-cli` adapter drives the Gemini CLI over its ACP endpoint, detected a
 
 ## What you can ask for
 
-`model` rides the endpoint's own flag; `readOnly`, `systemPrompt`, and `schema` are provided by AnyAgent. `effort`, `mcp`, `resume`, and model listing are undeclared and throw. `authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain. The full grid is on the [support matrix](/docs/adapters).
+`model` rides the endpoint's own flag; `readOnly`, `systemPrompt`, and `schema` are provided by AnyAgent. `effort`, `mcp`, and `resume` are undeclared and throw. `models()` lists the documented vocabulary — aliases (`pro`, `flash`) and full ids — as a probed hint. `authStatus()` is a heuristic over `~/.gemini/oauth_creds.json`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, and `~/.gemini/settings.json`; a selected auth type with no visible key answers `"unknown"`, since keys can live in the OS keychain. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
@@ -16,7 +16,7 @@ Pin a model. Automatic routing can spend minutes self-investigating a trivial pr
 </Callout>
 
 - A session always starts fresh: reattaching is broken upstream, so `agent.session({ resume })` throws.
-- Runs report no token usage: the endpoint puts its counts outside the protocol's usage field.
+- Token usage arrives on the endpoint's own `_meta.quota` channel and lands on `usage.inputTokens`/`outputTokens`; per-model attribution stays on the result `raw`.
 
 ## Under the hood
 

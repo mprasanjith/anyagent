@@ -1,6 +1,7 @@
 import type {
   AcpAdapter,
   AuthStatus,
+  BillingMode,
   Capabilities,
   SystemProbe,
 } from "./types.js";
@@ -31,6 +32,9 @@ const CAPS = {
   // A turn carries content blocks and nothing else, so the core folds the
   // system prompt into the prompt text.
   systemPrompt: "emulated",
+  // BYOK: the meter lives at the configured provider, where no probe can
+  // read.
+  usageStatus: false,
 } as const satisfies Capabilities;
 
 // Providers whose credentials goose reads from a well-known env var. A
@@ -58,24 +62,35 @@ const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   try {
     exec = await probe.exec("goose", ["info", "-v"]);
   } catch {
-    return { state: "unknown" };
+    return { billing: "unknown", state: "unknown" };
   }
   if (exec.code !== 0) {
-    return { state: "unknown" };
+    return { billing: "unknown", state: "unknown" };
   }
   const provider = PROVIDER_LINE.exec(exec.stdout)?.groups?.provider;
   if (!provider) {
-    return { state: "unauthenticated" };
+    return { billing: "unknown", state: "unauthenticated" };
+  }
+  // The chatgpt-backed providers ride a ChatGPT login's rolling window —
+  // the same meter Codex's own CLI reports on this machine. Only the known
+  // key-configured providers assert "api-key"; anything else stays unknown
+  // rather than guessed.
+  let billing: BillingMode = "unknown";
+  if (provider.startsWith("chatgpt")) {
+    billing = "subscription";
+  } else if (provider in PROVIDER_KEY_ENV) {
+    billing = "api-key";
   }
   const key = PROVIDER_KEY_ENV[provider];
   if (key && probe.env[key]) {
     return {
+      billing,
       method: "api-key",
       providers: [provider],
       state: "authenticated",
     };
   }
-  return { providers: [provider], state: "unknown" };
+  return { billing, providers: [provider], state: "unknown" };
 };
 
 /**

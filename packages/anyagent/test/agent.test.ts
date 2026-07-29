@@ -151,8 +151,11 @@ const probeReader: Adapter = {
   ...fakeStreaming,
   authStatus: (probe) =>
     Promise.resolve({
+      billing: "unknown" as const,
       method: probe.env.FAKE_METHOD,
-      state: probe.env.FAKE_TOKEN ? "authenticated" : "unauthenticated",
+      state: probe.env.FAKE_TOKEN
+        ? ("authenticated" as const)
+        : ("unauthenticated" as const),
     }),
   listModels: async (probe) => {
     const file = await probe.readFile("/models.txt");
@@ -173,6 +176,7 @@ test("authStatus() and models() delegate to the adapter with the injected probe"
     runner: runnerFromFixture(""),
   });
   expect(await agent.authStatus()).toEqual({
+    billing: "unknown",
     method: "api-key",
     state: "authenticated",
   });
@@ -309,4 +313,30 @@ test("aborting mid-iteration yields the events so far, then throws", async () =>
   expect(types).toEqual(["text-delta"]);
   expect(failure).toBeInstanceOf(AnyAgentError);
   expect(failure).toMatchObject({ code: "Aborted" });
+});
+
+test("usageStatus never gates: no impl answers unknown instead of throwing", async () => {
+  const agent = new AgentImpl(fakeStreaming, {
+    probe: fakeSystemProbe(),
+    runner: runnerFromFixture(""),
+  });
+  expect(await agent.usageStatus()).toEqual({ state: "unknown" });
+});
+
+test("usageStatus delegates to the adapter with the probe and options", async () => {
+  const seen: unknown[] = [];
+  const quotaAdapter: Adapter = {
+    ...fakeStreaming,
+    capabilities: { ...fakeStreaming.capabilities, usageStatus: "probed" },
+    usageStatus: (probe, opts) => {
+      seen.push(probe.env.FAKE_TOKEN, opts.model);
+      return Promise.resolve({ state: "ok" as const });
+    },
+  };
+  const agent = new AgentImpl(quotaAdapter, {
+    probe: fakeSystemProbe({ env: { FAKE_TOKEN: "t" } }),
+    runner: runnerFromFixture(""),
+  });
+  expect(await agent.usageStatus({ model: "m" })).toEqual({ state: "ok" });
+  expect(seen).toEqual(["t", "m"]);
 });
