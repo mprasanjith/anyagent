@@ -39,3 +39,6 @@ jobs:
           publish: bun run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # OIDC auth alone does not attach attestations here; an explicit
+          # request fails loud instead of silently skipping.
+          NPM_CONFIG_PROVENANCE: "true"
