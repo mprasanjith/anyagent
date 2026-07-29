@@ -56,11 +56,16 @@ export const fakeSystemProbe = (
 // biome-ignore lint/suspicious/noExplicitAny: toy fixture schema.
 type Toy = any;
 
-const streamParse = ndjsonParser<{ sessionId?: string; text: string[] }>({
+const streamParse = ndjsonParser<{
+  sessionId?: string;
+  structured?: unknown;
+  text: string[];
+}>({
   finalize: (ctx) => ({
     events: [],
     raw: undefined,
     sessionId: ctx.sessionId,
+    structuredOutput: ctx.structured,
     text: ctx.text.join(""),
   }),
   init: () => ({ text: [] }),
@@ -69,6 +74,10 @@ const streamParse = ndjsonParser<{ sessionId?: string; text: string[] }>({
     if (o.t === "text") {
       ctx.text.push(o.v);
       return { text: o.v, type: "text-delta" };
+    }
+    if (o.t === "structured") {
+      ctx.structured = o.v;
+      return;
     }
     if (o.t === "session") {
       ctx.sessionId = o.v;

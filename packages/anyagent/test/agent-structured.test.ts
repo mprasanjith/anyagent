@@ -132,6 +132,64 @@ test("schemaRetries without schema throws InvalidOptions before spawning", async
   expect(prompts).toHaveLength(0);
 });
 
+// A native-structured adapter: the payload arrives on its own channel while
+// the text may be prose, as claude-code behaves under --json-schema.
+const native: Adapter = {
+  ...fakeStreaming,
+  buildInvocation: (prompt) => ({ args: [], command: "fake", input: prompt }),
+};
+
+const structuredStream = (prose: string, payload: unknown): string =>
+  [
+    JSON.stringify({ t: "text", v: prose }),
+    JSON.stringify({ t: "structured", v: payload }),
+    JSON.stringify({ t: "end" }),
+  ].join("\n");
+
+test("a native payload wins over streamed prose; the prompt stays bare", async () => {
+  const prompts: string[] = [];
+  const agent = new AgentImpl(native, {
+    runner: scriptedRunner(
+      [structuredStream("Sure, on it.", { n: 1 })],
+      prompts
+    ),
+  });
+  const res = await agent.run("q", { schema: objectSchema });
+  expect(res.json).toEqual({ n: 1 });
+  expect(res.text).toBe("Sure, on it.");
+  expect(res.structuredOutput).toEqual({ n: 1 });
+  expect(prompts[0]).not.toContain("<json-schema>");
+});
+
+test("an invalid native payload retries, quoting the payload not the prose", async () => {
+  const prompts: string[] = [];
+  const agent = new AgentImpl(native, {
+    runner: scriptedRunner(
+      [
+        structuredStream("Working on it.", { n: "bad" }),
+        structuredStream("Fixed.", { n: 2 }),
+      ],
+      prompts
+    ),
+  });
+  const res = await agent.run("q", { schema: objectSchema });
+  expect(res.json).toEqual({ n: 2 });
+  expect(prompts[1]).toContain("$.n: expected number, got string");
+  expect(prompts[1]).toContain('{"n":"bad"}');
+  expect(prompts[1]).not.toContain("Working on it.");
+});
+
+test("schemaRetries: 0 with an invalid native payload throws it as the reply", async () => {
+  const agent = new AgentImpl(native, {
+    runner: scriptedRunner([structuredStream("Hmm.", { n: "bad" })], []),
+  });
+  const failure = await agent
+    .run("q", { schema: objectSchema, schemaRetries: 0 })
+    .catch((e: unknown) => e as AnyAgentError);
+  expect(failure).toMatchObject({ code: "Parse", raw: '{"n":"bad"}' });
+  expect((failure as AnyAgentError).issues?.length).toBeGreaterThan(0);
+});
+
 test("iterating a schema run yields text events and a done carrying the parsed json", async () => {
   const agent = new AgentImpl(emulated, {
     runner: scriptedRunner([streamOf('{"n":1}')], []),
