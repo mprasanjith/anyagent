@@ -1,6 +1,6 @@
 {
   "name": "anyagent-js",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Detect and drive the coding-agent CLI a user already has installed.",
   "license": "MIT",
   "homepage": "https://anyagent.madusha.me",
