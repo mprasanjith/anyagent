@@ -1,4 +1,5 @@
 import { AnyAgentError } from "./errors.js";
+import { fetchJson } from "./internal/http.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
   AgentEvent,
@@ -12,6 +13,7 @@ import type {
   SystemProbe,
   ToolName,
   Usage,
+  UsageCredits,
   UsageStatus,
   UsageStatusOptions,
   UsageWindow,
@@ -335,8 +337,22 @@ const MODEL_ALIASES = [
 // lowercase onto these (the CLI itself matches buckets the same way).
 const FAMILIES = ["fable", "opus", "sonnet", "haiku"] as const;
 
+// `CLAUDE_CONFIG_DIR` relocates the CLI's whole config directory, and every
+// isolated login lives that way — the state file follows it. Reading the
+// home copy regardless would answer from another account's cache, or from
+// none at all, for anyone who sets it.
+const TRAILING_SLASH = /\/+$/u;
+
+// `CLAUDE_CONFIG_DIR`, normalized, or undefined when it is unset or blank.
+const configDirOverride = (probe: SystemProbe): string | undefined => {
+  const dir = probe.env.CLAUDE_CONFIG_DIR?.trim();
+  return dir === undefined || dir === ""
+    ? undefined
+    : dir.replace(TRAILING_SLASH, "");
+};
+
 const CLAUDE_JSON = (probe: SystemProbe): string =>
-  `${probe.homedir()}/.claude.json`;
+  `${configDirOverride(probe) ?? probe.homedir()}/.claude.json`;
 
 const readClaudeJson = async (probe: SystemProbe): Promise<Json> => {
   const body = await probe.readFile(CLAUDE_JSON(probe));
@@ -455,15 +471,224 @@ const stateOf = (
   return "ok";
 };
 
+// The CLI's config directory — `~/.claude` unless `CLAUDE_CONFIG_DIR` moves
+// it. Note this is not where `.claude.json` lives: the state file sits beside
+// the directory in `$HOME`, and inside it for a relocated login.
+const claudeDir = (probe: SystemProbe): string =>
+  configDirOverride(probe) ?? `${probe.homedir()}/.claude`;
+
+const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
+const USAGE_BETA = "oauth-2025-04-20";
+// Load-bearing: the endpoint rate-limits hard on a request that does not
+// identify as the CLI. A version string, not a claim to be that build.
+const USAGE_UA = "claude-code/2.1.241";
+
+/**
+ * The CLI's OAuth access token, when one is on disk and still valid.
+ *
+ * Deliberately read-only, and deliberately gives up on an expired token
+ * rather than refreshing it. Anthropic rotates the refresh token on use, so
+ * a refresh here would invalidate the copy the `claude` CLI holds and log
+ * the user out of their own tool. A stale token costs a fall back to the
+ * cached snapshot; a refresh race costs them their session.
+ *
+ * macOS keeps this in the login Keychain instead of a file, so this resolves
+ * `undefined` there and the local snapshot stays the answer.
+ */
+const accessToken = async (probe: SystemProbe): Promise<string | undefined> => {
+  const body = await probe.readFile(`${claudeDir(probe)}/.credentials.json`);
+  if (body === undefined) {
+    return;
+  }
+  let creds: Json;
+  try {
+    creds = JSON.parse(body);
+  } catch {
+    return;
+  }
+  const oauth = creds?.claudeAiOauth;
+  if (typeof oauth?.accessToken !== "string" || oauth.accessToken === "") {
+    return;
+  }
+  // Epoch milliseconds; a float has been seen in the wild.
+  const expiresAt = Number(oauth.expiresAt);
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+    return;
+  }
+  return oauth.accessToken;
+};
+
+// The named windows an older payload carries instead of `limits[]`. The
+// field name encodes the model family, so a scoped one can assert its own
+// bucket rather than leaving it unknown.
+const LEGACY_WINDOWS = [
+  "five_hour",
+  "seven_day",
+  "seven_day_sonnet",
+  "seven_day_opus",
+  "seven_day_fable",
+] as const;
+
+const legacyLimits = (body: Json): Json[] =>
+  LEGACY_WINDOWS.flatMap((kind) => {
+    const window = body?.[kind];
+    if (typeof window?.utilization !== "number") {
+      return [];
+    }
+    const family = kind.startsWith("seven_day_")
+      ? kind.slice("seven_day_".length)
+      : "";
+    return [
+      {
+        kind,
+        percent: window.utilization,
+        resets_at: window.resets_at,
+        ...(family === ""
+          ? {}
+          : {
+              scope: {
+                model: {
+                  display_name:
+                    family.charAt(0).toUpperCase() + family.slice(1),
+                },
+              },
+            }),
+      },
+    ];
+  });
+
+/**
+ * One money amount from the live payload's `spend` block:
+ * `{ amount_minor, currency, exponent }`. An out-of-range exponent would
+ * corrupt the amount, so it is rejected rather than clamped.
+ *
+ * The shape is verified against `spend.used`; `spend.balance` and
+ * `spend.limit` sit in the same block and are read the same way, but were
+ * `null` on the account this was captured from. A different shape there
+ * reads as absent, never as a wrong number.
+ */
+const money = (
+  value: Json
+): { amount: number; currency?: string } | undefined => {
+  const minor = Number(value?.amount_minor);
+  const exponent = value?.exponent;
+  if (
+    !Number.isFinite(minor) ||
+    typeof exponent !== "number" ||
+    !Number.isInteger(exponent) ||
+    exponent < 0 ||
+    exponent > 6
+  ) {
+    return;
+  }
+  const amount = minor / 10 ** exponent;
+  return typeof value.currency === "string" && value.currency !== ""
+    ? { amount, currency: value.currency }
+    : { amount };
+};
+
+/**
+ * Pay-as-you-go standing from the live payload's `spend` block — the current
+ * shape, which names the balance directly and carries each amount with its
+ * own currency and scale. A disabled block is no pool at all, not a zero
+ * balance.
+ *
+ * `balance` is preferred; where only a cap and a spend are given, the
+ * remainder of the two is the balance.
+ */
+const spendCredits = (body: Json): UsageCredits | undefined => {
+  const spend = body?.spend;
+  if (spend?.enabled !== true) {
+    return;
+  }
+  const balance = money(spend.balance);
+  const limit = money(spend.limit ?? spend.cap);
+  const used = money(spend.used);
+  const resolved =
+    balance ??
+    (limit && used
+      ? { amount: limit.amount - used.amount, currency: limit.currency }
+      : undefined);
+  if (!resolved) {
+    return;
+  }
+  const credits: UsageCredits = { balance: resolved.amount };
+  if (resolved.currency !== undefined) {
+    credits.currency = resolved.currency;
+  }
+  return credits;
+};
+
+/**
+ * The same standing from the older `extra_usage` block, for a payload that
+ * predates `spend`. Both money fields are minor units scaled by a shared
+ * `decimal_places`.
+ */
+const extraCredits = (body: Json): UsageCredits | undefined => {
+  const extra = body?.extra_usage;
+  if (extra?.is_enabled !== true) {
+    return;
+  }
+  const places = extra.decimal_places;
+  const limit = Number(extra.monthly_limit);
+  const used = Number(extra.used_credits);
+  if (
+    typeof places !== "number" ||
+    !Number.isInteger(places) ||
+    places < 0 ||
+    places > 6 ||
+    !(Number.isFinite(limit) && Number.isFinite(used))
+  ) {
+    return;
+  }
+  const credits: UsageCredits = {
+    balance: (limit - used) / 10 ** places,
+  };
+  if (typeof extra.currency === "string" && extra.currency !== "") {
+    credits.currency = extra.currency;
+  }
+  return credits;
+};
+
+// The live snapshot, when egress is on and a usable token is on disk. The
+// endpoint's `limits[]` is the same shape the CLI caches, so one parser
+// serves both sources.
+const liveUsage = async (probe: SystemProbe): Promise<Json | undefined> => {
+  if (!probe.fetch) {
+    return;
+  }
+  const token = await accessToken(probe);
+  if (token === undefined) {
+    return;
+  }
+  const res = await fetchJson(probe.fetch, USAGE_URL, {
+    headers: {
+      "anthropic-beta": USAGE_BETA,
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "user-agent": USAGE_UA,
+    },
+  });
+  // A 401 means the token went stale between the expiry check and the call;
+  // the cached snapshot is a better answer than none.
+  if (res?.status !== 200 || !res.body) {
+    return;
+  }
+  return res.body;
+};
+
 const usageStatus = async (
   probe: SystemProbe,
   opts: UsageStatusOptions
 ): Promise<UsageStatus> => {
   const parsed = await readClaudeJson(probe);
+  const live = await liveUsage(probe);
   const cached = parsed?.cachedUsageUtilization;
-  const limits: Json[] = Array.isArray(cached?.utilization?.limits)
-    ? cached.utilization.limits
-    : [];
+  // Live wins when it arrived; otherwise the CLI's own cache, however old.
+  const source: Json = live ?? cached?.utilization;
+  const limits: Json[] = Array.isArray(source?.limits)
+    ? source.limits
+    : legacyLimits(source);
   const all = limits
     .map((limit) => windowOf(limit, parsed?.additionalModelOptionsCache))
     .filter((w): w is UsageWindow => w !== undefined);
@@ -475,7 +700,13 @@ const usageStatus = async (
   if (windows.length > 0) {
     status.windows = windows;
   }
-  if (typeof cached?.fetchedAtMs === "number") {
+  const credits = live ? (spendCredits(live) ?? extraCredits(live)) : undefined;
+  if (credits) {
+    status.credits = credits;
+  }
+  if (live) {
+    status.asOf = new Date();
+  } else if (typeof cached?.fetchedAtMs === "number") {
     status.asOf = new Date(cached.fetchedAtMs);
   }
   return status;

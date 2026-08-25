@@ -10,6 +10,7 @@ import type {
   SystemProbe,
   VersionProbe,
 } from "../../types.js";
+import { realFetchLocal, realLocalListeners } from "./local.js";
 import { outputSourceFromChild } from "./output-source.js";
 import { realRpc } from "./rpc.js";
 
@@ -103,7 +104,12 @@ export const realProbe: VersionProbe = {
 export const realSystemProbe: SystemProbe = {
   ...realProbe,
   env: process.env,
+  // Always present: loopback reaches nothing the user is not already
+  // running, so it needs no opt-in. `fetch` — real egress — stays absent
+  // until `create({ network })` supplies it.
+  fetchLocal: realFetchLocal,
   homedir,
+  localListeners: realLocalListeners,
   readFile: async (file) => {
     try {
       return await readFile(file, "utf8");

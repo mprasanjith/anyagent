@@ -49,3 +49,31 @@ live(
   },
   60_000
 );
+
+// The usage drift canary. `usageStatus` degrades to `{ state: "unknown" }` on
+// every failure, which is right for callers but hides an upstream reshape from
+// us — so this asserts the live endpoint actually produced windows, and that
+// each one carries the fields the normalization promises. Percentages and
+// reset times are real numbers that move, so only shape is asserted.
+live(
+  "live: the usage endpoint still answers in the shape we parse",
+  async () => {
+    const agent = create(claudeCode(), { network: true });
+    const status = await agent.usageStatus();
+    expect(status.state).not.toBe("unknown");
+    expect(status.windows?.length).toBeGreaterThan(0);
+    // Live means now; a cache fallback would stamp an older `asOf`.
+    expect(status.asOf?.getTime()).toBeGreaterThan(Date.now() - 60_000);
+    for (const window of status.windows ?? []) {
+      expect(typeof window.label).toBe("string");
+      expect(window.usedPercent).toBeGreaterThanOrEqual(0);
+      expect(window.usedPercent).toBeLessThanOrEqual(100);
+    }
+    // A model-scoped query never invents a window the unscoped one lacked.
+    const scoped = await agent.usageStatus({ model: "opus" });
+    expect(scoped.windows?.length ?? 0).toBeLessThanOrEqual(
+      status.windows?.length ?? 0
+    );
+  },
+  30_000
+);

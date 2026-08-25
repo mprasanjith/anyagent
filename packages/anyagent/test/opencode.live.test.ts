@@ -47,3 +47,26 @@ live(
   },
   120_000
 );
+
+// The Zen quota drift canary. Only asserts where a Zen credential is present
+// — a BYOK-only opencode has no gateway meter to read.
+live(
+  "live: the Zen gateway still answers in the shape we parse",
+  async () => {
+    const status = await create(opencode(), { network: true }).usageStatus();
+    if (status.state === "unknown") {
+      console.warn("no opencode Zen credential; skipping the quota canary");
+      return;
+    }
+    expect(status.windows?.length).toBeGreaterThan(0);
+    for (const window of status.windows ?? []) {
+      expect(["monthly", "rolling", "weekly"]).toContain(window.label);
+      expect(window.usedPercent).toBeGreaterThanOrEqual(0);
+      expect(window.usedPercent).toBeLessThanOrEqual(100);
+      expect(window.resetsAt?.getTime()).toBeGreaterThan(
+        Date.now() - 86_400_000
+      );
+    }
+  },
+  30_000
+);

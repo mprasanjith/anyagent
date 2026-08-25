@@ -7,8 +7,10 @@ import type {
   Capabilities,
   ModelInfo,
   SystemProbe,
+  UsageStatus,
 } from "../types.js";
 import { credentialBilling } from "./billing.js";
+import { fetchJson } from "./http.js";
 import { vendorOf } from "./vendors.js";
 
 // Shared implementation for opencode and its fork Kilo Code. Both CLIs expose
@@ -42,9 +44,11 @@ const CAPS = {
   // No per-run system prompt channel (system prompts are config-file /
   // agent-file concerns); the core folds the system prompt into the prompt.
   systemPrompt: "emulated",
-  // `<bin> stats` is a local consumption ledger, not remaining quota; the
-  // meter itself lives at the provider (or the sibling's gateway), where no
-  // probe can read it.
+  // The family baseline. `<bin> stats` is a local consumption ledger, not
+  // remaining quota, and nothing else on the machine holds the meter — it
+  // lives at the provider, or at the sibling's own gateway. A sibling with a
+  // gateway that answers for it raises this to `"remote"` and supplies a
+  // `usage` spec.
   usageStatus: false,
 } as const satisfies Capabilities;
 
@@ -151,7 +155,83 @@ export interface OpencodeFamilySpec {
   /** App dir under `~/.local/share` holding the CLI's `auth.json`. */
   dataDir: string;
   meta: AdapterMeta;
+  /**
+   * The sibling's own gateway meter, for a CLI that sells inference under
+   * its own brand. Omit it — as opencode's BYOK providers require — and the
+   * sibling keeps `usageStatus: false`.
+   */
+  usage?: FamilyUsageSpec;
 }
+
+/**
+ * How one sibling reads its gateway's remaining quota: which credential
+ * store entry pays for it, where the meter lives, and how to read the
+ * answer. Egress-only, so it runs solely under {@link CreateOptions.network}.
+ */
+export interface FamilyUsageSpec {
+  /**
+   * Env vars holding the same key, tried in order before the auth store.
+   */
+  keyEnv?: readonly string[];
+  /** The `auth.json` entry whose `key` pays for the gateway. */
+  storeProvider: string;
+  /** Map the gateway's response body onto a status. */
+  toStatus: (body: unknown) => UsageStatus | undefined;
+  url: string;
+}
+
+// The gateway key: an env var if one is set, else the auth store entry the
+// CLI itself writes at login.
+const gatewayKey = async (
+  probe: SystemProbe,
+  dataDir: string,
+  spec: FamilyUsageSpec
+): Promise<string | undefined> => {
+  for (const envVar of spec.keyEnv ?? []) {
+    const value = probe.env[envVar]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  const body = await probe.readFile(
+    `${probe.homedir()}/.local/share/${dataDir}/auth.json`
+  );
+  if (body === undefined) {
+    return;
+  }
+  let store: unknown;
+  try {
+    store = JSON.parse(body);
+  } catch {
+    return;
+  }
+  const entry = (store as Record<string, { key?: unknown }> | null)?.[
+    spec.storeProvider
+  ];
+  return typeof entry?.key === "string" && entry.key !== ""
+    ? entry.key
+    : undefined;
+};
+
+const makeUsageStatus =
+  (dataDir: string, spec: FamilyUsageSpec) =>
+  async (probe: SystemProbe): Promise<UsageStatus> => {
+    // No egress opt-in, no answer: the meter is only at the gateway.
+    if (!probe.fetch) {
+      return { state: "unknown" };
+    }
+    const key = await gatewayKey(probe, dataDir, spec);
+    if (key === undefined) {
+      return { state: "unknown" };
+    }
+    const res = await fetchJson(probe.fetch, spec.url, {
+      headers: { authorization: `Bearer ${key}` },
+    });
+    if (res?.status !== 200) {
+      return { state: "unknown" };
+    }
+    return spec.toStatus(res.body) ?? { state: "unknown" };
+  };
 
 export const opencodeFamilyAdapter = (
   spec: OpencodeFamilySpec
@@ -188,5 +268,8 @@ export const opencodeFamilyAdapter = (
     listModels: makeListModels(command),
     meta: spec.meta,
     mode: "acp",
+    ...(spec.usage
+      ? { usageStatus: makeUsageStatus(spec.dataDir, spec.usage) }
+      : {}),
   };
 };

@@ -71,3 +71,33 @@ live(
   },
   60_000
 );
+
+// The quota drift canary. Loopback needs no opt-in, but it does need a
+// running product: with none up this is indistinguishable from a reshaped
+// payload, so it reports that rather than failing.
+live(
+  "live: the local language server still answers the quota RPC",
+  async () => {
+    const status = await create(antigravity()).usageStatus();
+    if (status.state === "unknown") {
+      console.warn(
+        "no Antigravity product is running; open `agy` to exercise this"
+      );
+      return;
+    }
+    expect(status.windows?.length).toBeGreaterThan(0);
+    for (const window of status.windows ?? []) {
+      expect(typeof window.label).toBe("string");
+      expect(window.usedPercent).toBeGreaterThanOrEqual(0);
+      expect(window.usedPercent).toBeLessThanOrEqual(100);
+    }
+    // Scoping never invents a window the unscoped answer lacked.
+    const scoped = await create(antigravity()).usageStatus({
+      model: "claude-opus-4-6-thinking",
+    });
+    expect(scoped.windows?.length ?? 0).toBeLessThanOrEqual(
+      status.windows?.length ?? 0
+    );
+  },
+  30_000
+);

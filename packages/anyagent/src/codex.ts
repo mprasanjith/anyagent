@@ -11,6 +11,7 @@ import type {
   StdoutAdapter,
   SystemProbe,
   Usage,
+  UsageCredits,
   UsageStatus,
   UsageWindow,
 } from "./types.js";
@@ -318,12 +319,81 @@ const windowFrom = (label: string, limit: Json): UsageWindow | undefined => {
     // Epoch seconds on the wire.
     window.resetsAt = new Date(limit.resetsAt * 1000);
   }
+  // The field that survives upstream reshuffling. `primary`/`secondary` are
+  // wire positions, not window identities: OpenAI has shipped the 7-day
+  // figure under `primary` with `secondary` absent (openai/codex#32707), so
+  // a caller reading position alone would call a weekly bucket a 5-hour one.
+  if (typeof limit.windowDurationMins === "number") {
+    window.windowMinutes = limit.windowDurationMins;
+  }
   return window;
 };
 
-// Codex's limits are account-level — no model buckets — so the `model`
-// scoping option changes nothing here and every answer applies to any
-// placement on this harness.
+// One limit set — the `{ primary, secondary }` pair plus the flags that ride
+// with it. `id` prefixes the labels so the buckets stay distinguishable once
+// more than one set is in play.
+const windowsOfSet = (id: string, set: Json): UsageWindow[] =>
+  [
+    windowFrom(`${id}:primary`, set?.primary),
+    windowFrom(`${id}:secondary`, set?.secondary),
+  ].filter((w): w is UsageWindow => w !== undefined);
+
+const setIsSpent = (set: Json): boolean =>
+  Boolean(set?.rateLimitReachedType) || set?.spendControlReached === true;
+
+/**
+ * Every limit set the app-server reports, keyed by its limit id.
+ *
+ * `rateLimitsByLimitId` is the current shape and holds one set per metered
+ * surface — `codex` for the CLI's own usage, and separately-limited features
+ * (code review) alongside it. `rateLimits` mirrors whichever set is primary,
+ * so it is read only when the keyed map is absent, which keeps an older
+ * app-server working without double-counting a newer one's `codex` set.
+ */
+const limitSets = (limits: Json): [string, Json][] => {
+  const keyed = limits?.rateLimitsByLimitId;
+  if (keyed && typeof keyed === "object") {
+    const entries = Object.entries(keyed as Record<string, Json>);
+    if (entries.length > 0) {
+      return entries;
+    }
+  }
+  return [
+    [typeof limits?.limitId === "string" ? limits.limitId : "codex", limits],
+  ];
+};
+
+// Codex reports the balance as a decimal string and names no currency, so
+// `currency` stays absent rather than assuming the account's. `unlimited`
+// and `hasCredits` are the CLI's own words; a pool it does not describe
+// yields no `credits` at all.
+const creditsFrom = (limits: Json): UsageCredits | undefined => {
+  const c = limits?.credits;
+  if (!c) {
+    return;
+  }
+  const credits: UsageCredits = {};
+  const balance = Number(c.balance);
+  if (
+    typeof c.balance === "string" &&
+    c.balance !== "" &&
+    !Number.isNaN(balance)
+  ) {
+    credits.balance = balance;
+  } else if (typeof c.balance === "number" && Number.isFinite(c.balance)) {
+    credits.balance = c.balance;
+  }
+  if (typeof c.unlimited === "boolean") {
+    credits.unlimited = c.unlimited;
+  }
+  return credits.balance === undefined && credits.unlimited === undefined
+    ? undefined
+    : credits;
+};
+
+// Codex buckets its limits by metered *feature* (the limit id), never by
+// model, so the `model` scoping option changes nothing here and every answer
+// applies to any placement on this harness.
 const usageStatus = async (probe: SystemProbe): Promise<UsageStatus> => {
   let outcomes: Awaited<ReturnType<SystemProbe["rpc"]>>;
   try {
@@ -337,13 +407,15 @@ const usageStatus = async (probe: SystemProbe): Promise<UsageStatus> => {
   if (!limits) {
     return { state: "unknown" };
   }
-  const windows = [
-    windowFrom("primary", limits.primary),
-    windowFrom("secondary", limits.secondary),
-  ].filter((w): w is UsageWindow => w !== undefined);
+  const sets = limitSets(limits);
+  const windows = sets.flatMap(([id, set]) => windowsOfSet(id, set));
+  // Windows come from the keyed sets alone so a mirrored set is not counted
+  // twice, but the flags are OR-ed with the top level as well: exhaustion is
+  // the one answer whose cost is asymmetric, and a mirror that has drifted
+  // should raise it, not hide it.
   const exhausted =
-    Boolean(limits.rateLimitReachedType) ||
-    limits.spendControlReached === true ||
+    setIsSpent(limits) ||
+    sets.some(([, set]) => setIsSpent(set)) ||
     windows.some((w) => (w.usedPercent ?? 0) >= 100);
   let state: UsageStatus["state"] = "unknown";
   if (exhausted) {
@@ -352,6 +424,10 @@ const usageStatus = async (probe: SystemProbe): Promise<UsageStatus> => {
     state = "ok";
   }
   const status: UsageStatus = { asOf: new Date(), state };
+  const credits = creditsFrom(limits);
+  if (credits) {
+    status.credits = credits;
+  }
   if (windows.length > 0) {
     status.windows = windows;
   }
