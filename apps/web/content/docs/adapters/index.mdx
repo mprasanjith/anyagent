@@ -7,7 +7,11 @@ These are the agent CLIs AnyAgent supports. `detect()` scans for all of them in 
 
 <CapabilityMatrix />
 
-In the grid, `native` means the CLI provides the capability, `emulated` means AnyAgent provides it identically wherever declared, and `—` means requesting it throws `UnsupportedCapability` before anything spawns; you ask for an emulated capability exactly as a native one. Auth status, Models, and Usage answer discovery questions rather than gating runs, where `probed` means AnyAgent reads the CLI's local files and environment, a hint rather than a guarantee. Usage never throws even at `—`: it answers `{ state: "unknown" }`, the honest posture for a harness whose meter lives at its provider.
+Reading the grid: `native` means the CLI does it itself, `emulated` means AnyAgent does it for you and the result is the same either way, and `—` means asking for it throws `UnsupportedCapability` before anything starts. You request an emulated capability exactly as you would a native one.
+
+The last three columns — Auth status, Models, and Usage — answer questions about the CLI rather than gating a run, so they have two extra values. `probed` means AnyAgent worked it out from the CLI's own files and environment variables: useful, but a hint rather than a promise. `remote` means only the vendor knows, so the answer needs the [`network`](/docs/usage-and-limits#letting-anyagent-reach-the-network) opt-in.
+
+Usage is the one column that never throws, not even at `—`. It answers `{ state: "unknown" }` instead, because "nobody can tell you" is itself the thing you would act on. See [Usage and limits](/docs/usage-and-limits).
 
 Mode is how the adapter drives its CLI: `acp` holds one connection for the session’s lifetime, which adds steering and permission-request events; `stdout` spawns one process per turn. Turns behave the same either way. Resume is separate — whether a conversation can be continued from a persisted id at all. Everything else CLI-specific lives on the adapter’s page.
 

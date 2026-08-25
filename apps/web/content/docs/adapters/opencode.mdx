@@ -7,11 +7,13 @@ The `opencode` adapter drives the opencode CLI over ACP (`opencode acp`), detect
 
 ## What you can ask for
 
-`model` (as `"provider/model"`), `readOnly`, `resume`, `forkSession`, `attachments`, and `mcp` work on the endpoint’s own channels; `systemPrompt` and `schema` are provided by AnyAgent. `effort` is undeclared and throws: the endpoint offers no effort setting. `models()` runs `opencode models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/opencode/auth.json` plus the provider key env vars, a hint rather than a guarantee. The full grid is on the [support matrix](/docs/adapters).
+`model` (as `"provider/model"`), `readOnly`, `resume`, `forkSession`, `attachments`, and `mcp` work on the endpoint’s own channels; `systemPrompt` and `schema` are provided by AnyAgent. `effort` is undeclared and throws: the endpoint offers no effort setting. `models()` runs `opencode models`, every printed `provider/model` id valid verbatim as `model`; `authStatus()` reads `~/.local/share/opencode/auth.json` plus the provider key env vars, a hint rather than a guarantee. `usageStatus()` reports the Zen plan's quota. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - Every turn runs on a live connection, so [sessions](/docs/sessions) steer; the session id lands on `result.sessionId` and is what `resume` takes back.
+- `usageStatus()` reports the **Zen** plan's rolling, weekly, and monthly windows and needs the [`network`](/docs/api#network-access) opt-in, since only opencode's own gateway holds the meter. It uses the Zen key the CLI stored at login (or `OPENCODE_GO_API_KEY`). A BYOK provider's quota is metered at that provider, where nothing local can see it — so a BYOK-only install answers `{ state: "unknown" }`.
+- Only `weekly` carries a `windowMinutes`. `rolling` does not state its span, and `monthly` renews on the subscription's own date rather than a calendar boundary.
 - `readOnly: true` rests on two mechanisms at once: the session switches into plan mode, which covers edits, and every permission request for a tool that is not reading is denied, which covers the rest.
 - `mcp` servers are added to whatever the machine already configures rather than replacing them, each under the name you key it by.
 - Usage is the endpoint’s own accounting from the finished turn — tokens, cache reads, and thinking tokens where it reports them.

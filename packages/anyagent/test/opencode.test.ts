@@ -261,3 +261,129 @@ test("listModels fails loud when the CLI exits nonzero", async () => {
     code: "Invocation",
   });
 });
+
+// --- Zen gateway usage, behind the network opt-in -------------------------
+
+// `GET /zen/go/v1/usage` as documented by the ai-usagebar integration: each
+// window states its own `status` beside the percentage.
+const ZEN_USAGE = {
+  usage: {
+    monthly: {
+      percent: 12,
+      resetsAt: "2026-09-01T00:00:00Z",
+      status: "ok",
+    },
+    rolling: { percent: 40, resetsAt: "2026-08-25T18:00:00Z", status: "ok" },
+    weekly: { percent: 65, resetsAt: "2026-08-31T00:00:00Z", status: "ok" },
+  },
+};
+
+const AUTH_STORE = JSON.stringify({
+  "opencode-go": { key: "zen-key", type: "api" },
+});
+
+const zenProbe = (
+  opts: { body?: unknown; env?: Record<string, string>; status?: number } = {}
+) => {
+  const calls: { headers?: Record<string, string>; url: string }[] = [];
+  const probe = fakeSystemProbe({
+    env: opts.env ?? {},
+    fetch: (url, init) => {
+      calls.push({ headers: init?.headers, url: String(url) });
+      return Promise.resolve(
+        new Response(JSON.stringify(opts.body ?? ZEN_USAGE), {
+          status: opts.status ?? 200,
+        })
+      );
+    },
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/home/fake/.local/share/opencode/auth.json"
+          ? AUTH_STORE
+          : undefined
+      ),
+  });
+  return { calls, probe };
+};
+
+test("usageStatus reports the Zen windows", async () => {
+  const { calls, probe } = zenProbe();
+  const status = await opencode().usageStatus?.(probe, {});
+  expect(calls[0]?.url).toBe("https://opencode.ai/zen/go/v1/usage");
+  expect(calls[0]?.headers?.authorization).toBe("Bearer zen-key");
+  expect(status?.state).toBe("ok");
+  expect(status?.windows?.map((w) => [w.label, w.usedPercent])).toEqual([
+    ["monthly", 12],
+    ["rolling", 40],
+    ["weekly", 65],
+  ]);
+});
+
+// A week is a fixed span; a rolling window's is unstated and a month's varies.
+test("usageStatus asserts a duration only for the weekly window", async () => {
+  const { probe } = zenProbe();
+  const byLabel = new Map(
+    (await opencode().usageStatus?.(probe, {}))?.windows?.map((w) => [
+      w.label,
+      w.windowMinutes,
+    ])
+  );
+  expect(byLabel.get("weekly")).toBe(10_080);
+  expect(byLabel.get("rolling")).toBeUndefined();
+  expect(byLabel.get("monthly")).toBeUndefined();
+});
+
+// The gateway's own word, not a percentage threshold: a window has been seen
+// refusing work below 100%.
+test("usageStatus trusts the gateway's rate-limited status", async () => {
+  const { probe } = zenProbe({
+    body: {
+      usage: {
+        rolling: {
+          percent: 92,
+          resetsAt: "2026-08-25T18:00:00Z",
+          status: "rate-limited",
+        },
+      },
+    },
+  });
+  expect((await opencode().usageStatus?.(probe, {}))?.state).toBe("exhausted");
+});
+
+test("usageStatus prefers the key in the environment", async () => {
+  const { calls, probe } = zenProbe({
+    env: { OPENCODE_GO_API_KEY: "env-key" },
+  });
+  await opencode().usageStatus?.(probe, {});
+  expect(calls[0]?.headers?.authorization).toBe("Bearer env-key");
+});
+
+// Without the opt-in there is nothing local to fall back to.
+test("usageStatus is unknown when egress is off", async () => {
+  const probe = fakeSystemProbe({
+    readFile: () => Promise.resolve(AUTH_STORE),
+  });
+  expect(await opencode().usageStatus?.(probe, {})).toEqual({
+    state: "unknown",
+  });
+});
+
+test("usageStatus is unknown, and asks nothing, without a Zen key", async () => {
+  const { calls, probe } = zenProbe();
+  const keyless = fakeSystemProbe({
+    fetch: probe.fetch,
+    readFile: () =>
+      Promise.resolve(JSON.stringify({ anthropic: { key: "x" } })),
+  });
+  expect(await opencode().usageStatus?.(keyless, {})).toEqual({
+    state: "unknown",
+  });
+  expect(calls).toEqual([]);
+});
+
+test("usageStatus is unknown when the gateway rejects the key", async () => {
+  const { probe } = zenProbe({ body: {}, status: 401 });
+  expect(await opencode().usageStatus?.(probe, {})).toEqual({
+    state: "unknown",
+  });
+});

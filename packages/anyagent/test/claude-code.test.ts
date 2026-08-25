@@ -588,6 +588,242 @@ test("usageStatus maps the cached snapshot to normalized windows", async () => {
   );
 });
 
+// --- live usage, behind the network opt-in -------------------------------
+
+const CREDENTIALS = JSON.stringify({
+  claudeAiOauth: {
+    accessToken: "at-live",
+    expiresAt: 4_102_444_800_000,
+    refreshToken: "rt-never-used",
+  },
+});
+
+// The endpoint's own shape: `limits[]` matches what the CLI caches, so one
+// parser serves both. `extra_usage` is minor units scaled by decimal_places.
+const LIVE_USAGE = {
+  extra_usage: {
+    currency: "USD",
+    decimal_places: 2,
+    is_enabled: true,
+    monthly_limit: 5000,
+    used_credits: 250,
+  },
+  limits: [
+    {
+      kind: "session",
+      percent: 71,
+      resets_at: "2026-08-25T18:00:00.000000+00:00",
+      scope: null,
+    },
+  ],
+};
+
+const liveProbe = (
+  opts: { body?: unknown; creds?: string; status?: number } = {}
+) => {
+  const calls: { headers?: Record<string, string>; url: string }[] = [];
+  const probe = fakeSystemProbe({
+    fetch: (url, init) => {
+      calls.push({ headers: init?.headers, url: String(url) });
+      return Promise.resolve(
+        new Response(JSON.stringify(opts.body ?? LIVE_USAGE), {
+          status: opts.status ?? 200,
+        })
+      );
+    },
+    readFile: (p) => {
+      if (p === "/home/fake/.claude.json") {
+        return Promise.resolve(CLAUDE_JSON);
+      }
+      if (p === "/home/fake/.claude/.credentials.json") {
+        return Promise.resolve(opts.creds ?? CREDENTIALS);
+      }
+      return Promise.resolve(undefined);
+    },
+  });
+  return { calls, probe };
+};
+
+test("usageStatus prefers the live snapshot when egress is on", async () => {
+  const { calls, probe } = liveProbe();
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(calls[0]?.url).toBe("https://api.anthropic.com/api/oauth/usage");
+  expect(status?.windows?.map((w) => w.usedPercent)).toEqual([71]);
+  // Live means now, not the cache's hours-old stamp.
+  expect(status?.asOf?.getTime()).toBeGreaterThan(1_785_324_930_920);
+});
+
+test("usageStatus sends the credential and the headers the endpoint requires", async () => {
+  const { calls, probe } = liveProbe();
+  await claudeCode().usageStatus?.(probe, {});
+  expect(calls[0]?.headers?.authorization).toBe("Bearer at-live");
+  expect(calls[0]?.headers?.["anthropic-beta"]).toBe("oauth-2025-04-20");
+  // Load-bearing: the endpoint rate-limits hard without a claude-code UA.
+  expect(calls[0]?.headers?.["user-agent"]).toStartWith("claude-code/");
+});
+
+test("usageStatus reports the extra-usage balance as credits", async () => {
+  const { probe } = liveProbe();
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(status?.credits).toEqual({ balance: 47.5, currency: "USD" });
+});
+
+// The `spend` block as returned live (2026-08-25), disabled on this account.
+const SPEND_DISABLED = {
+  balance: null,
+  cap: null,
+  enabled: false,
+  limit: null,
+  percent: 0,
+  severity: "normal",
+  used: { amount_minor: 0, currency: "USD", exponent: 2 },
+};
+
+test("usageStatus prefers the spend block over the older extra_usage", async () => {
+  const { probe } = liveProbe({
+    body: {
+      ...LIVE_USAGE,
+      spend: {
+        ...SPEND_DISABLED,
+        balance: { amount_minor: 1234, currency: "USD", exponent: 2 },
+        enabled: true,
+      },
+    },
+  });
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(status?.credits).toEqual({ balance: 12.34, currency: "USD" });
+});
+
+test("usageStatus derives the balance from a cap and a spend", async () => {
+  const { probe } = liveProbe({
+    body: {
+      ...LIVE_USAGE,
+      spend: {
+        ...SPEND_DISABLED,
+        enabled: true,
+        limit: { amount_minor: 5000, currency: "USD", exponent: 2 },
+        used: { amount_minor: 1500, currency: "USD", exponent: 2 },
+      },
+    },
+  });
+  expect((await claudeCode().usageStatus?.(probe, {}))?.credits).toEqual({
+    balance: 35,
+    currency: "USD",
+  });
+});
+
+// A disabled pool is no pool, even though `used` is a readable amount.
+test("usageStatus falls through a disabled spend block", async () => {
+  const { probe } = liveProbe({
+    body: { limits: LIVE_USAGE.limits, spend: SPEND_DISABLED },
+  });
+  expect(
+    (await claudeCode().usageStatus?.(probe, {}))?.credits
+  ).toBeUndefined();
+});
+
+test("usageStatus reports no credits when extra usage is switched off", async () => {
+  const { probe } = liveProbe({
+    body: { ...LIVE_USAGE, extra_usage: { is_enabled: false } },
+  });
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(status?.credits).toBeUndefined();
+});
+
+// Refreshing would rotate the token out from under the `claude` CLI and log
+// the user out of their own tool, so an expired credential is simply unused.
+test("usageStatus falls back to the cache rather than refresh an expired token", async () => {
+  const { calls, probe } = liveProbe({
+    creds: JSON.stringify({
+      claudeAiOauth: { accessToken: "at-old", expiresAt: 1_000_000 },
+    }),
+  });
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(calls).toEqual([]);
+  expect(status?.asOf).toEqual(new Date(1_785_324_930_920));
+  expect(status?.windows?.length).toBe(3);
+});
+
+test("usageStatus falls back to the cache when the endpoint rejects the token", async () => {
+  const { probe } = liveProbe({ body: {}, status: 401 });
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(status?.asOf).toEqual(new Date(1_785_324_930_920));
+  expect(status?.windows?.length).toBe(3);
+});
+
+// No credentials file at all is the macOS Keychain case.
+test("usageStatus stays on the cache when no credential is on disk", async () => {
+  const { calls, probe } = liveProbe({ creds: undefined });
+  const bare = fakeSystemProbe({
+    fetch: probe.fetch,
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/home/fake/.claude.json" ? CLAUDE_JSON : undefined
+      ),
+  });
+  const status = await claudeCode().usageStatus?.(bare, {});
+  expect(calls).toEqual([]);
+  expect(status?.windows?.length).toBe(3);
+});
+
+// Older payloads carry named windows instead of `limits[]`; the field name
+// itself names the model family, so the scoped bucket stays assertable.
+test("usageStatus understands the older named-window payload", async () => {
+  const { probe } = liveProbe({
+    body: {
+      five_hour: { resets_at: "2026-08-25T18:00:00Z", utilization: 62 },
+      seven_day: { resets_at: "2026-08-29T18:00:00Z", utilization: 27 },
+      seven_day_sonnet: { resets_at: "2026-08-26T18:00:00Z", utilization: 4 },
+    },
+  });
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(status?.windows?.map((w) => w.label)).toEqual([
+    "five_hour",
+    "seven_day",
+    "seven_day_sonnet",
+  ]);
+  expect(status?.windows?.at(-1)?.modelScope).toBe("Sonnet");
+});
+
+test("usageStatus scoped to a family drops a foreign legacy bucket", async () => {
+  const { probe } = liveProbe({
+    body: {
+      five_hour: { resets_at: "2026-08-25T18:00:00Z", utilization: 62 },
+      seven_day_sonnet: { resets_at: "2026-08-26T18:00:00Z", utilization: 4 },
+    },
+  });
+  const status = await claudeCode().usageStatus?.(probe, { model: "opus" });
+  expect(status?.windows?.map((w) => w.label)).toEqual(["five_hour"]);
+});
+
+test("usageStatus reads the config dir CLAUDE_CONFIG_DIR names", async () => {
+  const probe = fakeSystemProbe({
+    env: { CLAUDE_CONFIG_DIR: "/opt/claude-work/" },
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/opt/claude-work/.claude.json" ? CLAUDE_JSON : undefined
+      ),
+  });
+  const status = await claudeCode().usageStatus?.(probe, {});
+  expect(status?.state).toBe("ok");
+  expect(status?.windows?.length).toBe(3);
+});
+
+// An isolated login has its own state file; answering from the home copy
+// would report a different account's standing as this one's.
+test("usageStatus does not fall back to the home file when the config dir is set", async () => {
+  const probe = fakeSystemProbe({
+    env: { CLAUDE_CONFIG_DIR: "/opt/claude-work" },
+    readFile: (p) =>
+      Promise.resolve(
+        p === "/home/fake/.claude.json" ? CLAUDE_JSON : undefined
+      ),
+  });
+  expect(await claudeCode().usageStatus?.(probe, {})).toEqual({
+    state: "unknown",
+  });
+});
+
 test("usageStatus scoped to another family drops the foreign bucket", async () => {
   const status = await claudeCode().usageStatus?.(usageProbe(), {
     model: "haiku",

@@ -12,7 +12,7 @@ You need three things in place:
 - The target CLI installed and signed in, so you can record real output
 - The CLI's headless docs: its non-interactive invocation, streaming format, and autonomy or sandbox flags
 
-Per-CLI facts collected during audits live in `docs/specs/harness-audit.md`. Verify your CLI's row there, or write it, before you write code.
+Everything you claim about a CLI has to come from running it. Record what you see — the invocation, the output format, the autonomy flags — and keep that recording in the repo as a fixture. That fixture is the evidence for every capability you declare.
 
 The examples below add a fictional Hopper CLI with the id `hopper`; substitute your CLI's id throughout. Read `packages/anyagent/src/claude-code.ts` alongside this guide as the reference implementation, and mirror its shape.
 
@@ -20,7 +20,7 @@ The examples below add a fictional Hopper CLI with the id `hopper`; substitute y
 
 ### 1. Spec first
 
-Confirm the CLI's row in `docs/specs/harness-audit.md`: invocation, streaming format, autonomy and sandbox flags. Nothing downstream is trustworthy until the audit is.
+Run the CLI by hand first and write down four things: how to invoke it non-interactively, what its output looks like, how to give it full autonomy, and how to restrict it to reading. Nothing downstream is trustworthy until you have seen all four yourself.
 
 ### 2. Pick a mode and implement its contract
 
@@ -151,6 +151,26 @@ Before you open the change, confirm all seven:
 7. A changeset describes the change: run `bun run changeset` and commit the generated file
 
 Declare `false` for any capability you have not verified against real output. Honest capabilities matter more than broad ones.
+
+## Reporting usage limits
+
+`usageStatus` is optional, and `false` is a fine answer — the call returns `{ state: "unknown" }` for those agents rather than throwing. If your CLI can report how much of the user's plan is left, there are three ways to get it, and which one you use decides what you declare:
+
+- **`"native"`** — the CLI has a command or service that reports its own limits. Ask it.
+- **`"probed"`** — the CLI leaves a file on the machine with the numbers in it. Read that file with `probe.readFile`, and set `asOf` so callers can judge how stale it is.
+- **`"remote"`** — only the vendor knows. Read the credential the CLI already stored, then call the vendor with `probe.fetch`.
+
+`probe.fetch` is **absent unless the user opted in** with `create(agent, { network: true })`. Check for it and return `{ state: "unknown" }` when it is missing — never reach for `globalThis.fetch`, which would make a network call the user did not agree to. Go through the `fetchJson` helper in `src/internal/http.ts` rather than calling `probe.fetch` yourself; it caps the request and refuses to follow a redirect off the original site, so a credential cannot leak to another host.
+
+Talking to a server on the user's own machine is different: nothing leaves the computer, so it needs no opt-in. `probe.localListeners(pattern)` finds the ports a matching local process is listening on, and `probe.fetchLocal` calls them. Both are always present.
+
+Three rules the existing adapters follow, each learned from a real bug:
+
+- **Never refresh a credential.** Vendors that rotate refresh tokens will sign the user out of their own CLI if you use theirs. An expired token means no answer, not a refresh.
+- **Set `windowMinutes`, and never infer a window's length from its name.** Codex has shipped its weekly figure in the slot labelled `primary`. If the CLI does not say how long a window is, leave it absent.
+- **Do not require a particular window to exist.** Which buckets a plan reports varies by tier, and a parser that insists on a 5-hour bucket will fail outright on an account that has none.
+
+Missing or malformed numbers are always `undefined`, never a default. Reporting "0% used" for a window whose real standing you could not read is the one failure worth avoiding above all others — it reads as reassuring, and it gets acted on.
 
 ## Releasing
 

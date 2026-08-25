@@ -29,6 +29,45 @@ export type CapabilitySupport = "native" | "emulated" | false;
 export type DiscoverySupport = "native" | "probed" | false;
 
 /**
+ * How {@link Agent.usageStatus} is answered. The {@link DiscoverySupport}
+ * values carry their usual meaning, plus one this question alone has:
+ *
+ * - `"remote"` — the harness keeps no local answer at all; only the vendor's
+ *   own API knows. Answering costs a network request with the credential the
+ *   CLI already stores, so it happens only when the caller opts in via
+ *   {@link CreateOptions.network}. Without that opt-in the answer is
+ *   `{ state: "unknown" }` — the same shape `false` gives, reached for a
+ *   different reason.
+ *
+ * `"native"` and `"probed"` never require the opt-in; an adapter declaring
+ * either may still *sharpen* its answer when network is enabled (a live
+ * figure in place of a cached one), which is why freshness is read from
+ * {@link UsageStatus.asOf} rather than inferred from this field.
+ */
+export type UsageSupport = DiscoverySupport | "remote";
+
+/**
+ * The slice of `fetch` an adapter actually uses: a GET with headers, an
+ * abort signal, and manual redirect handling.
+ *
+ * Deliberately narrower than `typeof globalThis.fetch`. The platform type
+ * carries properties (`preconnect`) that a hand-written stub or a proxy
+ * wrapper has no reason to implement, so requiring it would make the common
+ * cases — a test double, a fetch with a custom agent — fail to typecheck for
+ * no benefit. The real `fetch` satisfies this.
+ */
+export type FetchLike = (
+  input: string,
+  init?: {
+    body?: string;
+    headers?: Record<string, string>;
+    method?: "POST";
+    redirect?: "manual";
+    signal?: AbortSignal;
+  }
+) => Promise<Response>;
+
+/**
  * How runs are paid for: a rolling-window `"subscription"` (marginal cost is
  * zero until the window fills), a metered `"api-key"`, or `"unknown"`.
  * Always the adapter's own assertion, from the same signals that answer
@@ -177,7 +216,9 @@ export interface Capabilities {
    * How {@link Agent.usageStatus} answers: `"native"` — the CLI reports its
    * own limit standing, live and authoritative. `"probed"` — read from the
    * CLI's local state; a hint, possibly stale (check
-   * {@link UsageStatus.asOf}). `false` — no surface exists.
+   * {@link UsageStatus.asOf}). `"remote"` — only the vendor's API knows, so
+   * the answer needs {@link CreateOptions.network}. `false` — no surface
+   * exists.
    *
    * Unlike the other discovery fields this one never gates: the call works
    * on every agent, and `false` just means the answer is always
@@ -186,7 +227,7 @@ export interface Capabilities {
    * claim about observability, not about limits existing: a BYOK harness is
    * metered at its provider, where no CLI can see.
    */
-  usageStatus: DiscoverySupport;
+  usageStatus: UsageSupport;
 }
 
 /**
@@ -290,6 +331,30 @@ export interface UsageWindow {
   resetsAt?: Date;
   /** Share of the window consumed, 0–100, when the CLI reports it. */
   usedPercent?: number;
+  /**
+   * How long the window spans, in minutes (`300` for a 5-hour bucket,
+   * `10080` for a weekly one) — the only field that identifies a window
+   * across releases. {@link label} is the CLI's vocabulary and can be
+   * positional: Codex has shipped its 7-day figure under `primary` with
+   * `secondary` absent, so a caller distinguishing "the 5h bucket" from
+   * "the weekly one" must read this, never the label. Absent when the CLI
+   * does not say.
+   */
+  windowMinutes?: number;
+}
+
+/**
+ * Pay-as-you-go standing alongside the rolling windows: the balance that
+ * keeps a harness usable once its included windows are spent. Reported only
+ * where a harness has such a pool — most do not.
+ */
+export interface UsageCredits {
+  /** Remaining balance in {@link currency}, when a figure is reported. */
+  balance?: number;
+  /** ISO 4217 code for {@link balance} (`"USD"`). Absent if unstated. */
+  currency?: string;
+  /** Whether the pool is uncapped, when the harness says so. */
+  unlimited?: boolean;
 }
 
 /**
@@ -301,6 +366,12 @@ export interface UsageWindow {
  */
 export interface UsageStatus {
   asOf?: Date;
+  /**
+   * Pay-as-you-go balance backing this harness, when it has one. Read it
+   * before treating `state: "exhausted"` as final: spent windows plus a
+   * funded balance still runs, just metered.
+   */
+  credits?: UsageCredits;
   state: UsageState;
   windows?: UsageWindow[];
 }
@@ -717,10 +788,52 @@ export type RpcOutcome =
  * pass a fake via `create(source, { probe })` to simulate any machine,
  * credentials included, with zero subprocesses. `readFile` resolves
  * `undefined` for a missing or unreadable file.
+ *
+ * Everything here is local except the optional `fetch`, which is absent
+ * unless the caller turned egress on.
  */
 export interface SystemProbe extends VersionProbe {
   env: Record<string, string | undefined>;
+  /**
+   * Egress, present only when the caller opted in via
+   * {@link CreateOptions.network} — absent is the default, and an adapter
+   * that finds it absent answers from local state or not at all. Requests
+   * made through it carry a credential the CLI already stores, so it is the
+   * one probe member that reaches past the machine.
+   *
+   * The shape is {@link FetchLike} — the platform `fetch` satisfies it, and
+   * so does a hand-written double or a proxy wrapper. Adapters do not call
+   * it directly: the bounded, redirect-safe `fetchJson` helper wraps it.
+   */
+  fetch?: FetchLike;
+  /**
+   * The same contract as {@link SystemProbe.fetch}, restricted to loopback —
+   * a request to any host but `127.0.0.1`/`::1` is refused.
+   *
+   * Always present on the real probe and never gated by
+   * {@link CreateOptions.network}, because nothing leaves the machine: this
+   * is talking to a service the user is already running, the same class of
+   * act as {@link SystemProbe.rpc} spawning a CLI's service subcommand. Pair
+   * it with {@link SystemProbe.localListeners} to find the port.
+   */
+  fetchLocal?: FetchLike;
   homedir: () => string;
+  /**
+   * The TCP ports a local process matching `name` is listening on.
+   *
+   * `name` is tested against the process's command name and its executable
+   * path, so either identifies it. The core owns the per-OS lookup, which is
+   * why this is one method rather than raw directory and symlink reads:
+   * `/proc`, `lsof`, and the Windows TCP table have nothing in common but
+   * the answer.
+   *
+   * The order carries no ranking. A process that binds several listeners
+   * gives no reliable way to tell which speaks which protocol — the guess
+   * that a language server's RPC port outranks its TLS port has been
+   * observed false — so a caller probes every port and lets the service
+   * identify itself.
+   */
+  localListeners?: (name: RegExp) => Promise<number[]>;
   readFile: (path: string) => Promise<string | undefined>;
   /**
    * Drive a one-shot JSON-RPC 2.0 dialogue (NDJSON over stdio) against a

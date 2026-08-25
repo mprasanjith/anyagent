@@ -7,7 +7,7 @@ The `antigravity` adapter drives the Antigravity CLI in its headless stdout mode
 
 ## What you can ask for
 
-`model`, `effort` (closed vocabulary: `low`, `medium`, `high`), and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly` and `mcp` are undeclared and throw: no true read-only run exists, since `--mode plan` still leaves Antigravity’s internal scratch directories writable. Plan mode stays reachable via `extraArgs: ["--mode", "plan"]`. `models()` runs `agy models`, a cross-vendor catalog whose ids are valid verbatim as `model` and can bake in an effort level; `authStatus()` is probed, reading a model listing as authenticated. The full grid is on the [support matrix](/docs/adapters).
+`model`, `effort` (closed vocabulary: `low`, `medium`, `high`), and `resume` work on the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `readOnly` and `mcp` are undeclared and throw: no true read-only run exists, since `--mode plan` still leaves Antigravity’s internal scratch directories writable. Plan mode stays reachable via `extraArgs: ["--mode", "plan"]`. `models()` runs `agy models`, a cross-vendor catalog whose ids are valid verbatim as `model` and can bake in an effort level; `authStatus()` is probed, reading a model listing as authenticated. `usageStatus()` reads the account-wide weekly quota. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
@@ -18,6 +18,9 @@ The default model (`auto`) can spiral on trivial prompts; pin `model` for predic
 - Stdout mode times out after 5 minutes by default; give a longer run `extraArgs: ["--print-timeout", "30m"]`.
 - The init event’s conversation id lands on `result.sessionId` and resumes via `resume`.
 - `usage` maps the CLI’s `thinking_tokens` to `reasoningTokens`; no cache line items are reported.
+- `usageStatus()` needs an Antigravity product **running** — the desktop app, the IDE, or an interactive `agy` session — because the quota is served by their local language server. With none up it answers `{ state: "unknown" }`.
+- That server is on loopback, so this needs no [`network`](/docs/api#network-access) opt-in: nothing leaves the machine. Quota is account-wide, so whichever product answers first is authoritative.
+- Buckets are per model group, not per model: `{ model: "claude-opus-4-6-thinking" }` narrows to the Claude/GPT pool, `gemini-*` to the Gemini one. Which buckets exist varies by plan — do not assume a 5-hour one is present.
 
 ## Under the hood
 

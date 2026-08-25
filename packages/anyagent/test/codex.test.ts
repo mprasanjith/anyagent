@@ -450,8 +450,14 @@ test("codex passes the adapter conformance suite", async () => {
   });
 });
 
-// The app-server's rateLimits payload as recorded live (2026-07-29).
-const RATE_LIMITS = {
+// The app-server's rateLimits payload as recorded live (2026-08-25), during
+// the weekly-only rollout: the 7-day window arrives under `primary` with
+// `secondary` absent, so only `windowDurationMins` identifies it.
+const CODEX_SET = {
+  credits: { balance: "0", hasCredits: false, unlimited: false },
+  individualLimit: null,
+  limitId: "codex",
+  limitName: null,
   planType: "plus",
   primary: {
     resetsAt: 1_785_940_556,
@@ -461,6 +467,11 @@ const RATE_LIMITS = {
   rateLimitReachedType: null,
   secondary: null,
   spendControlReached: false,
+};
+
+const RATE_LIMITS = {
+  ...CODEX_SET,
+  rateLimitsByLimitId: { codex: CODEX_SET },
 };
 
 const rpcProbe = (limits: unknown = RATE_LIMITS) => {
@@ -491,12 +502,77 @@ test("usageStatus drives the app-server handshake then reads rate limits", async
   expect(status?.state).toBe("ok");
   expect(status?.windows).toEqual([
     {
-      label: "primary",
+      label: "codex:primary",
       resetsAt: new Date(1_785_940_556 * 1000),
       usedPercent: 12,
+      windowMinutes: 10_080,
     },
   ]);
   expect(status?.asOf).toBeDefined();
+});
+
+// The weekly-only shape (openai/codex#32707) puts the 7-day figure in the
+// `primary` slot. Position must not be read as duration.
+test("usageStatus carries the window duration, not just its wire position", async () => {
+  const { probe } = rpcProbe();
+  const status = await codex().usageStatus?.(probe, {});
+  expect(status?.windows?.[0]?.windowMinutes).toBe(10_080);
+});
+
+test("usageStatus reads every limit set, keyed by its limit id", async () => {
+  const { probe } = rpcProbe({
+    ...RATE_LIMITS,
+    rateLimitsByLimitId: {
+      code_review: {
+        ...CODEX_SET,
+        limitId: "code_review",
+        primary: {
+          resetsAt: 1_785_940_556,
+          usedPercent: 4,
+          windowDurationMins: 10_080,
+        },
+      },
+      codex: CODEX_SET,
+    },
+  });
+  const status = await codex().usageStatus?.(probe, {});
+  expect(status?.windows?.map((w) => w.label)).toEqual([
+    "code_review:primary",
+    "codex:primary",
+  ]);
+});
+
+// An older app-server has no keyed map; the top-level set is the whole answer
+// and must not be dropped.
+test("usageStatus falls back to the unkeyed limit set", async () => {
+  const { probe } = rpcProbe(CODEX_SET);
+  const status = await codex().usageStatus?.(probe, {});
+  expect(status?.windows?.map((w) => w.label)).toEqual(["codex:primary"]);
+});
+
+test("usageStatus reports the pay-as-you-go balance alongside the windows", async () => {
+  const { probe } = rpcProbe();
+  const status = await codex().usageStatus?.(probe, {});
+  expect(status?.credits).toEqual({ balance: 0, unlimited: false });
+});
+
+// Spent windows plus a funded balance still runs: `state` stays hard, and
+// the balance rides along for the caller to weigh.
+test("usageStatus keeps credits visible when a window is spent", async () => {
+  const { probe } = rpcProbe({
+    ...RATE_LIMITS,
+    credits: { balance: "12.5", hasCredits: true, unlimited: false },
+    rateLimitsByLimitId: {
+      codex: {
+        ...CODEX_SET,
+        credits: { balance: "12.5", hasCredits: true, unlimited: false },
+        rateLimitReachedType: "usage_limit_reached",
+      },
+    },
+  });
+  const status = await codex().usageStatus?.(probe, {});
+  expect(status?.state).toBe("exhausted");
+  expect(status?.credits?.balance).toBe(12.5);
 });
 
 test("usageStatus reports exhausted when the CLI says the limit is reached", async () => {

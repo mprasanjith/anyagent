@@ -12,6 +12,7 @@ import type {
   Adapter,
   CapabilitySupport,
   DiscoverySupport,
+  UsageSupport,
 } from "anyagent-js/types";
 import Link from "next/link";
 
@@ -46,7 +47,9 @@ const COLUMNS = [
   { key: "cwd", label: "cwd" },
 ] as const;
 
-const cell = (value: CapabilitySupport | DiscoverySupport): string => {
+const cell = (
+  value: CapabilitySupport | DiscoverySupport | UsageSupport
+): string => {
   if (value === false) {
     return "—";
   }

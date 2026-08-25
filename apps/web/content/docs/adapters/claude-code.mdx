@@ -7,7 +7,7 @@ The `claude-code` adapter drives the Claude Code CLI in headless mode, detected 
 
 ## What you can ask for
 
-Nearly every run option works: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own, never replacing it), `resume`, `forkSession`, `mcp`, and `schema`. Only `attachments` throws, since Claude Code has no headless attachment flag. `authStatus()` asks `claude auth status --json` and asserts `billing` from the subscription tier. `models()` lists the documented alias vocabulary (`fable`, `opus`, `sonnet[1m]`, …) plus the CLI’s cached org-specific entries — probed, since the CLI has no list command. `usageStatus()` reads the CLI’s cached rolling-window snapshot: the 5-hour and weekly windows plus model-scoped buckets, with `asOf` carrying the cache’s age and `{ model }` scoping the answer to one placement. The full grid is on the [support matrix](/docs/adapters).
+Nearly every run option works: `readOnly`, `model` (Claude Code’s own vocabulary, such as `"opus"`), `effort` (closed vocabulary: `low`, `medium`, `high`, `xhigh`, `max`), `systemPrompt` (appended to the CLI’s own, never replacing it), `resume`, `forkSession`, `mcp`, and `schema`. Only `attachments` throws, since Claude Code has no headless attachment flag. `authStatus()` asks `claude auth status --json` and asserts `billing` from the subscription tier. `models()` lists the documented alias vocabulary (`fable`, `opus`, `sonnet[1m]`, …) plus the CLI’s cached org-specific entries — probed, since the CLI has no list command. `usageStatus()` reports the 5-hour and weekly windows plus model-scoped buckets, and `{ model }` narrows the answer to one of them — see [Usage and limits](/docs/usage-and-limits). The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
@@ -15,6 +15,10 @@ Nearly every run option works: `readOnly`, `model` (Claude Code’s own vocabula
 - `mcp` means exactly the servers you passed: the end user’s own configured servers stay out of the run.
 - With a `schema`, `result.text` is the serialized JSON reply and no other text is emitted; validation and the one retry still apply.
 - `usage` reports cache reads and writes as separate line items on `cacheReadTokens` and `cacheWriteTokens`, and sets `costUsd`.
+- `usageStatus()` reads a snapshot the CLI leaves on disk, which it only refreshes when it runs — so the numbers can be old, or missing entirely on a fresh install. `asOf` tells you how old. Turn on [`network`](/docs/usage-and-limits#letting-anyagent-reach-the-network) and it asks Anthropic directly instead, which is always current and also fills in `credits`.
+- An expired login is never refreshed. Anthropic issues a new refresh token each time one is used, so refreshing here would sign the user out of their own `claude` CLI. AnyAgent falls back to the cached snapshot instead.
+- Set `CLAUDE_CONFIG_DIR` and everything follows it — that is how the CLI keeps separate logins, so `usageStatus()` and `models()` answer for whichever one is active.
+- On macOS the login lives in the Keychain rather than a file, so the live reading is unavailable there and the cached snapshot is the answer.
 
 ## Under the hood
 

@@ -1,4 +1,5 @@
 import { AnyAgentError } from "./errors.js";
+import { fetchJson } from "./internal/http.js";
 import { ndjsonParser } from "./ndjson.js";
 import type {
   AgentEvent,
@@ -11,6 +12,9 @@ import type {
   SystemProbe,
   ToolName,
   Usage,
+  UsageStatus,
+  UsageStatusOptions,
+  UsageWindow,
 } from "./types.js";
 
 const CAPS = {
@@ -41,9 +45,10 @@ const CAPS = {
   // No append-system-prompt flag exists; the core folds the system prompt
   // into the prompt text instead.
   systemPrompt: "emulated",
-  // Account quotas exist server-side, but the CLI has no command that
-  // reports them.
-  usageStatus: false,
+  // The CLI has no quota subcommand, but every Antigravity product runs a
+  // language server on loopback that answers one — read from that, hence
+  // "probed". Nothing leaves the machine, so it needs no network opt-in.
+  usageStatus: "probed",
 } as const satisfies Capabilities;
 
 const TOOL_NAMES: Record<string, ToolName> = {
@@ -258,11 +263,14 @@ const buildInvocation = (prompt: string, opts: RunOptions): Invocation => {
 // never match, which is what separates a listing from a login prompt.
 const MODEL_ID_REGEX = /^[a-z0-9][\w.-]*$/i;
 
+// Each row is `<id>\t<display name>` — the CLI once printed the id alone, so
+// the label is split off rather than assumed absent. Anything with no tab is
+// still tested whole, which keeps a bare-id listing working.
 const modelIds = (stdout: string): string[] =>
   stdout
     .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => MODEL_ID_REGEX.test(line));
+    .map((line) => (line.split("\t")[0] ?? "").trim())
+    .filter((id) => MODEL_ID_REGEX.test(id));
 
 const authStatus = async (probe: SystemProbe): Promise<AuthStatus> => {
   let res: { stdout: string; stderr: string; code: number };
@@ -302,6 +310,225 @@ const listModels = async (probe: SystemProbe): Promise<ModelInfo[]> => {
   return ids.map((id) => ({ id }));
 };
 
+// --- quota, from the local language server --------------------------------
+
+/**
+ * Google ships three Antigravity products — the desktop app, the IDE, and
+ * the `agy` CLI — and they draw on the *same* account-wide quota. Each runs
+ * a language server on loopback, so whichever answers first is authoritative
+ * and there is no reason to prefer one.
+ */
+const LANGUAGE_SERVER = /language_server|(^|\/)agy(\.exe)?$|antigravity/iu;
+
+const QUOTA_RPC =
+  "exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary";
+
+// Only `GetUserStatus` carries the account's name and e-mail, and its sole
+// unique contribution is a plan label this library has nowhere to put — so
+// it is never called, and the identity is never read.
+
+const WINDOW_MINUTES: Record<string, number> = { "5h": 300, weekly: 10_080 };
+
+/**
+ * The Antigravity 2.0 server embeds a CSRF token in the HTML it serves at
+ * `/` and rejects the RPC without it. The `agy` CLI serves no such page —
+ * it 404s at `/` and answers unauthenticated (verified live) — so this runs
+ * only after a request was actually refused.
+ */
+const csrfToken = async (
+  fetchLocal: NonNullable<SystemProbe["fetchLocal"]>,
+  base: string
+): Promise<string | undefined> => {
+  let body: string;
+  try {
+    const res = await fetchLocal(base, {
+      signal: AbortSignal.timeout(5000),
+    });
+    body = await res.text();
+  } catch {
+    return;
+  }
+  return body.split('csrfToken":"')[1]?.split('"')[0] || undefined;
+};
+
+const askQuota = async (
+  fetchLocal: NonNullable<SystemProbe["fetchLocal"]>,
+  port: number
+): Promise<Json | undefined> => {
+  const base = `http://127.0.0.1:${port}`;
+  const ask = (csrf?: string) =>
+    fetchJson(fetchLocal, `${base}/${QUOTA_RPC}`, {
+      body: "{}",
+      headers: {
+        "content-type": "application/json",
+        ...(csrf ? { "x-codeium-csrf-token": csrf } : {}),
+      },
+      timeoutMs: 5000,
+    });
+  let res = await ask();
+  if (res?.status === 401 || res?.status === 403) {
+    const csrf = await csrfToken(fetchLocal, base);
+    if (csrf !== undefined) {
+      res = await ask(csrf);
+    }
+  }
+  return res?.status === 200 ? res.body : undefined;
+};
+
+/**
+ * One quota bucket. `remainingFraction` is required and must be a real
+ * fraction: defaulting a missing or drifted value would report a reassuring
+ * "0% used" for a window whose true standing is unknown.
+ */
+const windowOf = (bucket: Json, group: string): UsageWindow | undefined => {
+  const remaining = bucket?.remainingFraction;
+  const id = bucket?.bucketId;
+  if (
+    typeof id !== "string" ||
+    typeof remaining !== "number" ||
+    !Number.isFinite(remaining) ||
+    remaining < 0 ||
+    remaining > 1
+  ) {
+    return;
+  }
+  // The server reports what is left; every other harness reports what is
+  // spent, and `usedPercent` is the shared vocabulary.
+  const window: UsageWindow = {
+    label: id,
+    usedPercent: Math.round((1 - remaining) * 100),
+  };
+  const minutes = WINDOW_MINUTES[bucket.window];
+  if (minutes !== undefined) {
+    window.windowMinutes = minutes;
+  }
+  const resetsAt = Date.parse(bucket.resetTime);
+  if (!Number.isNaN(resetsAt)) {
+    window.resetsAt = new Date(resetsAt);
+  }
+  if (group !== "") {
+    window.modelScope = group;
+  }
+  return window;
+};
+
+// Which pool a bucket belongs to, from its id or its group's label. The
+// buckets seen live are `gemini-weekly` and `3p-weekly`, in groups named
+// "Gemini Models" and "Claude and GPT models".
+const poolOf = (window: UsageWindow): "gemini" | "third-party" | undefined => {
+  const id = window.label.toLowerCase();
+  if (id.startsWith("gemini")) {
+    return "gemini";
+  }
+  if (id.startsWith("3p")) {
+    return "third-party";
+  }
+  const scope = window.modelScope?.toLowerCase() ?? "";
+  if (scope.includes("gemini")) {
+    return "gemini";
+  }
+  return scope.includes("claude") || scope.includes("gpt")
+    ? "third-party"
+    : undefined;
+};
+
+// Which pool a model id draws on. `agy models` reports `gemini-*` beside
+// `claude-*` and `gpt-*`, so the prefix is the assertion.
+const poolOfModel = (model: string): "gemini" | "third-party" | undefined => {
+  const id = model.toLowerCase();
+  if (id.startsWith("gemini")) {
+    return "gemini";
+  }
+  return id.startsWith("claude") || id.startsWith("gpt")
+    ? "third-party"
+    : undefined;
+};
+
+// Exclusion requires assertion: a bucket is dropped only when both pools are
+// known and differ, so an unrecognized model keeps every window.
+const bindsModel = (window: UsageWindow, model: string): boolean => {
+  const bucket = poolOf(window);
+  const requested = poolOfModel(model);
+  return bucket === undefined || requested === undefined
+    ? true
+    : bucket === requested;
+};
+
+/**
+ * Every bucket the summary reports, in the order the server gives them.
+ *
+ * No bucket is required. A Pro account has been observed reporting weekly
+ * buckets and no 5-hour ones at all, so demanding a fixed set — the shape a
+ * reader might assume from the two-window products — would turn a perfectly
+ * good answer into an error.
+ */
+const windowsOf = (body: Json): UsageWindow[] => {
+  const groups = body?.response?.groups ?? body?.groups;
+  if (!Array.isArray(groups)) {
+    return [];
+  }
+  const windows: UsageWindow[] = [];
+  for (const group of groups) {
+    const label =
+      typeof group?.displayName === "string" ? group.displayName : "";
+    for (const bucket of group?.buckets ?? []) {
+      const window = windowOf(bucket, label);
+      if (window) {
+        windows.push(window);
+      }
+    }
+  }
+  return windows;
+};
+
+const usageStatus = async (
+  probe: SystemProbe,
+  opts: UsageStatusOptions
+): Promise<UsageStatus> => {
+  const { fetchLocal, localListeners } = probe;
+  if (!(fetchLocal && localListeners)) {
+    return { state: "unknown" };
+  }
+  let ports: number[];
+  try {
+    ports = await localListeners(LANGUAGE_SERVER);
+  } catch {
+    return { state: "unknown" };
+  }
+  let body: Json;
+  for (const port of ports) {
+    // Sequential on purpose: each product binds a TLS listener beside the
+    // RPC one and the order between them is not predictable, so the ports
+    // are tried until one answers rather than all at once.
+    // biome-ignore lint/performance/noAwaitInLoops: probing stops at the first server that answers; running them together would talk to every listener on the machine.
+    body = await askQuota(fetchLocal, port);
+    if (body) {
+      break;
+    }
+  }
+  const all = windowsOf(body);
+  if (all.length === 0) {
+    // No server running, none signed in, or a reshaped payload. The quota is
+    // account-wide, so a product that is up is as good as any other.
+    return { state: "unknown" };
+  }
+  const windows =
+    opts.model === undefined
+      ? all
+      : all.filter((w) => bindsModel(w, opts.model as string));
+  // The server states no severity, so there is no near-limit to report.
+  const status: UsageStatus = {
+    asOf: new Date(),
+    state: windows.some((w) => (w.usedPercent ?? 0) >= 100)
+      ? "exhausted"
+      : "ok",
+  };
+  if (windows.length > 0) {
+    status.windows = windows;
+  }
+  return status;
+};
+
 /**
  * The adapter for the Antigravity CLI (`agy`). A default run has full
  * full autonomy; there is no read-only run (`readOnly: true` throws),
@@ -328,4 +555,5 @@ export const antigravity = (): StdoutAdapter<typeof CAPS> => ({
   meta: { bin: ["agy"], id: "antigravity", name: "Antigravity" },
   mode: "stdout",
   parse,
+  usageStatus,
 });

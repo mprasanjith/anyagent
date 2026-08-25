@@ -394,3 +394,263 @@ test("antigravity passes the adapter conformance suite", async () => {
     },
   });
 });
+
+// `agy models` prints `<id>\t<display name>`, recorded live 2026-08-25. The
+// id was once the whole line, and a parser testing the whole line against the
+// id shape matched nothing here — every signed-in user read as signed out.
+const MODELS_STDOUT = [
+  "gemini-3.1-pro-high\tGemini 3.1 Pro (High)",
+  "claude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)",
+  "gpt-oss-120b-medium\tGPT-OSS 120B (Medium)",
+].join("\n");
+
+const modelsProbe = (stdout: string) =>
+  fakeSystemProbe({
+    exec: () => Promise.resolve({ code: 0, stderr: "", stdout }),
+  });
+
+test("listModels reads the id out of each tab-separated row", async () => {
+  const models = await antigravity().listModels?.(modelsProbe(MODELS_STDOUT));
+  expect(models?.map((m) => m.id)).toEqual([
+    "gemini-3.1-pro-high",
+    "claude-opus-4-6-thinking",
+    "gpt-oss-120b-medium",
+  ]);
+});
+
+// The older bare-id listing still has to work.
+test("listModels still reads a listing with no labels", async () => {
+  const models = await antigravity().listModels?.(
+    modelsProbe("gemini-3.1-pro-high\nclaude-opus-4-6-thinking")
+  );
+  expect(models?.map((m) => m.id)).toEqual([
+    "gemini-3.1-pro-high",
+    "claude-opus-4-6-thinking",
+  ]);
+});
+
+test("authStatus reads a labelled listing as signed in", async () => {
+  const status = await antigravity().authStatus?.(modelsProbe(MODELS_STDOUT));
+  expect(status?.state).toBe("authenticated");
+});
+
+// A sign-in notice exits 0 and must not read as a listing.
+test("authStatus reads a sign-in notice as signed out", async () => {
+  const status = await antigravity().authStatus?.(
+    modelsProbe("Please sign in at https://antigravity.google to continue")
+  );
+  expect(status?.state).toBe("unauthenticated");
+});
+
+// --- quota from the local language server ---------------------------------
+
+// `RetrieveUserQuotaSummary` as returned live (2026-08-25) by a signed-in
+// `agy` on a Pro account: weekly buckets only, and no 5-hour bucket at all.
+const QUOTA = {
+  response: {
+    groups: [
+      {
+        buckets: [
+          {
+            bucketId: "gemini-weekly",
+            displayName: "Weekly Limit Remaining",
+            remainingFraction: 1,
+            resetTime: "2026-09-01T10:15:40Z",
+            window: "weekly",
+          },
+        ],
+        displayName: "Gemini Models",
+      },
+      {
+        buckets: [
+          {
+            bucketId: "3p-weekly",
+            displayName: "Weekly Limit Remaining",
+            remainingFraction: 0.25,
+            resetTime: "2026-09-01T10:15:40Z",
+            window: "weekly",
+          },
+        ],
+        displayName: "Claude and GPT models",
+      },
+    ],
+  },
+};
+
+const RPC_PATH =
+  "/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary";
+
+const quotaProbe = (
+  opts: { csrfPorts?: number[]; ports?: number[]; quota?: unknown } = {}
+) => {
+  const calls: string[] = [];
+  const ports = opts.ports ?? [40_001];
+  const probe = fakeSystemProbe({
+    fetchLocal: (url, init) => {
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      const port = Number(new URL(url).port);
+      if (!url.endsWith(RPC_PATH)) {
+        // The desktop app serves a CSRF token at `/`; `agy` 404s here.
+        return Promise.resolve(
+          opts.csrfPorts?.includes(port)
+            ? new Response('<script>{"csrfToken":"tok-1"}</script>')
+            : new Response("not found", { status: 404 })
+        );
+      }
+      if (
+        opts.csrfPorts?.includes(port) &&
+        !init?.headers?.["x-codeium-csrf-token"]
+      ) {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(opts.quota ?? QUOTA), { status: 200 })
+      );
+    },
+    localListeners: () => Promise.resolve(ports),
+  });
+  return { calls, probe };
+};
+
+test("usageStatus reads the quota summary off the local server", async () => {
+  const { calls, probe } = quotaProbe();
+  const status = await antigravity().usageStatus?.(probe, {});
+  expect(calls).toEqual([`POST http://127.0.0.1:40001${RPC_PATH}`]);
+  expect(status?.state).toBe("ok");
+  expect(status?.windows).toEqual([
+    {
+      label: "gemini-weekly",
+      modelScope: "Gemini Models",
+      resetsAt: new Date("2026-09-01T10:15:40Z"),
+      usedPercent: 0,
+      windowMinutes: 10_080,
+    },
+    {
+      label: "3p-weekly",
+      modelScope: "Claude and GPT models",
+      resetsAt: new Date("2026-09-01T10:15:40Z"),
+      usedPercent: 75,
+      windowMinutes: 10_080,
+    },
+  ]);
+});
+
+// This account reports weekly buckets and no 5-hour ones. Requiring a fixed
+// set would turn a perfectly good answer into no answer.
+test("usageStatus does not require any particular bucket", async () => {
+  const { probe } = quotaProbe({
+    quota: {
+      response: {
+        groups: [
+          {
+            buckets: [
+              {
+                bucketId: "gemini-5h",
+                remainingFraction: 0.5,
+                resetTime: "2026-08-25T15:00:00Z",
+                window: "5h",
+              },
+            ],
+            displayName: "Gemini Models",
+          },
+        ],
+      },
+    },
+  });
+  const status = await antigravity().usageStatus?.(probe, {});
+  expect(status?.windows?.map((w) => [w.label, w.windowMinutes])).toEqual([
+    ["gemini-5h", 300],
+  ]);
+});
+
+// Each product binds a TLS listener beside the RPC one, and which draws the
+// higher port is not predictable — so every candidate is tried.
+test("usageStatus probes past a port that does not answer", async () => {
+  const { calls, probe } = quotaProbe({ ports: [40_001, 40_002] });
+  const half = fakeSystemProbe({
+    fetchLocal: (url, init) =>
+      url.includes("40001")
+        ? Promise.reject(new Error("TLS listener"))
+        : (probe.fetchLocal as NonNullable<typeof probe.fetchLocal>)(url, init),
+    localListeners: () => Promise.resolve([40_001, 40_002]),
+  });
+  const status = await antigravity().usageStatus?.(half, {});
+  expect(status?.windows?.length).toBe(2);
+  expect(calls.at(-1)).toBe(`POST http://127.0.0.1:40002${RPC_PATH}`);
+});
+
+// The desktop app gates the RPC on a token from its own HTML; `agy` does not.
+test("usageStatus retries with the CSRF token when the RPC is refused", async () => {
+  const { calls, probe } = quotaProbe({ csrfPorts: [40_001] });
+  const status = await antigravity().usageStatus?.(probe, {});
+  expect(calls).toEqual([
+    `POST http://127.0.0.1:40001${RPC_PATH}`,
+    "GET http://127.0.0.1:40001",
+    `POST http://127.0.0.1:40001${RPC_PATH}`,
+  ]);
+  expect(status?.state).toBe("ok");
+});
+
+test("usageStatus scopes to the pool a model draws on", async () => {
+  const { probe } = quotaProbe();
+  const claude = await antigravity().usageStatus?.(probe, {
+    model: "claude-opus-4-6-thinking",
+  });
+  expect(claude?.windows?.map((w) => w.label)).toEqual(["3p-weekly"]);
+  const gemini = await antigravity().usageStatus?.(probe, {
+    model: "gemini-3.1-pro-high",
+  });
+  expect(gemini?.windows?.map((w) => w.label)).toEqual(["gemini-weekly"]);
+});
+
+// Exclusion requires assertion: an unplaceable model keeps every window.
+test("usageStatus keeps every window for an unrecognized model", async () => {
+  const { probe } = quotaProbe();
+  const status = await antigravity().usageStatus?.(probe, {
+    model: "mystery-1",
+  });
+  expect(status?.windows?.length).toBe(2);
+});
+
+// A reassuring "0% used" for a window whose real standing is unknown is the
+// one answer worth refusing.
+test("usageStatus drops a bucket with no usable remainingFraction", async () => {
+  const { probe } = quotaProbe({
+    quota: {
+      groups: [
+        {
+          buckets: [
+            {
+              bucketId: "gemini-weekly",
+              remainingFraction: null,
+              window: "weekly",
+            },
+            { bucketId: "3p-weekly", remainingFraction: 0, window: "weekly" },
+          ],
+          displayName: "Mixed",
+        },
+      ],
+    },
+  });
+  const status = await antigravity().usageStatus?.(probe, {});
+  expect(status?.windows?.map((w) => w.label)).toEqual(["3p-weekly"]);
+  expect(status?.state).toBe("exhausted");
+});
+
+test("usageStatus is unknown when no Antigravity product is running", async () => {
+  const probe = fakeSystemProbe({
+    fetchLocal: () => Promise.reject(new Error("nothing here")),
+    localListeners: () => Promise.resolve([]),
+  });
+  expect(await antigravity().usageStatus?.(probe, {})).toEqual({
+    state: "unknown",
+  });
+});
+
+// Loopback is not egress, so the quota answers without `network`.
+test("usageStatus needs no network opt-in", async () => {
+  const { probe } = quotaProbe();
+  const status = await create(antigravity(), { probe }).usageStatus();
+  expect(status.state).toBe("ok");
+  expect(probe.fetch).toBeUndefined();
+});
