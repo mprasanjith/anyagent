@@ -7,13 +7,16 @@ The `codex` adapter drives the Codex CLI through its non-interactive `codex exec
 
 ## What you can ask for
 
-`readOnly`, `model`, `effort`, `resume`, and `attachments` map to the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/run-an-agent). `authStatus()` asks `codex login status` (a ChatGPT login asserts `billing: "subscription"`), `models()` asks `codex debug models`, and `usageStatus()` asks the CLI’s app-server for live rate-limit standing — account-level windows, no model buckets. The full grid is on the [support matrix](/docs/adapters).
+`readOnly`, `model`, `effort`, `resume`, and `attachments` map to the CLI’s own flags; `systemPrompt` and `schema` are provided by AnyAgent. `mcp` is not declared; reach Codex’s `-c` config overrides via [`extraArgs`](/docs/run-an-agent). `authStatus()` asks `codex login status` (a ChatGPT login asserts `billing: "subscription"`), `models()` asks `codex debug models`, and `usageStatus()` asks the CLI’s app-server for live rate-limit standing. The full grid is on the [support matrix](/docs/adapters).
 
 ## Good to know
 
 - `effort` has no closed vocabulary; accepted values are per-model, listed by `models()` on [`ModelInfo.reasoningEfforts`](/docs/api#modelinfo).
 - The `thread.started` id lands on `result.sessionId`; pass it back as `resume`.
 - Cache reads fold into the input total and reasoning into the output total; `cacheReadTokens` and `reasoningTokens` report those shares, not additions. No cost is reported.
+- Codex meters separately per feature, so `usageStatus()` can return more than one set of windows. Labels are prefixed with the feature they belong to (`codex:primary`), and the same answer carries the credit balance on `credits`.
+- Read `windowMinutes`, never the label, to tell a 5-hour window from a weekly one. OpenAI has shipped the weekly number under the label `primary` with no second window at all, so position says nothing about length.
+- The limits come from `codex app-server`, a separate process from the one that runs prompts. Asking costs a short handshake and no model call.
 
 ## Under the hood
 

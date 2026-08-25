@@ -42,3 +42,6 @@ need the opt-in.
 - `SystemProbe` gains `fetch` (egress, opt-in), plus `fetchLocal` and
   `localListeners` for reaching a service already running on the machine.
   The latter two are always present.
+- Docs: a new "Usage and limits" guide covers reading windows, scoping to a
+  model, staleness, the network opt-in, and credits. The Codex and Claude
+  Code adapter pages had claims this change made untrue; both are corrected.

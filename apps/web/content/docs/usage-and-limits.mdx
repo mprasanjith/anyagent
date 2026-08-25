@@ -1,0 +1,171 @@
+---
+title: Usage and limits
+description: Find out how much of someone's plan is left before you spend it, and decide what to do when it runs out.
+---
+
+Every agent CLI runs on someone's plan, and plans run out. `agent.usageStatus()` tells you where that plan stands right now, so you can pick a different agent, wait for a reset, or warn the user before a run fails.
+
+```ts
+const status = await agent.usageStatus();
+
+if (status.state === "exhausted") {
+  console.log("This plan is spent. Try another agent.");
+}
+```
+
+The call never spends anything. It reads files the CLI already wrote, or asks the CLI itself, and it never runs a prompt.
+
+## The four answers
+
+`status.state` is one of four values. Treat them as a traffic light:
+
+| `state`        | What it means                        | What to do                                             |
+| -------------- | ------------------------------------ | ------------------------------------------------------ |
+| `"ok"`         | There is room.                       | Go ahead.                                              |
+| `"near-limit"` | The CLI itself flagged this as high. | Fine for a short run; think twice about a long one.     |
+| `"exhausted"`  | A limit is spent.                    | A run will be refused or degraded. Send work elsewhere. |
+| `"unknown"`    | Nothing could be learned.            | Proceed, but spend carefully.                          |
+
+`"unknown"` is the one people misread. It does **not** mean "unlimited" — it means nobody told us. Some CLIs have no way to report limits at all, and some are configured with an API key, where the meter lives at the provider and no CLI can see it.
+
+`usageStatus()` never throws for an unsupported agent. It returns `{ state: "unknown" }`, because that is already the answer you would act on:
+
+```ts
+// Safe on every agent, including ones that report nothing.
+const { state } = await create(someAgent).usageStatus();
+```
+
+## Reading the windows
+
+Most plans meter you in **rolling windows** — "this 5-hour stretch", "this week". `status.windows` lists them:
+
+```ts
+for (const w of status.windows ?? []) {
+  console.log(`${w.label}: ${w.usedPercent}% used, resets ${w.resetsAt}`);
+}
+// session: 35% used, resets Tue Aug 25 2026 10:59:59
+// weekly_all: 77% used, resets Thu Aug 27 2026 05:59:59
+```
+
+Two fields need care.
+
+**`label` is the CLI's own wording, not a standard.** One agent says `"session"`, another says `"primary"`, another says `"gemini-weekly"`. Never compare labels across agents, and never infer a window's length from its name — Codex has shipped its *weekly* number under the label `primary`.
+
+**`windowMinutes` is how you tell windows apart.** It is the length of the window in minutes: `300` for a 5-hour window, `10080` for a weekly one. This is the field to branch on:
+
+```ts
+const weekly = status.windows?.find((w) => w.windowMinutes === 10_080);
+```
+
+It is absent when the CLI does not say how long the window is. A monthly window that renews on the subscription's own date has no fixed length, so it reports none rather than a wrong one.
+
+`resetsAt` is when the window rolls over, and `usedPercent` is how much is gone, `0`–`100`. Both are absent when unreported. Check for `undefined` rather than assuming a number is there.
+
+## Asking about one model
+
+Some plans meter each model separately. A Claude account can have its Fable weekly bucket spent while everything else is fine, so the account-wide answer looks worse than your actual situation.
+
+Pass the model you intend to use and the answer narrows to it:
+
+```ts
+await agent.usageStatus();                    // → "exhausted" (Fable is spent)
+await agent.usageStatus({ model: "opus" });   // → "near-limit" (Opus is fine)
+```
+
+Pass anything you would pass to `run()` as `model`. Windows that clearly belong to a different model are dropped; account-wide windows always stay, since they apply to every model.
+
+If AnyAgent cannot work out which bucket your model belongs to, it keeps **every** window rather than dropping one it is unsure about. The answer errs pessimistic, never optimistic.
+
+## When the number is stale
+
+`status.asOf` is when the CLI produced these numbers — not when you asked.
+
+Some CLIs only write a usage snapshot when they themselves run, so the file can be hours old. Decide for yourself how much staleness you will accept:
+
+```ts
+const stale = Date.now() - (status.asOf?.getTime() ?? 0) > 3_600_000;
+```
+
+`asOf` is absent when even the age is unknown.
+
+## Letting AnyAgent reach the network
+
+<Callout type="info">
+AnyAgent makes no network requests unless you ask it to. Everything above works entirely from what is already on the machine.
+</Callout>
+
+Some CLIs keep no local copy of their remaining quota. The number exists only at their vendor. Those adapters report `usageStatus: "remote"`, and without permission they answer `{ state: "unknown" }`.
+
+Turn it on with `network`:
+
+```ts
+const agent = create(opencode(), { network: true });
+const status = await agent.usageStatus(); // now answers
+```
+
+What that permits, exactly: the adapter sends the credential **its own CLI already stored** to **that CLI's own vendor**, and nowhere else. It does not collect keys, and it never spends money — these are read-only status endpoints, not inference.
+
+AnyAgent will not follow a redirect that leaves the original site, so a credential cannot be replayed somewhere unexpected. Requests are capped in time and size, and any failure quietly becomes `{ state: "unknown" }`.
+
+You can supply your own `fetch` — for a proxy, custom timeouts, request logging, or a stub in tests:
+
+```ts
+create(opencode(), { network: { fetch: viaProxy } });
+```
+
+And `network: false` switches it off for good, even if something else tried to hand the agent a `fetch`.
+
+Agents that already answer without the network do not need the flag. Some of them sharpen their answer when it is on — Claude Code prefers a live reading over its cached file — so check `asOf` rather than guessing which you got.
+
+<Callout type="warn">
+One exception, and it is deliberate: Antigravity reads its quota from a server running on your own machine (`127.0.0.1`). Nothing leaves the computer, so it needs no `network` flag. It does need an Antigravity app, IDE, or `agy` session to be **running** — with none up, it answers `unknown`.
+</Callout>
+
+## Credits change what "exhausted" means
+
+A spent window is not always the end. Some plans have a pay-as-you-go balance that takes over, and `status.credits` reports it:
+
+```ts
+if (status.state === "exhausted" && status.credits?.balance) {
+  console.log(`Windows spent, but $${status.credits.balance} of credit remains.`);
+}
+```
+
+So `"exhausted"` means *the included allowance is gone*, not *nothing will run*. Check `credits` before you treat it as final. It is absent on plans with no such pool, which is most of them. `unlimited: true` means the pool is uncapped.
+
+## Which agents report what
+
+<SupportedBy capability="usageStatus" />
+
+The value beside each agent tells you where the answer comes from:
+
+- **`native`** — the CLI reports its own standing. Authoritative and current.
+- **`probed`** — read from files the CLI left on the machine. Useful, but check `asOf`; it can be stale, or missing entirely if the CLI has not written it yet.
+- **`remote`** — only the vendor knows, so this needs `network`.
+- **`—`** — no way to find out. Always `{ state: "unknown" }`.
+
+Per-agent detail lives on each [adapter page](/docs/adapters).
+
+## Picking an agent by headroom
+
+Putting it together — find an installed agent that can actually take the work:
+
+```ts
+import { create, detect } from "anyagent-js";
+
+const RANK = { ok: 0, "near-limit": 1, unknown: 2, exhausted: 3 };
+
+const installed = await detect();
+const checked = await Promise.all(
+  installed.map(async (found) => {
+    const agent = create(found, { network: true });
+    const { state } = await agent.usageStatus({ model: "opus" });
+    return { agent, name: found.adapter.meta.name, state };
+  })
+);
+
+const best = checked.sort((a, b) => RANK[a.state] - RANK[b.state])[0];
+console.log(`Using ${best.name} (${best.state})`);
+```
+
+`unknown` sits ahead of `exhausted` on purpose. An agent that cannot tell you is a better bet than one that has told you it is spent.

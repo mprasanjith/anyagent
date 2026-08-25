@@ -78,14 +78,20 @@ console.log(result.text);
 
 ### Network access
 
-AnyAgent makes no network requests by default: everything discovery answers comes off the local machine. Some CLIs keep no local copy of their remaining quota at all — the meter lives at their vendor — so those adapters declare `usageStatus: "remote"` and answer `{ state: "unknown" }` until you opt in:
+AnyAgent makes no network requests unless you ask it to. Everything it tells you about an agent normally comes off the local machine.
+
+Some CLIs keep no local copy of their remaining quota — the number only exists at their vendor. Those adapters declare `usageStatus: "remote"` and answer `{ state: "unknown" }` until you turn this on:
 
 ```ts
 const agent = create(opencode(), { network: true });
 const status = await agent.usageStatus();
 ```
 
-With the opt-in, the adapter sends the credential its own CLI already stored to that CLI's own vendor, and nowhere else. Requests are capped in time and body size, and a redirect that leaves the original origin ends the exchange rather than replaying the credential elsewhere. Adapters declaring `"native"` or `"probed"` never need the flag, though some sharpen a cached answer into a live one when it is on — read `asOf` for freshness. `network: false` is an explicit kill switch that holds even against a `probe` carrying its own `fetch`.
+What this permits, exactly: the adapter sends the credential **its own CLI already stored** to **that CLI's own vendor**, and nowhere else. These are read-only status endpoints, so nothing is spent.
+
+Requests are capped in time and body size, and AnyAgent will not follow a redirect off the original site — so a credential cannot be replayed somewhere unexpected. Any failure becomes `{ state: "unknown" }` rather than an error you have to catch.
+
+Agents declaring `"native"` or `"probed"` never need the flag, though some give a fresher answer when it is on — check `asOf` rather than guessing which you got. `network: false` switches it off for good, even against a `probe` carrying its own `fetch`.
 
 ## Agent
 
@@ -258,7 +264,7 @@ Both `"native"` and `"emulated"` are truthy, so a `caps.systemPrompt ? … : …
 
 ## DiscoverySupport
 
-How a discovery question — [`authStatus`](#authstatus-and-authstate), [`models`](#modelinfo), or [`usageStatus`](#usagestatus) — is answered. It is the value type of the `authStatus`, `modelListing`, and `usageStatus` capability fields:
+Where the answer to a question about the CLI — [`authStatus`](#authstatus-and-authstate), [`models`](#modelinfo), or [`usageStatus`](#usagestatus) — comes from. It types the `authStatus` and `modelListing` capability fields:
 
 ```ts
 type DiscoverySupport = "native" | "probed" | false;
@@ -270,11 +276,15 @@ type DiscoverySupport = "native" | "probed" | false;
 | `"probed"` | best-effort heuristics over the CLI’s local files and environment; a hint, not a guarantee                   |
 | `false`    | no answer exists; calling the method throws `UnsupportedCapability` — except `usageStatus`, which answers `{ state: "unknown" }` instead |
 
-`usageStatus` is typed `UsageSupport`, which adds one more value:
+`usageStatus` uses `UsageSupport` instead — the same values plus one:
 
-| Value      | Meaning                                                                                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"remote"` | the CLI keeps no local answer; only its vendor knows. Needs [`network`](#network-access), and answers `{ state: "unknown" }` without it |
+```ts
+type UsageSupport = DiscoverySupport | "remote";
+```
+
+| Value      | Meaning                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `"remote"` | the CLI keeps no local copy; only its vendor knows. Needs [`network`](#network-access), and answers `{ state: "unknown" }` without it |
 
 ## Capabilities
 
@@ -308,7 +318,13 @@ type BillingMode = "subscription" | "api-key" | "unknown";
 
 ## UsageStatus
 
-The answer to `agent.usageStatus(opts?)`: how much of the harness's rolling usage limits remain — never verified with a paid call. The call works on every agent; where the `usageStatus` capability is `false` it answers `{ state: "unknown" }` instead of throwing, because that answer is itself the routing signal ("unmetered, spend cautiously"). Pass `{ model }` to scope the answer to one placement: windows narrow to those that bind the model, and `state` summarizes the windows in the same answer — the worst standing among them. There is no `raw`: native usage payloads embed account identifiers.
+What `agent.usageStatus(opts?)` returns: how much of the user's plan is left. It never runs a prompt, so it costs nothing.
+
+The call works on every agent. Where the `usageStatus` capability is `false` it returns `{ state: "unknown" }` rather than throwing, because that is already the answer you would act on — nobody can tell you, so spend carefully.
+
+Pass `{ model }` to ask about one model instead of the whole account. Windows that belong to a different model are dropped, and `state` reflects whatever is left: the worst standing among those windows. There is no `raw` field, because the CLIs' own usage payloads carry account identifiers.
+
+For a walkthrough, see [Usage and limits](/docs/usage-and-limits).
 
 <auto-type-table
   path="../../../../packages/anyagent/src/types.ts"
